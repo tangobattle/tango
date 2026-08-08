@@ -111,6 +111,10 @@ pub struct TrainingSession {
     /// The console's screens, as the game's engine presents them —
     /// what the session's surfaces are sized for.
     layout: tango_match::ScreenLayout,
+    /// Training's write-side control (see [`tango_match::trainer`]):
+    /// forced hands land here and the engine's per-game trainer applies
+    /// them. Wired iff this game's support offers a trainer.
+    control: Arc<tango_match::trainer::TrainerControl>,
     /// Latched once the battle's own match-end path fires — flips
     /// [`is_ended`](crate::Session::is_ended) so the host tears the
     /// session down.
@@ -154,6 +158,7 @@ impl TrainingSession {
         // on its way out of every tick; the stream plays the other end
         // without ever reaching for a console.
         let (audio_in, audio_out) = crate::audio::ring();
+        let control = tango_match::trainer::TrainerControl::new();
         let mut match_ = game.pvp.start(tango_match::StartConfig {
             roms: [rom.as_ref(), rom.as_ref()],
             saves: [Some(&save_sram), Some(&save_sram)],
@@ -173,6 +178,10 @@ impl TrainingSession {
             // pair, so the walk runs before there is anything to
             // cancel from.
             cancel: None,
+            // Training is the one lockstep session, so it is the one
+            // place a trainer is sound — the engine installs the
+            // game's hook over this control if the game offers one.
+            trainer: Some(control.clone()),
         })?;
 
         // A netplay match renders only the local side. Training shows
@@ -237,6 +246,7 @@ impl TrainingSession {
                 show_pip,
                 pip,
                 pip_fresh,
+                control,
                 ended,
                 stop,
                 layout,
@@ -279,6 +289,25 @@ impl TrainingSession {
     /// and the audio + main screen follow the newly-controlled core.
     pub fn toggle_swap(&self) {
         self.controlled.fetch_xor(1, Ordering::Relaxed);
+    }
+
+    /// Whether chip forcing works in this session — the game's engine
+    /// support offered a trainer. `false` means the picker has nothing
+    /// to drive and the host should say so instead of offering it.
+    pub fn chip_forcing_available(&self) -> bool {
+        self.control.is_wired()
+    }
+
+    /// Set or clear the forced hand for absolute player `player`: up
+    /// to 6 chip ids in fire order, overwriting that player's pick at
+    /// every custom-screen close until cleared.
+    pub fn set_forced_hand(&self, player: usize, hand: Option<Vec<u16>>) {
+        self.control.set_forced_hand(player, hand);
+    }
+
+    /// The forced hand standing for absolute player `player`, if any.
+    pub fn forced_hand(&self, player: usize) -> Option<Vec<u16>> {
+        self.control.forced_hand(player)
     }
 
     /// Whether the opponent-screen picture-in-picture is on.

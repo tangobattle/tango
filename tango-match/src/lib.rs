@@ -37,6 +37,7 @@ pub mod seek;
 pub mod solo;
 pub mod telemetry;
 pub mod throttler;
+pub mod trainer;
 
 pub use solo::{Console, Solo, SoloConfig};
 pub use engine::Match;

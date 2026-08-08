@@ -96,6 +96,16 @@ pub trait GameSupport: Sync {
     /// the sink as it catches them firing (see
     /// [`CorePoller`](tango_match::telemetry::CorePoller)).
     fn core_poller(&self, player: usize) -> Box<dyn tango_match::telemetry::CorePoller<mgba::core::Core>>;
+
+    /// The write-side twin of [`core_poller`](Self::core_poller),
+    /// training only: a per-game hook that may poke this game's battle
+    /// RAM each tick (see [`tango_match::trainer`]). One instance
+    /// serves both cores — a trainer's writes must land identically on
+    /// the pair anyway, so it sees every core every tick. Default none:
+    /// chip forcing simply isn't available for the game.
+    fn trainer(&self) -> Option<Box<dyn tango_match::trainer::Trainer<mgba::core::Core>>> {
+        None
+    }
 }
 
 /// One cartridge in a family, keyed as its ROM header names it.
@@ -235,8 +245,17 @@ impl tango_match::Backend for GbaBackend {
         }
 
         let (telemetry, handle) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], events);
+        // Training's write-side hook, only when the caller asked for
+        // one (see [`StartConfig::trainer`]) AND the game's support
+        // offers one. Training is a mirror match — both cores run the
+        // local cart — so seat 0's support answers for the pair.
+        let trainer = config.trainer.as_ref().and_then(|control| {
+            let trainer = support[0].trainer()?;
+            control.set_wired();
+            Some((trainer, control.clone()))
+        });
         let mut match_ = tango_match::Match::new(
-            crate::link::Link::new(pair, Some(telemetry)),
+            crate::link::Link::new(pair, Some(telemetry), trainer),
             config.local_player,
             config.present_delay,
             config.audio,
@@ -433,7 +452,7 @@ impl Boot {
             None => (None, None),
         };
         tango_match::BootedReplay {
-            link: Box::new(crate::Link::new(pair, telemetry)),
+            link: Box::new(crate::Link::new(pair, telemetry, None)),
             telemetry: handle,
         }
     }

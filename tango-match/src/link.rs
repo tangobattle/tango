@@ -446,4 +446,13 @@ pub struct StartConfig<'a> {
     /// walk. `None` for a caller with nothing to cancel from (the
     /// offline analysis passes, the probe harnesses).
     pub cancel: Option<&'a std::sync::atomic::AtomicBool>,
+    /// Training only: the control a per-game
+    /// [`Trainer`](crate::trainer::Trainer) should honor, if this
+    /// game's engine support offers one. `None` everywhere else — a
+    /// trainer writes game memory from live host-mutable state, which
+    /// is only sound on a pair that never rolls back (see
+    /// [`trainer`](crate::trainer)). Netplay and replay must never set
+    /// this: a rollback would re-apply writes from current control
+    /// state and desync the re-simulation from its first pass.
+    pub trainer: Option<std::sync::Arc<crate::trainer::TrainerControl>>,
 }

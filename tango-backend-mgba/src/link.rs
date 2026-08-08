@@ -65,17 +65,37 @@ pub struct Link {
     /// every tick, rewound on every restore; the store it feeds is the
     /// handle the backend installs on the match.
     telemetry: Option<Telemetry<mgba::core::Core>>,
+    /// Training's write-side hook and the control it honors, when this
+    /// pair runs one (see [`tango_match::trainer`]). Driven each tick
+    /// BEFORE the telemetry poll, so the pollers read post-write state.
+    /// Deliberately untouched by [`restore`](tango_match::Link::restore):
+    /// a trainer is lockstep-only by contract, so a pair carrying one
+    /// never rewinds.
+    trainer: Option<TrainerHook>,
 }
+
+/// The per-game trainer plus the shared control it reads — see
+/// [`tango_match::trainer`].
+type TrainerHook = (
+    Box<dyn tango_match::trainer::Trainer<mgba::core::Core>>,
+    std::sync::Arc<tango_match::trainer::TrainerControl>,
+);
 
 impl Link {
     /// Wrap an already-booted, already-primed pair. `telemetry` is the
     /// collector whose pollers read this pair's games, if the session
-    /// runs one.
-    pub fn new(pair: mgba_rollback::Link, telemetry: Option<Telemetry<mgba::core::Core>>) -> Self {
+    /// runs one; `trainer` is training's write-side hook, if this pair
+    /// honors one.
+    pub fn new(
+        pair: mgba_rollback::Link,
+        telemetry: Option<Telemetry<mgba::core::Core>>,
+        trainer: Option<TrainerHook>,
+    ) -> Self {
         Link {
             inner: pair,
             live_tick: 0,
             telemetry,
+            trainer,
         }
     }
 }
@@ -91,6 +111,10 @@ impl tango_match::Link for Link {
         let keys = inputs.map(|input| input.keys & JOYFLAGS_MASK);
         self.inner.tick(&keys);
         self.live_tick += 1;
+        if let Some((trainer, control)) = self.trainer.as_mut() {
+            trainer.tick(self.inner.core_mut(0), 0, control);
+            trainer.tick(self.inner.core_mut(1), 1, control);
+        }
         if let Some(telemetry) = self.telemetry.as_mut() {
             let obs0 = telemetry.poll(0, self.inner.core_mut(0));
             let obs1 = telemetry.poll(1, self.inner.core_mut(1));

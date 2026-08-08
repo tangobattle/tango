@@ -1020,6 +1020,10 @@ impl DriveContext {
             // walk, so a close has to reach into it — otherwise the
             // host's drive-thread join waits the walk out.
             cancel: Some(&self.boot_cancel),
+            // Netplay must never carry a trainer: it writes game
+            // memory from live host state, which a rollback would
+            // re-apply out of time (see tango_match::trainer).
+            trainer: None,
         })?;
 
         // Our half of the ready gate: the pair is at its link battle.

@@ -47,6 +47,7 @@ fn build(
             // Nobody is listening: the harness drives the pair headless.
             audio: None,
             cancel: None,
+            trainer: None,
         })
         .expect("build match")
 }
