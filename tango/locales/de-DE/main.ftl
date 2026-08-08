@@ -61,7 +61,6 @@ patches-search-placeholder = Patches suchen …
 patches-filter-all = Alle
 patches-filter-installed = Installiert
 patches-filter-available = Verfügbar
-patches-update = Aktualisierung
 patches-details-authors = Autoren:
 patches-details-license = Lizenz:
     .all-rights-reserved = Alle Rechte vorbehalten
@@ -310,8 +309,6 @@ replays-round-count = { $count ->
    *[other] { $count } Runden
 }
 replays-incomplete = unvollständig
-patches-updating = Aktualisiere…
-patches-update-failed = Aktualisierung fehlgeschlagen: { $error }
 patches-select-prompt = Wähle einen Patch.
 patches-scanning = Patches werden durchsucht…
 patches-readme-placeholder = Dieser Patch hat keine README.

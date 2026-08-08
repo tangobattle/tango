@@ -269,9 +269,6 @@ patches-retry = 重试
 patches-reveal-package = 显示补丁包
 
 # Patches
-patches-update = 更新
-patches-updating = 正在更新…
-patches-update-failed = 更新失败：{ $error }
 patches-open-folder = 打开文件夹
 patches-favorite = 收藏
 patches-unfavorite = 取消收藏

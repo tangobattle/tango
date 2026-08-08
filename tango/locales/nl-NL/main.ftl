@@ -61,7 +61,6 @@ patches-search-placeholder = Patches zoeken…
 patches-filter-all = Alle
 patches-filter-installed = Geïnstalleerd
 patches-filter-available = Beschikbaar
-patches-update = Bijwerken
 patches-details-authors = Auteurs:
 patches-details-license = Licentie:
     .all-rights-reserved = Alle rechten voorbehouden
@@ -310,8 +309,6 @@ replays-round-count = { $count ->
    *[other] { $count } rondes
 }
 replays-incomplete = onvolledig
-patches-updating = Bijwerken…
-patches-update-failed = Bijwerken mislukt: { $error }
 patches-select-prompt = Selecteer een patch.
 patches-scanning = Patches scannen…
 patches-readme-placeholder = Deze patch heeft geen README.

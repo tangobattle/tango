@@ -61,7 +61,6 @@ patches-search-placeholder = Поиск патчей…
 patches-filter-all = Все
 patches-filter-installed = Установленные
 patches-filter-available = Доступные
-patches-update = Обновить
 patches-details-authors = Авторы:
 patches-details-license = Лицензия:
     .all-rights-reserved = Все права защищены
@@ -312,8 +311,6 @@ replays-round-count = { $count ->
    *[many] { $count } раундов
 }
 replays-incomplete = неполный
-patches-updating = Обновление…
-patches-update-failed = Сбой обновления: { $error }
 patches-select-prompt = Выберите патч.
 patches-scanning = Сканирование патчей…
 patches-readme-placeholder = У этого патча нет README.

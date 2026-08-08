@@ -263,9 +263,6 @@ patches-retry = 再試行
 patches-reveal-package = パッケージを表示
 
 # Patches
-patches-update = 更新
-patches-updating = 更新中…
-patches-update-failed = 更新に失敗しました: { $error }
 patches-open-folder = フォルダを開く
 patches-favorite = お気に入り
 patches-unfavorite = お気に入り解除

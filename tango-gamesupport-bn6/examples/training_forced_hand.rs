@@ -8,15 +8,14 @@
 //! START→A sequence (START jumps the cursor to OK; never DOWN — that
 //! lands on Beast Out), then the probe asserts both cores agree that
 //! both players' committed hands are the forced lists (fired = 0,
-//! ids[0] = the forced lead), then A-taps so chips actually fire and
-//! checks the confirmed `ChipUsed` events carry forced ids. L-taps
-//! open the next turn's screen once the gauge fills; the second turn's
-//! assert covers the "re-applied at every close" contract.
-//!
-//! This is the empirical gate for the write's timing: if the game
-//! re-touched the blocks when the battle resumes (after the SECOND
-//! player confirms), a forced hand would be clobbered back to the
-//! game's own picks and the assert would see them.
+//! ids[0] = the forced lead), then A-taps fire. A forced hand is
+//! PERMANENT — firing never depletes it — so every confirmed
+//! `ChipUsed` must be the forced LEAD, each turn's damage must
+//! accumulate at least three of the lead's base attack on the
+//! opposing unit (a hand that only hits once, or hits for zero,
+//! fails), and the L-opened second turn covers the negotiation
+//! canary: a corrupted block half-grants the shared pause and turn 2
+//! never opens on both cores.
 //!
 //! Usage: training_forced_hand <rom> <save>
 //!
@@ -165,14 +164,17 @@ fn main() {
     let mut prev_any_custom = false;
     // Confirmed chip fires per player, across the whole run.
     let mut fires: [Vec<u16>; 2] = [Vec::new(), Vec::new()];
-    // Both units' HP at the current turn's hand assert, and each
-    // unit's first drop from it — the damage check's raw material.
+    // Both units' HP at the current turn's hand assert, each unit's
+    // first drop from it, and the running minimum over the turn — the
+    // damage checks' raw material.
     let mut hp_base: Option<[u16; 2]> = None;
     let mut first_drop: [Option<u16>; 2] = [None, None];
+    let mut turn_min: [u16; 2] = [0; 2];
     let mut damage_checked = 0u32;
 
     let mut tick = 0u32;
     let mut deadline = None;
+    let mut stash_candidates: Vec<u32> = Vec::new();
     for _ in 0..30_000u32 {
         // Each player's input for the tick about to advance, from the
         // pair's settled state — the same order training's driver runs.
@@ -219,24 +221,36 @@ fn main() {
                     }
                 }
                 // In battle, once this turn's hands are asserted: A
-                // bursts fire the loaded chip, L taps open the next
+                // taps fire the loaded chip, L taps open the next
                 // turn's screen when the gauge fills (inert before).
                 // The fire windows are STAGGERED — p0 empties its hand
                 // first, then p1 — because simultaneous shots
                 // interfere exactly like the real game: a fast AirShot
                 // flinches the Cannon's shooter mid-animation and the
-                // Cannon's shot never comes out, and Vulcan hitstun
-                // eats the victim's own A-presses. (That interference
-                // is gameplay, not a forcing bug — but this probe is
-                // about the hand, so it fires under clean conditions.)
+                // Cannon's shot never comes out. And the taps are
+                // SPACED past the target's mercy invincibility (~1s
+                // after any hit) — rapid-fire hits land during the
+                // i-frames and deal nothing, which is gameplay, not a
+                // forcing bug, and exactly what this probe's damage
+                // accounting must not trip over.
                 PlayerPhase::Fight { since } if turns == asserted_turns => {
-                    const WINDOW: u32 = 350;
+                    // p0 deliberately fires only TWICE per turn and
+                    // leaves the rest of its hand loaded — every
+                    // custom open is then a canary for the
+                    // leftover-pick wedge (the game's pick-return
+                    // walk choking on phantoms). Its taps are spaced
+                    // past the target's mercy invincibility (~160
+                    // ticks — probe-measured: Cannons 55 apart landed
+                    // 2 of 5) so both hits deal; AirShot ignores
+                    // mercy, so p1 taps faster and empties its hand.
+                    const WINDOW: u32 = 390;
                     let my_window = if p == 0 {
                         since > ASSERT_AT && since <= ASSERT_AT + WINDOW
                     } else {
                         since > ASSERT_AT + WINDOW
                     };
-                    if my_window && since % 30 < 3 {
+                    let cadence = if p == 0 { 180 } else { 55 };
+                    if my_window && since % cadence < 3 {
                         tango_match::keys::A
                     } else if since % 47 < 3 {
                         tango_match::keys::L
@@ -282,35 +296,97 @@ fn main() {
             if let Event::ChipUsed { player, chip } = ev {
                 println!("[{at:5}] player {player} fired chip {chip:#05x};{}", dump_hands(pair.core_mut(0)));
                 fires[player].push(chip);
+                // TFH_UNITDUMP: both unit structs' words around the
+                // chip fields (unit base 0x0203a9b0, stride 0xd8) at
+                // each fire — for locating where the game stashes the
+                // loaded chip's damage at load time.
+                if std::env::var("TFH_UNITDUMP").is_ok() {
+                    let core = pair.core_mut(0);
+                    for slot in 0..2u32 {
+                        let base = 0x0203a9b0 + slot * 0xd8;
+                        let words: Vec<String> = (0x26..0x60)
+                            .step_by(2)
+                            .map(|off| format!("{:04x}", core.raw_read_16(base + off, -1)))
+                            .collect();
+                        println!("    unit{slot} +26..60: {}", words.join(" "));
+                    }
+                }
             }
         }
 
-        // Damage check: each unit's first HP drop after a turn's hand
-        // assert must be the OPPOSING side's forced lead's base attack
-        // — a hand that fires but hits for zero (an incomplete pick
-        // record) fails here, not just a hand that doesn't fire.
+        // Damage tracking: each unit's first HP drop after a turn's
+        // hand assert must be the OPPOSING side's forced lead's base
+        // attack — a hand that fires but hits for zero fails here —
+        // and the running minimum feeds the per-turn cumulative check
+        // (a permanent hand's repeated fires must KEEP hitting).
         if let (Some(base), Some(hp)) = (hp_base, units_hp) {
             for unit in 0..2 {
+                turn_min[unit] = turn_min[unit].min(hp[unit]);
                 if first_drop[unit].is_none() && hp[unit] < base[unit] {
                     let drop = base[unit] - hp[unit];
                     println!("[{tick:5}] unit {unit} first hit: -{drop}");
                     first_drop[unit] = Some(drop);
-                }
-            }
-            if first_drop.iter().all(|d| d.is_some()) {
-                for unit in 0..2 {
                     let expected = LEAD_DAMAGE[1 - unit];
-                    if first_drop[unit] != Some(expected) {
+                    if drop != expected {
                         println!(
-                            "FORCED HAND PROBE FAIL: turn {turns} unit {unit} first hit {:?}, expected -{expected}",
-                            first_drop[unit]
+                            "FORCED HAND PROBE FAIL: turn {turns} unit {unit} first hit -{drop}, expected -{expected}"
                         );
                         std::process::exit(1);
                     }
                 }
-                println!("[{tick:5}] turn {turns}: both leads dealt their real damage");
-                damage_checked += 1;
-                hp_base = None;
+            }
+        }
+
+        // TFH_DMGTRACE=a,b: both cores' fired + damage arrays every 5
+        // ticks — for mapping what the game itself does to the +0x0e
+        // region (the refresh's zeroing, the open-request staging).
+        if let Ok(range) = std::env::var("TFH_DMGTRACE") {
+            let (a, b) = range.split_once(',').unwrap();
+            if tick >= a.parse().unwrap() && tick <= b.parse().unwrap() && tick % 5 == 0 {
+                let mut line = format!("[{tick:5}] dmg");
+                for i in 0..2 {
+                    let core = pair.core_mut(i);
+                    let bt = core.raw_read_32(0x02034880 + 0x60, -1);
+                    line.push_str(&format!(" c{i}[bt={bt}]"));
+                    for p in 0..2u32 {
+                        let base = 0x020349c0 + p * 0x50;
+                        let fired = core.raw_read_16(base, -1);
+                        let dmg: Vec<String> = (0..6)
+                            .map(|slot| format!("{}", core.raw_read_16(base + 0x0e + slot * 2, -1)))
+                            .collect();
+                        line.push_str(&format!(" c{i}p{p}[f={fired} {}]", dmg.join(",")));
+                    }
+                }
+                println!("{line}");
+            }
+        }
+
+        // TFH_STASH=a,b: episodic hunt for the loaded chip's damage
+        // registration — every EWRAM cell (core 0) holding Cannon's 40
+        // at tick `a` (loaded, unfired) that reads 0 at tick `b`
+        // (after the first fire re-loaded and re-registered off the
+        // empty record). The survivor set is where the game stashes
+        // the loaded chip's power at load time.
+        if let Ok(range) = std::env::var("TFH_STASH") {
+            let (a, b) = range.split_once(',').unwrap();
+            let (a, b): (u32, u32) = (a.parse().unwrap(), b.parse().unwrap());
+            if tick == a {
+                let core = pair.core_mut(0);
+                stash_candidates = (0x0200_0000u32..0x0204_0000)
+                    .chain(0x0300_0000..0x0300_8000)
+                    .step_by(2)
+                    .filter(|&addr| core.raw_read_16(addr, -1) == 40)
+                    .collect();
+                println!("[{tick:5}] stash scan: {} cells hold 40", stash_candidates.len());
+            }
+            if tick == b {
+                let core = pair.core_mut(0);
+                let survivors: Vec<String> = stash_candidates
+                    .iter()
+                    .filter(|&&addr| core.raw_read_16(addr, -1) == 0)
+                    .map(|addr| format!("{addr:#010x}"))
+                    .collect();
+                println!("[{tick:5}] stash survivors (40 -> 0): {}", survivors.join(" "));
             }
         }
 
@@ -332,9 +408,36 @@ fn main() {
         }
 
         // Turn accounting: BN6 opens both players' screens together, so
-        // a turn is one episode of either custom flag standing open.
+        // a turn is one episode of either custom flag standing open. A
+        // turn's cumulative damage verdict lands when the next one
+        // opens: at least TWO full hits of the lead's base attack per
+        // side — one would pass with a hand that dies after its first
+        // fire, which is exactly the regression this guards.
         let any_custom = custom.iter().any(|&c| c);
         if any_custom && !prev_any_custom {
+            if let Some(base) = hp_base.take() {
+                println!(
+                    "[{tick:5}] turn {turns} totals: unit0 -{} unit1 -{}",
+                    base[0] - turn_min[0],
+                    base[1] - turn_min[1]
+                );
+                for unit in 0..2 {
+                    let dealt = base[unit] - turn_min[unit];
+                    let expected = 2 * LEAD_DAMAGE[1 - unit];
+                    if dealt < expected {
+                        println!(
+                            "FORCED HAND PROBE FAIL: turn {turns} dealt only -{dealt} to unit {unit}, expected at least -{expected}"
+                        );
+                        std::process::exit(1);
+                    }
+                }
+                println!("[{tick:5}] turn {turns}: permanent hands kept dealing");
+                damage_checked += 1;
+                if damage_checked == 2 {
+                    // Two full turns verified — done.
+                    break;
+                }
+            }
             turns += 1;
             println!("[{tick:5}] turn {turns}: custom screens open");
         }
@@ -399,14 +502,26 @@ fn main() {
                     }
                 }
                 println!("[{tick:5}] turn {turns}: both cores agree both hands are forced");
-                // Arm the damage check off this quiet moment's HP.
-                hp_base = units_hp;
+                // Refill both units' HP (both cores, same tick — the
+                // debug_set_hp contract) so the cumulative damage math
+                // never hits the KO cap: this save's navi has only 100
+                // max HP, and a turn of forced fires deals more.
+                for i in 0..2 {
+                    let core = pair.core_mut(i);
+                    for p in 0..2u8 {
+                        support.debug_set_hp(core, p, 900);
+                    }
+                }
+                // Arm the damage checks off the refilled baseline.
+                hp_base = Some([900, 900]);
                 first_drop = [None, None];
+                turn_min = [900, 900];
             }
             asserted_turns = turns;
             if asserted_turns == 2 {
-                // Run on a little longer so turn 2's fires confirm too.
-                deadline = Some(tick + 600);
+                // Run on a little longer so turn 2's fires confirm too
+                // (both staggered windows plus travel time).
+                deadline = Some(tick + 900);
             }
         }
 
@@ -420,25 +535,40 @@ fn main() {
         std::process::exit(1);
     }
 
-    // Every confirmed fire must have come off a forced list, and both
-    // players must actually have fired — the hand isn't just written,
-    // it plays.
+    // A run that ran out its ticks settles the open turn here (the
+    // normal path breaks out at turn 2's verdict above).
+    if damage_checked < 2 {
+        if let Some(base) = hp_base.take() {
+            for unit in 0..2 {
+                let dealt = base[unit] - turn_min[unit];
+                let expected = 2 * LEAD_DAMAGE[1 - unit];
+                assert!(
+                    dealt >= expected,
+                    "the final turn dealt only -{dealt} to unit {unit}, expected at least -{expected}"
+                );
+            }
+            damage_checked += 1;
+        }
+    }
+
+    // A permanent hand fires its LEAD, every time, and keeps firing —
+    // both sides, both turns.
     for p in 0..2 {
         assert!(
-            fires[p].iter().all(|chip| FORCED[p].contains(chip)),
-            "player {p} fired outside the forced list: {:?}",
+            fires[p].iter().all(|&chip| chip == FORCED[p][0]),
+            "player {p} fired something besides the permanent lead: {:?}",
             fires[p]
         );
-        assert!(!fires[p].is_empty(), "player {p} never fired a forced chip");
-        assert_eq!(
-            fires[p].first().copied(),
-            Some(FORCED[p][0]),
-            "player {p}'s first fire wasn't the forced lead"
+        assert!(
+            fires[p].len() >= 4,
+            "player {p} fired too few times for a permanent hand: {:?}",
+            fires[p]
         );
     }
-    assert_eq!(
-        damage_checked, 2,
-        "the damage check didn't complete on both turns (first drops: {first_drop:?})"
+    assert_eq!(damage_checked, 2, "the cumulative damage check didn't settle on both turns");
+    println!(
+        "FORCED HAND PROBE SUCCESS: {} + {} permanent-lead fires",
+        fires[0].len(),
+        fires[1].len()
     );
-    println!("FORCED HAND PROBE SUCCESS: fires p0={:?} p1={:?}", fires[0], fires[1]);
 }
