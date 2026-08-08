@@ -35,6 +35,10 @@ pub struct TrainerControl {
     /// list every time that player's custom screen closes — cleared
     /// (`None`), the game's picks stand.
     forced_hands: Mutex<[Option<Vec<u16>>; 2]>,
+    /// Bumped on every [`set_forced_hand`](Self::set_forced_hand), so
+    /// a trainer that writes in windows (rather than every tick) can
+    /// notice a live edit and apply it promptly.
+    generation: std::sync::atomic::AtomicU32,
     /// Set by the backend iff a per-game [`Trainer`] was installed —
     /// how a host knows chip forcing exists for this game at all.
     wired: AtomicBool,
@@ -46,9 +50,16 @@ impl TrainerControl {
     }
 
     /// Set or clear `player`'s forced hand. Takes effect at that
-    /// player's next custom-screen close.
+    /// player's next custom-screen close, or sooner where the game's
+    /// trainer can apply it mid-turn.
     pub fn set_forced_hand(&self, player: usize, hand: Option<Vec<u16>>) {
         self.forced_hands.lock().unwrap()[player & 1] = hand;
+        self.generation.fetch_add(1, Ordering::Release);
+    }
+
+    /// The current edit generation — see the field.
+    pub fn generation(&self) -> u32 {
+        self.generation.load(Ordering::Acquire)
     }
 
     /// `player`'s forced hand as it stands, cloned out.

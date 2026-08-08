@@ -146,16 +146,16 @@ impl Pvp {
     }
 
     /// Probe/trainer tooling: overwrite `player`'s committed hand —
-    /// fired count zeroed, `ids` (up to 6, fire order) into the chip
-    /// block, the rest emptied. Returns false (writing nothing) while
-    /// the slots aren't two live player units. Call on BOTH cores in
-    /// the same tick to keep the pair's simulations agreeing.
+    /// fired count zeroed, `ids` (up to 5, fire order) into the chip
+    /// block as a complete pick record, the rest emptied. Returns
+    /// false (writing nothing) while the slots aren't two live player
+    /// units. Call on BOTH cores in the same tick to keep the pair's
+    /// simulations agreeing.
     pub fn debug_set_hand(&self, core: &mut mgba::core::Core, player: u8, ids: &[u16]) -> bool {
-        let ewram = &self.offsets.ewram;
-        if battle_units(ewram, core).is_none() {
+        if battle_units(&self.offsets.ewram, core).is_none() {
             return false;
         }
-        write_hand(ewram, core, player as u32 & 1, ids, true);
+        write_hand(self.offsets, core, player as u32 & 1, ids, true);
         true
     }
 
@@ -536,9 +536,9 @@ impl tango_backend_mgba::GameSupport for Pvp {
 
     fn trainer(&self) -> Option<Box<dyn tango_match::trainer::Trainer<mgba::core::Core>>> {
         struct Trainer {
-            ewram: &'static EWRAMOffsets,
+            offsets: &'static Offsets,
             /// Previous custom-flag byte per core per player (4 =
-            /// picking) — the edge detector's memory.
+            /// picking) — the close-edge detector's memory.
             prev: [[u8; 2]; 2],
         }
         impl tango_match::trainer::Trainer<mgba::core::Core> for Trainer {
@@ -548,18 +548,30 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 core_index: usize,
                 control: &tango_match::trainer::TrainerControl,
             ) {
-                // A forced hand lands in full on the 4 -> 0 edge of
-                // that player's custom flag — the moment they confirm,
-                // after the game's own pick writes (which land while
-                // the flag is still 4) — and is then re-asserted every
-                // battle tick to beat the game's own post-load refresh
-                // of the ids (see `write_hand`). Both cores run the
-                // same lockstep simulation, so each sees the same
-                // edges on its own tick call and both copies of the
-                // block stay in step — the same both-cores contract
-                // `debug_set_hp` documents.
+                // A forced hand's ids/damage/picks are re-asserted
+                // every battle tick (outside that player's own open
+                // screen) to beat the game's own re-derivation of the
+                // block from its true pick record (see `write_hand`);
+                // the fired count is reset ONLY on the 4 -> 0 edge of
+                // that player's custom flag — the moment they confirm.
+                // Fired is deliberately never touched anywhere else:
+                // the game's custom-open negotiation reconciles the
+                // ending turn's fire count at the pause, and zeroing
+                // it early (a "pin the count through the pause"
+                // variant) left the NEXT open half-granted — the
+                // opener's flag up, the peer's game never pausing
+                // (probe-verified: organic opens read f=44 on both
+                // cores the same tick; the pinned variant read f=40 on
+                // one core, f=00 on the other, forever). Clearing the
+                // forced hand mid-turn leaves the committed chips to
+                // the game; from the next close on, the pick is fully
+                // organic. Both cores run the same lockstep
+                // simulation, so each sees the same edges on its own
+                // tick call and both copies of the block stay in step
+                // — the same both-cores contract `debug_set_hp`
+                // documents.
                 for player in 0..2usize {
-                    let flag = core.raw_read_8(self.ewram.battle_state + 0x14 + player as u32, -1);
+                    let flag = core.raw_read_8(self.offsets.ewram.battle_state + 0x14 + player as u32, -1);
                     let closed = self.prev[core_index][player] == 4 && flag != 4;
                     self.prev[core_index][player] = flag;
                     if flag == 4 {
@@ -573,14 +585,14 @@ impl tango_backend_mgba::GameSupport for Pvp {
                     // battle_state is stale-live outside battle, so
                     // the flag alone isn't proof of a live hand — two
                     // live player units are.
-                    if battle_units(self.ewram, core).is_some() {
-                        write_hand(self.ewram, core, player as u32, &ids, closed);
+                    if battle_units(&self.offsets.ewram, core).is_some() {
+                        write_hand(self.offsets, core, player as u32, &ids, closed);
                     }
                 }
             }
         }
         Some(Box::new(Trainer {
-            ewram: &self.offsets.ewram,
+            offsets: self.offsets,
             prev: [[0; 2]; 2],
         }))
     }
@@ -649,39 +661,69 @@ fn battle_units(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> Option<[Ra
     }
     Some([units[0]?, units[1]?])
 }
-/// Overwrite `player`'s chip block: fired count zeroed, `ids` (up to 6,
-/// fire order, invalid ids dropped) into the slots, every remaining
-/// slot emptied (0xFFFF) — a game-picked tail left behind the forced
-/// list would fire after it was spent. The inverse of `loaded_chips`'s
-/// read; see `EWRAMOffsets::chip_blocks` for the layout.
+/// Overwrite `player`'s chip block with a complete pick record: fired
+/// count zeroed, `ids` (up to 5, fire order, invalid ids dropped) into
+/// the slots, every remaining slot emptied (0xFFFF) — a game-picked
+/// tail left behind the forced list would fire after it was spent. The
+/// inverse of `loaded_chips`'s read; see `EWRAMOffsets::chip_blocks`
+/// for the plain layout. 5 is the game's own pick cap; the arrays are
+/// 6 wide for its own purposes.
 ///
-/// The plain ids are not left alone once written: some pick record
-/// beyond this block still says what was really selected, and ~25
-/// ticks after a slot's chip loads the game refreshes `ids[slot]` from
-/// it — a slot it doesn't recognize as picked comes back as the
-/// nameless dud pseudo-chip 0x185 (probe-derived: every forced chip
-/// that sat loaded that long morphed into the dud; chips fired quickly
-/// escaped). The refresh is one-shot per load, so the trainer wins by
-/// re-asserting the ids every battle tick (`reset_fired` false) on top
-/// of the full write at custom close (`reset_fired` true) — the fire
-/// path reads `ids[fired]` at the press, the name announce reads it at
-/// load, both before any refresh can land between two ticks.
+/// "Complete" is one load-bearing part — the block is (a copy of) the
+/// pick record, and the plain ids are the least of it (all
+/// probe-derived):
+/// - +0x32: the picks in save format (`id | code << 9`; organic
+///   entries AirShot* = 0x3404, CannonB = 0x0201 pinned it). The
+///   forced entries carry the * code (bits 9-15 = 26), which every
+///   chip accepts.
+/// - +0x0e: ONE u16 — the currently loaded chip's damage, computed by
+///   the game at each load (for a chip its record doesn't back it
+///   computes 0, which is why a half-written forced chip fires for
+///   nothing) and dealt from at fire time. Kept equal to the loaded
+///   forced chip's base attack off the ROM's own chip table
+///   (`ROMOffsets::chip_data`). ONLY that one cell: +0x10..0x19 look
+///   like more damage slots (zero in every organic dump) but writing
+///   them breaks the next custom screen — the shared-pause
+///   negotiation half-grants (opener's flag up, the peer's game never
+///   pauses; organic opens read f=44 on both cores the same tick), so
+///   whatever lives there is part of that bookkeeping.
 ///
-/// The block's annotated copy of the picks at +0x32 (save format,
-/// `id | code << 9`; organic entries AirShot* = 0x3404, CannonB =
-/// 0x0201 pinned it) is kept in step too; the forced entries carry the
-/// * code (bits 9-15 = 26), which every chip accepts.
-fn write_hand(ewram: &EWRAMOffsets, core: &mut mgba::core::Core, player: u32, ids: &[u16], reset_fired: bool) {
-    let base = ewram.chip_blocks + player * 0x50;
+/// The other load-bearing part is WHEN: once is not enough. The block
+/// is derived state — the game re-populates it from its true pick
+/// record (somewhere in the custom screen's heap structures, not yet
+/// mapped) around the battle's resume, and refreshes a loaded slot
+/// against that record ~25 ticks after it loads; a slot the record
+/// doesn't back comes back as the nameless dud pseudo-chip 0x185. So
+/// the trainer calls this every battle tick — the fire path and the
+/// name announce both read between ticks, so the re-asserted values
+/// win every race — resetting `fired` only at the player's own custom
+/// close (see the trainer for why never elsewhere).
+fn write_hand(offsets: &Offsets, core: &mut mgba::core::Core, player: u32, ids: &[u16], reset_fired: bool) {
+    let base = offsets.ewram.chip_blocks + player * 0x50;
     if reset_fired {
         core.raw_write_16(base, -1, 0);
     }
-    let valid: Vec<u16> = ids.iter().copied().filter(|&id| id != 0 && id <= 0x0fff).collect();
+    let valid: Vec<u16> = ids
+        .iter()
+        .copied()
+        .filter(|&id| id != 0 && id <= 0x0fff)
+        .take(5)
+        .collect();
     for slot in 0..6u32 {
         let id = valid.get(slot as usize).copied();
         core.raw_write_16(base + 2 + slot * 2, -1, id.unwrap_or(0xffff));
         core.raw_write_16(base + 0x32 + slot * 2, -1, id.map(|id| id | 26 << 9).unwrap_or(0xffff));
     }
+    let fired = if reset_fired {
+        0
+    } else {
+        core.raw_read_16(base, -1) as usize
+    };
+    let loaded_attack = valid
+        .get(fired)
+        .map(|&id| core.raw_read_16(offsets.rom.chip_data + id as u32 * 0x2c + 0x1a, -1))
+        .unwrap_or(0);
+    core.raw_write_16(base + 0x0e, -1, loaded_attack);
 }
 
 /// Both players' loaded-chip readings (`None` when the hand is spent),
@@ -886,6 +928,13 @@ struct ROMOffsets {
     /// per set on each core, never during priming; KO-probe verified
     /// under all three modes.
     comm_menu_end_battle_entry: u32,
+
+    /// The ROM's chip data table (0x2c-byte records, indexed by chip
+    /// id) — the same table the dataview assets read. The trainer
+    /// reads `attack_power` (u16 at +0x1a) off it to fill a forced
+    /// pick's damage cell, which the custom screen computes at pick
+    /// time and the fire path deals from.
+    chip_data: u32,
 }
 
 // US and JP EWRAM layouts agree on everything the engine still touches
@@ -932,6 +981,7 @@ static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         round_end_damage_judge_set_draw:            0x080083e0,
         comm_menu_end_battle_entry:                 0x0812b708,
         battle_start_play_music_call:               0x08009236,
+        chip_data:                                  0x08021da8,
     },
 };
 
@@ -960,6 +1010,7 @@ static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         round_end_damage_judge_set_draw:            0x080083e0,
         comm_menu_end_battle_entry:                 0x0812d4e4,
         battle_start_play_music_call:               0x08009236,
+        chip_data:                                  0x08021da8,
     },
 };
 
@@ -988,6 +1039,7 @@ static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         round_end_damage_judge_set_draw:            0x08008410,
         comm_menu_end_battle_entry:                 0x08134108,
         battle_start_play_music_call:               0x08009406,
+        chip_data:                                  0x080221bc,
     },
 };
 
@@ -1016,5 +1068,6 @@ static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         round_end_damage_judge_set_draw:            0x08008410,
         comm_menu_end_battle_entry:                 0x08135ed0,
         battle_start_play_music_call:               0x08009406,
+        chip_data:                                  0x080221bc,
     },
 };

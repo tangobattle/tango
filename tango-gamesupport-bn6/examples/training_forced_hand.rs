@@ -41,6 +41,13 @@ fn pvp_for(rom: &[u8]) -> &'static pvp::Pvp {
 /// side so a cross-write would be visible.
 const FORCED: [&[u16]; 2] = [&[1, 2, 3], &[4, 5, 6]];
 
+/// Each side's forced lead chip's base attack (Cannon 40, AirShot 20 —
+/// same both regions): what the opponent's FIRST HP drop after a
+/// turn's close must equal. Nobody moves (idle dummies), so the
+/// straight-line leads can't miss — a fired-but-zero-damage hand (the
+/// pick record's damage cells left empty) fails here.
+const LEAD_DAMAGE: [u16; 2] = [40, 20];
+
 /// Raw dump of both players' chip blocks off one core — the fired
 /// cursor, the plain ids, and the annotated picks at +0x32 the game
 /// refreshes the ids from. The address is BN6's `chip_blocks` (same
@@ -53,12 +60,16 @@ fn dump_hands(core: &mut mgba::core::Core) -> String {
         let ids: Vec<String> = (0..6)
             .map(|slot| format!("{:04x}", core.raw_read_16(base + 2 + slot * 2, -1)))
             .collect();
+        let damage: Vec<String> = (0..6)
+            .map(|slot| format!("{}", core.raw_read_16(base + 0x0e + slot * 2, -1)))
+            .collect();
         let annotated: Vec<String> = (0..6)
             .map(|slot| format!("{:04x}", core.raw_read_16(base + 0x32 + slot * 2, -1)))
             .collect();
         out.push_str(&format!(
-            " p{p}[fired={fired} ids={} picks={}]",
+            " p{p}[fired={fired} ids={} dmg={} picks={}]",
             ids.join(","),
+            damage.join(","),
             annotated.join(","),
         ));
     }
@@ -154,17 +165,27 @@ fn main() {
     let mut prev_any_custom = false;
     // Confirmed chip fires per player, across the whole run.
     let mut fires: [Vec<u16>; 2] = [Vec::new(), Vec::new()];
+    // Both units' HP at the current turn's hand assert, and each
+    // unit's first drop from it — the damage check's raw material.
+    let mut hp_base: Option<[u16; 2]> = None;
+    let mut first_drop: [Option<u16>; 2] = [None, None];
+    let mut damage_checked = 0u32;
 
     let mut tick = 0u32;
     let mut deadline = None;
     for _ in 0..30_000u32 {
         // Each player's input for the tick about to advance, from the
         // pair's settled state — the same order training's driver runs.
+        // Units come off core 0 (the shared sim; core 1's copy is the
+        // same values), custom flags off each player's own core.
         let mut custom = [false; 2];
+        let mut units_hp: Option<[u16; 2]> = None;
         for p in 0..2 {
-            custom[p] = frontier[p]
-                .poll(pair.core_mut(p), &tango_match::telemetry::EventSink::new(), 0)
-                .is_some_and(|o| o.custom_self);
+            let obs = frontier[p].poll(pair.core_mut(p), &tango_match::telemetry::EventSink::new(), 0);
+            custom[p] = obs.as_ref().is_some_and(|o| o.custom_self);
+            if p == 0 {
+                units_hp = obs.map(|o| o.units.map(|u| u.hp));
+            }
         }
         let mut keys = [0u32; 2];
         for p in 0..2 {
@@ -200,8 +221,22 @@ fn main() {
                 // In battle, once this turn's hands are asserted: A
                 // bursts fire the loaded chip, L taps open the next
                 // turn's screen when the gauge fills (inert before).
+                // The fire windows are STAGGERED — p0 empties its hand
+                // first, then p1 — because simultaneous shots
+                // interfere exactly like the real game: a fast AirShot
+                // flinches the Cannon's shooter mid-animation and the
+                // Cannon's shot never comes out, and Vulcan hitstun
+                // eats the victim's own A-presses. (That interference
+                // is gameplay, not a forcing bug — but this probe is
+                // about the hand, so it fires under clean conditions.)
                 PlayerPhase::Fight { since } if turns == asserted_turns => {
-                    if since % 30 < 3 {
+                    const WINDOW: u32 = 350;
+                    let my_window = if p == 0 {
+                        since > ASSERT_AT && since <= ASSERT_AT + WINDOW
+                    } else {
+                        since > ASSERT_AT + WINDOW
+                    };
+                    if my_window && since % 30 < 3 {
                         tango_match::keys::A
                     } else if since % 47 < 3 {
                         tango_match::keys::L
@@ -215,6 +250,26 @@ fn main() {
 
         pair.tick(&keys);
         tick += 1;
+        // Diagnostic trace: each core's custom flags + p0's fired cell,
+        // for pinning down who rewrites what around a custom episode.
+        // (battle_state = 0x02034880, flags at +0x14/+0x15 — same
+        // constants the support crate holds.)
+        if let Ok(range) = std::env::var("TFH_TRACE") {
+            let (a, b) = range.split_once(',').unwrap();
+            if tick >= a.parse().unwrap() && tick <= b.parse().unwrap() {
+                let mut line = format!("[{tick:5}] trace");
+                for i in 0..2 {
+                    let core = pair.core_mut(i);
+                    line.push_str(&format!(
+                        " core{i}[f={:x}{:x} fired_p0={}]",
+                        core.raw_read_8(0x02034894, -1),
+                        core.raw_read_8(0x02034895, -1),
+                        core.raw_read_16(0x020349c0, -1),
+                    ));
+                }
+                println!("{line}");
+            }
+        }
         // The engine's order: trainer first, telemetry after, so the
         // pollers read post-write state.
         for i in 0..2 {
@@ -227,6 +282,52 @@ fn main() {
             if let Event::ChipUsed { player, chip } = ev {
                 println!("[{at:5}] player {player} fired chip {chip:#05x};{}", dump_hands(pair.core_mut(0)));
                 fires[player].push(chip);
+            }
+        }
+
+        // Damage check: each unit's first HP drop after a turn's hand
+        // assert must be the OPPOSING side's forced lead's base attack
+        // — a hand that fires but hits for zero (an incomplete pick
+        // record) fails here, not just a hand that doesn't fire.
+        if let (Some(base), Some(hp)) = (hp_base, units_hp) {
+            for unit in 0..2 {
+                if first_drop[unit].is_none() && hp[unit] < base[unit] {
+                    let drop = base[unit] - hp[unit];
+                    println!("[{tick:5}] unit {unit} first hit: -{drop}");
+                    first_drop[unit] = Some(drop);
+                }
+            }
+            if first_drop.iter().all(|d| d.is_some()) {
+                for unit in 0..2 {
+                    let expected = LEAD_DAMAGE[1 - unit];
+                    if first_drop[unit] != Some(expected) {
+                        println!(
+                            "FORCED HAND PROBE FAIL: turn {turns} unit {unit} first hit {:?}, expected -{expected}",
+                            first_drop[unit]
+                        );
+                        std::process::exit(1);
+                    }
+                }
+                println!("[{tick:5}] turn {turns}: both leads dealt their real damage");
+                damage_checked += 1;
+                hp_base = None;
+            }
+        }
+
+        // TFH_DUMPREC: dump the candidate true-pick-record regions
+        // (the EWRAM scan's save-format-chip hits) each tick in the
+        // range, core 0 — for reverse-engineering their layout.
+        if let Ok(range) = std::env::var("TFH_DUMPREC") {
+            let (a, b) = range.split_once(',').unwrap();
+            if tick >= a.parse().unwrap() && tick <= b.parse().unwrap() {
+                let core = pair.core_mut(0);
+                for base in [0x02002140u32, 0x02008140] {
+                    let words: Vec<String> = (0..0x50)
+                        .step_by(2)
+                        .map(|off| format!("{:04x}", core.raw_read_16(base + off, -1)))
+                        .collect();
+                    println!("[{tick:5}] rec {base:#010x}: {}", words.join(" "));
+                }
             }
         }
 
@@ -258,6 +359,26 @@ fn main() {
         {
             if organic {
                 println!("[{tick:5}] turn {turns} organic reference:{}", dump_hands(pair.core_mut(0)));
+                // TFH_SCAN: hunt the authoritative pick record — every
+                // EWRAM cell holding the organic picks' distinctive
+                // save-format values (p0's AirShot* = 0x3404, p1's
+                // chip-0x47-S = 0x2447), on both cores. Anything
+                // beyond the chip blocks is state the organic pick
+                // wrote that a forced write must cover too.
+                if std::env::var("TFH_SCAN").is_ok() {
+                    for i in 0..2 {
+                        let core = pair.core_mut(i);
+                        for needle in [0x3404u16, 0x2447] {
+                            let mut hits = Vec::new();
+                            for addr in (0x0200_0000u32..0x0204_0000).step_by(2) {
+                                if core.raw_read_16(addr, -1) == needle {
+                                    hits.push(format!("{addr:#010x}"));
+                                }
+                            }
+                            println!("    core{i} {needle:#06x} at: {}", hits.join(" "));
+                        }
+                    }
+                }
             } else {
                 for i in 0..2 {
                     let loaded = support.debug_loaded_chips(pair.core_mut(i));
@@ -269,12 +390,18 @@ fn main() {
                                 println!(
                                     "FORCED HAND PROBE FAIL: turn {turns} core {i} player {p}: loaded {got:?}, expected id {expected:#05x} fires 0"
                                 );
+                                for c in 0..2 {
+                                    println!("    core{c}:{}", dump_hands(pair.core_mut(c)));
+                                }
                                 std::process::exit(1);
                             }
                         }
                     }
                 }
                 println!("[{tick:5}] turn {turns}: both cores agree both hands are forced");
+                // Arm the damage check off this quiet moment's HP.
+                hp_base = units_hp;
+                first_drop = [None, None];
             }
             asserted_turns = turns;
             if asserted_turns == 2 {
@@ -309,5 +436,9 @@ fn main() {
             "player {p}'s first fire wasn't the forced lead"
         );
     }
+    assert_eq!(
+        damage_checked, 2,
+        "the damage check didn't complete on both turns (first drops: {first_drop:?})"
+    );
     println!("FORCED HAND PROBE SUCCESS: fires p0={:?} p1={:?}", fires[0], fires[1]);
 }

@@ -79,7 +79,9 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         }
         Message::AddChip(id) => {
             let mut hand = picker_hand(state);
-            if hand.len() < 6 {
+            // The games pick at most 5 chips a turn; the picker holds
+            // to the same cap.
+            if hand.len() < 5 {
                 hand.push(id);
                 if let (Some(side), Some(s)) = (
                     state.training_panes.as_ref().map(|p| p.picker_side),
@@ -230,10 +232,11 @@ fn picker_panel<'a>(
     .spacing(6)
     .align_y(Alignment::Center);
 
-    // The forced slots, in fire order; empty slots draw as dim wells so
-    // the row never reflows as chips come and go.
+    // The forced slots (5 — the games' own pick cap), in fire order;
+    // empty slots draw as dim wells so the row never reflows as chips
+    // come and go.
     let mut slots = row![].spacing(4).align_y(Alignment::Center);
-    for slot in 0..6usize {
+    for slot in 0..5usize {
         let well = |theme: &iced::Theme, status: iced::widget::button::Status| {
             let mut st = telemetry_plate_button(theme, status);
             st.border.width = 1.0;
@@ -289,7 +292,7 @@ fn picker_panel<'a>(
             .padding([2, 6])
             .width(Fill)
             .style(telemetry_plate_button)
-            .on_press_maybe((hand.len() < 6).then_some(Message::AddChip(id as u16))),
+            .on_press_maybe((hand.len() < 5).then_some(Message::AddChip(id as u16))),
         );
     }
 
