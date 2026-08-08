@@ -171,21 +171,35 @@ pub struct TrainingSession {
     /// session down.
     ended: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
+    /// Cleared by [`TrainingBoot`] once the pair is up. The session is
+    /// installed and on screen while the priming walk runs on the drive
+    /// thread, so the host reads this to show its priming notice.
+    booting: Arc<AtomicBool>,
+    /// Aborts a priming walk still in flight when the session closes,
+    /// so the host's drive-thread join doesn't wait out the emulation
+    /// the user just walked away from.
+    boot_cancel: Arc<AtomicBool>,
+    /// Why the boot failed, for the host to show — the session stays up
+    /// with nothing to run (see [`TrainingBoot`]).
+    prime_error: Arc<Mutex<Option<crate::Error>>>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
 }
 
 impl TrainingSession {
-    /// Boot a training battle with `controller` as the dummy's input
+    /// Set up a training battle with `controller` as the dummy's input
     /// source (pass `Box::new(NoopController)` for the do-nothing
     /// default). Both cores run `rom` + `save_sram` (a mirror match); the
     /// SRAM is in-memory, so nothing persists back to disk.
     ///
-    /// Primes both games into their link battle before returning — a
-    /// short burst of headless emulation — so a live session is already
-    /// mid-battle. Also returns the session's audio stream (the human
-    /// core's samples resampled to `sample_rate`) for the host to route
-    /// to its output; dropping it just costs sound.
+    /// The pair boots and primes on the drive thread's first tick (the
+    /// returned [`TrainingBoot`] — hand it to the drive thread), so the
+    /// session is installed and on screen while the seconds-long walk
+    /// runs; the host shows its priming notice off
+    /// [`is_booting`](Self::is_booting) until it lands. Also returns
+    /// the session's audio stream (the controlled core's samples
+    /// resampled to `sample_rate`) for the host to route to its output;
+    /// dropping it just costs sound.
     pub fn new(
         game: &'static tango_gamesupport::Game,
         rom: Arc<Vec<u8>>,
@@ -195,50 +209,18 @@ impl TrainingSession {
         expected_fps: f32,
         sample_rate: u32,
         controller: Box<dyn TrainingController>,
-    ) -> Result<(Self, Driver, crate::audio::Stream), crate::Error> {
-        // The engine's local core is core 0; `advance` always feeds core
-        // 0 and `add_remote_input` core 1. The player starts on core 0
-        // (the dummy on core 1); a swap only re-routes which input source
-        // feeds each core, so the engine's local_player stays 0. Both
-        // cores run the same game (a mirror match) — training is local,
-        // so there's no opponent selection.
-        //
-        // Present delay 0: the match is local and lockstep, so there's no
-        // latency to hide and no speculation to roll back.
-        // The pair pushes the seat the player is driving into the ring
-        // on its way out of every tick; the stream plays the other end
-        // without ever reaching for a console.
+    ) -> Result<(Self, TrainingBoot, crate::audio::Stream), crate::Error> {
+        // The engine gets a head start on the pair the boot will run —
+        // a browser engine's worker threads need event-loop turns that
+        // happen between here and the boot's first tick.
+        game.pvp.prepare(2);
+
+        // The session's audio ring, made before the pair that feeds it
+        // exists: the host binds this stream at construction, and the
+        // ring just reads empty until the boot hands the producing end
+        // to the pair.
         let (audio_in, audio_out) = crate::audio::ring();
         let control = tango_match::trainer::TrainerControl::new();
-        let mut match_ = game.pvp.start(tango_match::StartConfig {
-            roms: [rom.as_ref(), rom.as_ref()],
-            saves: [Some(&save_sram), Some(&save_sram)],
-            match_type: TRAINING_MATCH_TYPE,
-            rng_seed,
-            rtc,
-            // A mirror match, so the peer's cartridge is this one.
-            peer_rom: tango_match::PeerRom {
-                code: *game.rom_code,
-                revision: game.revision,
-            },
-            local_player: 0,
-            present_delay: 0,
-            disable_bgm: false,
-            audio: Some(audio_in),
-            // Training builds its session around an already-primed
-            // pair, so the walk runs before there is anything to
-            // cancel from.
-            cancel: None,
-            // Training is the one lockstep session, so it is the one
-            // place a trainer is sound — the engine installs the
-            // game's hook over this control if the game offers one.
-            trainer: Some(control.clone()),
-        })?;
-
-        // A netplay match renders only the local side. Training shows
-        // both — the PiP and the side-swap — so ask for the whole pair.
-        match_.render_seats();
-
         let controlled = Arc::new(AtomicUsize::new(0));
         let joyflags = Arc::new(AtomicU32::new(0));
         let controller: SharedController = Arc::new(Mutex::new(controller));
@@ -270,26 +252,40 @@ impl TrainingSession {
             sample_rate,
         );
 
-        let driver = Driver {
-            match_,
-            controlled: controlled.clone(),
-            joyflags: joyflags.clone(),
-            controller: controller.clone(),
-            fps_bits: fps_bits.clone(),
-            dummy_joyflags: dummy_joyflags.clone(),
-            show_pip: show_pip.clone(),
-            pip: pip.clone(),
-            pip_fresh: pip_fresh.clone(),
-            ended: ended.clone(),
-            stop: stop.clone(),
-            screen: screen.clone(),
+        let booting = Arc::new(AtomicBool::new(true));
+        let boot_cancel = Arc::new(AtomicBool::new(false));
+        let prime_error = Arc::new(Mutex::new(None));
+        let boot = TrainingBoot {
+            pending: Some(BootPieces {
+                game,
+                rom,
+                save_sram,
+                rtc,
+                rng_seed,
+                control: control.clone(),
+                audio: audio_in,
+                controlled: controlled.clone(),
+                joyflags: joyflags.clone(),
+                controller: controller.clone(),
+                fps_bits: fps_bits.clone(),
+                dummy_joyflags: dummy_joyflags.clone(),
+                show_pip: show_pip.clone(),
+                pip: pip.clone(),
+                pip_fresh: pip_fresh.clone(),
+                ended: ended.clone(),
+                stop: stop.clone(),
+                screen: screen.clone(),
+                wake: wake.clone(),
+                policy: policy.clone(),
+                swap_generation: swap_generation.clone(),
+            }),
+            driver: None,
+            prime_error: prime_error.clone(),
+            booting: booting.clone(),
+            boot_cancel: boot_cancel.clone(),
             wake: wake.clone(),
-            frame: 0,
-            policy: policy.clone(),
-            swap_generation: swap_generation.clone(),
-            custom_open: [false; 2],
-            dummy_custom_ticks: 0,
-            possession: None,
+            fps_bits: fps_bits.clone(),
+            backend: game.pvp,
         };
 
         Ok((
@@ -309,13 +305,31 @@ impl TrainingSession {
                 swap_generation,
                 ended,
                 stop,
+                booting,
+                boot_cancel,
+                prime_error,
                 layout,
                 screen,
                 wake,
             },
-            driver,
+            boot,
             audio,
         ))
+    }
+
+    /// `true` while the pair is still booting/priming on the drive
+    /// thread — the session is on screen with no frame and no sound
+    /// until it lands, so the host shows its priming notice.
+    pub fn is_booting(&self) -> bool {
+        self.booting.load(Ordering::Acquire)
+    }
+
+    /// Why the boot failed, ready to show, or `None` while it is still
+    /// running or has succeeded. A failed boot leaves the session up
+    /// with nothing to run: there is no frame coming, and this is the
+    /// only thing left to tell the user.
+    pub fn prime_error(&self) -> Option<String> {
+        self.prime_error.lock().unwrap().as_ref().map(|e| e.to_string())
     }
 
     /// Install a new dummy controller, replacing whatever is running.
@@ -426,6 +440,13 @@ impl crate::Session for TrainingSession {
         self.joyflags.store(input.keys, Ordering::Relaxed);
     }
 
+    fn request_close(&self) {
+        // Stop the driver, and abort a priming walk still in flight —
+        // without the cancel, closing during the walk waits it out.
+        self.stop.store(true, Ordering::Relaxed);
+        self.boot_cancel.store(true, Ordering::Release);
+    }
+
     fn set_speed(&self, factor: f32) {
         self.fps_bits.store(
             crate::clamp_speed(self.expected_fps, factor).to_bits(),
@@ -445,6 +466,170 @@ impl Drop for TrainingSession {
     /// Tell whoever is driving to stop; the next `tick` returns false.
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// What [`TrainingBoot`]'s first tick consumes to bring the pair up:
+/// the pair's ingredients plus clones of everything the driver shares
+/// with the session.
+struct BootPieces {
+    game: &'static tango_gamesupport::Game,
+    rom: Arc<Vec<u8>>,
+    save_sram: Vec<u8>,
+    rtc: std::time::SystemTime,
+    rng_seed: [u8; 16],
+    control: Arc<tango_match::trainer::TrainerControl>,
+    /// The producing end of the ring the host's stream is already bound
+    /// to. Until the pair takes it the ring reads empty and the stream
+    /// primes.
+    audio: tango_match::AudioIn,
+    controlled: Arc<AtomicUsize>,
+    joyflags: Arc<AtomicU32>,
+    controller: SharedController,
+    fps_bits: Arc<AtomicU32>,
+    dummy_joyflags: Arc<AtomicU32>,
+    show_pip: Arc<AtomicBool>,
+    pip: Arc<crate::Framebuffer>,
+    pip_fresh: Arc<AtomicBool>,
+    ended: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
+    screen: Arc<crate::Framebuffer>,
+    wake: Arc<tokio::sync::Notify>,
+    policy: Arc<AtomicU8>,
+    swap_generation: Arc<AtomicU32>,
+}
+
+impl BootPieces {
+    /// Boot the pair, prime it into its link battle, and hand back the
+    /// live driver. Seconds of blocking emulation — which is exactly
+    /// why it runs on the drive thread, not at session construction.
+    fn boot(self, cancel: &AtomicBool) -> Result<Driver, tango_match::Error> {
+        // The engine's local core is core 0; `advance` always feeds core
+        // 0 and `add_remote_input` core 1. The player starts on core 0
+        // (the dummy on core 1); a swap only re-routes which input source
+        // feeds each core, so the engine's local_player stays 0. Both
+        // cores run the same game (a mirror match) — training is local,
+        // so there's no opponent selection.
+        //
+        // Present delay 0: the match is local and lockstep, so there's no
+        // latency to hide and no speculation to roll back.
+        let mut match_ = self.game.pvp.start(tango_match::StartConfig {
+            roms: [self.rom.as_ref(), self.rom.as_ref()],
+            saves: [Some(&self.save_sram), Some(&self.save_sram)],
+            match_type: TRAINING_MATCH_TYPE,
+            rng_seed: self.rng_seed,
+            rtc: self.rtc,
+            // A mirror match, so the peer's cartridge is this one.
+            peer_rom: tango_match::PeerRom {
+                code: *self.game.rom_code,
+                revision: self.game.revision,
+            },
+            local_player: 0,
+            present_delay: 0,
+            disable_bgm: false,
+            audio: Some(self.audio),
+            cancel: Some(cancel),
+            // Training is the one lockstep session, so it is the one
+            // place a trainer is sound — the engine installs the
+            // game's hook over this control if the game offers one.
+            trainer: Some(self.control),
+        })?;
+
+        // A netplay match renders only the local side. Training shows
+        // both — the PiP and the side-swap — so ask for the whole pair.
+        match_.render_seats();
+
+        Ok(Driver {
+            match_,
+            controlled: self.controlled,
+            joyflags: self.joyflags,
+            controller: self.controller,
+            fps_bits: self.fps_bits,
+            dummy_joyflags: self.dummy_joyflags,
+            show_pip: self.show_pip,
+            pip: self.pip,
+            pip_fresh: self.pip_fresh,
+            ended: self.ended,
+            stop: self.stop,
+            screen: self.screen,
+            wake: self.wake,
+            frame: 0,
+            policy: self.policy,
+            swap_generation: self.swap_generation,
+            custom_open: [false; 2],
+            dummy_custom_ticks: 0,
+            possession: None,
+        })
+    }
+}
+
+/// The drive-thread half of a training session: its first tick boots
+/// and primes the pair (so the session is installed and on screen
+/// while the walk runs), then it becomes the driver. The same shape as
+/// PvP's boot.
+pub struct TrainingBoot {
+    /// What the first tick needs to bring the pair up, taken there.
+    /// `None` once the boot has run, whichever way it went.
+    pending: Option<BootPieces>,
+    /// The live battle, once the boot has produced one.
+    driver: Option<Driver>,
+    /// Where a failed boot leaves its reason, for the session to
+    /// publish ([`TrainingSession::prime_error`]).
+    prime_error: Arc<Mutex<Option<crate::Error>>>,
+    /// Cleared once the pair is up — the session's
+    /// [`is_booting`](TrainingSession::is_booting).
+    booting: Arc<AtomicBool>,
+    boot_cancel: Arc<AtomicBool>,
+    /// Repaint wake, so a failure reaches a host whose session is
+    /// otherwise sitting on a frame that will never come.
+    wake: Arc<tokio::sync::Notify>,
+    fps_bits: Arc<AtomicU32>,
+    /// The engine the boot will run on, for its readiness gate.
+    backend: &'static (dyn tango_match::Backend + Send + Sync),
+}
+
+impl crate::Drive for TrainingBoot {
+    fn tick(&mut self) -> bool {
+        // What `prepare` started may still be coming up — a browser
+        // engine's worker threads finish starting only between ticks,
+        // while the host's loop yields. The priming notice is already
+        // up either way.
+        if self.pending.is_some() && !self.backend.ready(2) {
+            return true;
+        }
+        if let Some(pieces) = self.pending.take() {
+            match pieces.boot(&self.boot_cancel) {
+                Ok(driver) => {
+                    self.driver = Some(driver);
+                    self.booting.store(false, Ordering::Release);
+                    // The boot produced no frame yet — wake the host
+                    // itself so the notice comes down promptly.
+                    self.wake.notify_one();
+                }
+                // Cancelled is the session being torn down mid-walk,
+                // not a failure to report: there is nobody left to
+                // read it.
+                Err(tango_match::Error::Cancelled) => return false,
+                Err(e) => {
+                    log::error!("training: boot failed: {e}");
+                    *self.prime_error.lock().unwrap() = Some(e.into());
+                    self.wake.notify_one();
+                    return false;
+                }
+            }
+        }
+        match self.driver.as_mut() {
+            Some(driver) => driver.tick(),
+            // A boot that failed leaves the session up with its reason
+            // on screen; there is simply nothing left to drive.
+            None => false,
+        }
+    }
+
+    /// The pacing target once the battle runs; before that, the rate
+    /// the pacer should idle the boot at.
+    fn fps_target(&self) -> f32 {
+        f32::from_bits(self.fps_bits.load(Ordering::Relaxed))
     }
 }
 

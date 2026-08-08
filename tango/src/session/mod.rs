@@ -695,6 +695,12 @@ impl State {
             }
             return replay.is_booting().then_some(PrimeWait::Playback);
         }
+        if let Some(training) = self.active_as::<training::TrainingSession>() {
+            if let Some(error) = training.prime_error() {
+                return Some(PrimeWait::Failed(error));
+            }
+            return training.is_booting().then_some(PrimeWait::Match);
+        }
         None
     }
 }
@@ -1920,8 +1926,11 @@ pub fn spawn_training(
         raw
     };
     // The battle runs off an in-memory SRAM image (same as PvP), so
-    // nothing training does is written back to the save file.
-    let (session, driver, audio) = training::TrainingSession::new(
+    // nothing training does is written back to the save file. The pair
+    // boots and primes on the drive thread's first tick, so the
+    // session installs immediately and the priming notice covers the
+    // walk.
+    let (session, boot, audio) = training::TrainingSession::new(
         game,
         std::sync::Arc::new(rom_bytes),
         loaded.editor.sram(loaded),
@@ -1931,7 +1940,7 @@ pub fn spawn_training(
         audio_binder.sample_rate(),
         Box::new(training::NoopController),
     )?;
-    let drive = spawn_drive_thread("training", driver)?;
+    let drive = spawn_drive_thread("training", boot)?;
     Ok((session, bind_session_audio(audio_binder, audio), drive))
 }
 
