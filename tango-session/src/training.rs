@@ -92,6 +92,29 @@ impl DummyPolicy {
     }
 }
 
+/// Where the dummy's recorded drill stands.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum DrillMode {
+    /// No drill running (there may still be a recorded take).
+    #[default]
+    Off,
+    /// The player is on the dummy's seat and their inputs are being
+    /// captured as the take.
+    Recording,
+    /// The dummy is replaying the take, looping.
+    Playing,
+}
+
+impl DrillMode {
+    fn from_u8(v: u8) -> Self {
+        match v {
+            1 => DrillMode::Recording,
+            2 => DrillMode::Playing,
+            _ => DrillMode::Off,
+        }
+    }
+}
+
 /// A pluggable per-tick input source for the training dummy — the one
 /// extension point of training mode. The drive loop calls [`poll`] once
 /// per tick, just before that tick advances, and feeds the returned
@@ -161,6 +184,11 @@ pub struct TrainingSession {
     control: Arc<tango_match::trainer::TrainerControl>,
     /// The standing [`DummyPolicy`], as its discriminant.
     policy: Arc<AtomicU8>,
+    /// The standing [`DrillMode`], as its discriminant.
+    drill_mode: Arc<AtomicU8>,
+    /// The recorded take: raw joyflags per battle tick (ticks under
+    /// the shared custom pause excluded on both sides of the trip).
+    drill: Arc<Mutex<Vec<u32>>>,
     /// Bumped on every manual swap. The driver's auto-possession
     /// records it going in and drops its restore if it moved — a
     /// player who swapped mid-possession chose a side, and the
@@ -225,6 +253,8 @@ impl TrainingSession {
         let joyflags = Arc::new(AtomicU32::new(0));
         let controller: SharedController = Arc::new(Mutex::new(controller));
         let policy = Arc::new(AtomicU8::new(DummyPolicy::default() as u8));
+        let drill_mode = Arc::new(AtomicU8::new(DrillMode::default() as u8));
+        let drill = Arc::new(Mutex::new(Vec::new()));
         let swap_generation = Arc::new(AtomicU32::new(0));
         let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let dummy_joyflags = Arc::new(AtomicU32::new(0));
@@ -277,6 +307,8 @@ impl TrainingSession {
                 screen: screen.clone(),
                 wake: wake.clone(),
                 policy: policy.clone(),
+                drill_mode: drill_mode.clone(),
+                drill: drill.clone(),
                 swap_generation: swap_generation.clone(),
             }),
             driver: None,
@@ -302,6 +334,8 @@ impl TrainingSession {
                 pip_fresh,
                 control,
                 policy,
+                drill_mode,
+                drill,
                 swap_generation,
                 ended,
                 stop,
@@ -379,6 +413,50 @@ impl TrainingSession {
     /// Step to the next policy in the cycle (the bar's toggle).
     pub fn cycle_policy(&self) {
         self.set_policy(self.policy().next());
+    }
+
+    /// Where the dummy's drill stands (see [`DrillMode`]).
+    pub fn drill_mode(&self) -> DrillMode {
+        DrillMode::from_u8(self.drill_mode.load(Ordering::Relaxed))
+    }
+
+    /// Whether a recorded take exists (playable even while off).
+    pub fn has_drill(&self) -> bool {
+        !self.drill.lock().unwrap().is_empty()
+    }
+
+    /// Start or stop recording a drill. Starting swaps the player onto
+    /// the dummy's seat (their inputs become the take) and discards
+    /// any previous take; stopping swaps back and, if anything was
+    /// captured, starts the dummy looping it immediately.
+    pub fn toggle_record(&self) {
+        match self.drill_mode() {
+            DrillMode::Recording => {
+                let has_take = self.has_drill();
+                self.drill_mode.store(
+                    if has_take { DrillMode::Playing } else { DrillMode::Off } as u8,
+                    Ordering::Relaxed,
+                );
+                self.toggle_swap();
+            }
+            _ => {
+                self.drill.lock().unwrap().clear();
+                self.drill_mode.store(DrillMode::Recording as u8, Ordering::Relaxed);
+                self.toggle_swap();
+            }
+        }
+    }
+
+    /// Toggle the dummy looping the recorded take. Ignored while
+    /// recording or with nothing recorded.
+    pub fn toggle_playback(&self) {
+        match self.drill_mode() {
+            DrillMode::Playing => self.drill_mode.store(DrillMode::Off as u8, Ordering::Relaxed),
+            DrillMode::Off if self.has_drill() => {
+                self.drill_mode.store(DrillMode::Playing as u8, Ordering::Relaxed)
+            }
+            _ => {}
+        }
     }
 
     /// Whether chip forcing works in this session — the game's engine
@@ -496,6 +574,8 @@ struct BootPieces {
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
     policy: Arc<AtomicU8>,
+    drill_mode: Arc<AtomicU8>,
+    drill: Arc<Mutex<Vec<u32>>>,
     swap_generation: Arc<AtomicU32>,
 }
 
@@ -555,6 +635,9 @@ impl BootPieces {
             wake: self.wake,
             frame: 0,
             policy: self.policy,
+            drill_mode: self.drill_mode,
+            drill: self.drill,
+            drill_cursor: 0,
             swap_generation: self.swap_generation,
             custom_open: [false; 2],
             dummy_custom_ticks: 0,
@@ -652,6 +735,11 @@ pub struct Driver {
     /// takes.
     frame: u64,
     policy: Arc<AtomicU8>,
+    drill_mode: Arc<AtomicU8>,
+    drill: Arc<Mutex<Vec<u32>>>,
+    /// Playback position in the take; wraps for the loop, rewinds
+    /// whenever the drill isn't playing.
+    drill_cursor: usize,
     swap_generation: Arc<AtomicU32>,
     /// Whether each player's custom screen stands open, by absolute
     /// player, off the confirmed telemetry samples (a tick or two
@@ -694,11 +782,15 @@ impl Driver {
         }
         {
             let policy = DummyPolicy::from_u8(self.policy.load(Ordering::Relaxed));
+            let drill = DrillMode::from_u8(self.drill_mode.load(Ordering::Relaxed));
 
             // A live auto-possession hands back the moment the
             // possessed seat's screen closes — unless a manual swap
             // moved the generation in between, in which case the
             // player's choice stands and the record just drops.
+            // Suspended entirely while recording: the player is on the
+            // dummy's seat on purpose, and a possession flip would
+            // corrupt the take.
             if let Some((return_seat, generation)) = self.possession {
                 if !self.custom_open[self.controlled.load(Ordering::Relaxed)] {
                     if self.swap_generation.load(Ordering::Relaxed) == generation {
@@ -706,7 +798,7 @@ impl Driver {
                     }
                     self.possession = None;
                 }
-            } else if policy == DummyPolicy::AutoPossess {
+            } else if policy == DummyPolicy::AutoPossess && drill != DrillMode::Recording {
                 let controlled = self.controlled.load(Ordering::Relaxed);
                 if self.custom_open[1 - controlled] {
                     // The dummy's screen is open: take its seat for the
@@ -757,6 +849,38 @@ impl Driver {
                     6..=8 => tango_match::keys::A,
                     _ => 0,
                 };
+            }
+
+            // The drill. Recording: the player is ON the dummy's seat
+            // (toggle_record swapped them), so the take is their own
+            // pad, captured outside the shared custom pause — pause
+            // ticks are dead air on both sides of the trip. Playing:
+            // the take drives the dummy seat, suspended through the
+            // pause (auto-confirm still answers the screens), looping
+            // at the end.
+            let paused = self.custom_open.iter().any(|&c| c);
+            match drill {
+                DrillMode::Recording => {
+                    if !paused {
+                        self.drill.lock().unwrap().push(self.joyflags.load(Ordering::Relaxed));
+                    }
+                    self.drill_cursor = 0;
+                }
+                DrillMode::Playing => {
+                    if !paused {
+                        let take = self.drill.lock().unwrap();
+                        if !take.is_empty() {
+                            if self.drill_cursor >= take.len() {
+                                self.drill_cursor = 0;
+                            }
+                            dummy = take[self.drill_cursor];
+                            self.drill_cursor += 1;
+                        }
+                    }
+                }
+                DrillMode::Off => {
+                    self.drill_cursor = 0;
+                }
             }
             self.dummy_joyflags.store(dummy, Ordering::Relaxed);
 

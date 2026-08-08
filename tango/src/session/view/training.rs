@@ -5,7 +5,7 @@
 //! commands.
 
 use super::*;
-use crate::session::training::{DummyPolicy, TrainingSession};
+use crate::session::training::{DrillMode, DummyPolicy, TrainingSession};
 use crate::session::Message as SessionMessage;
 
 /// Training-view messages. Wrapped in [`SessionMessage::Training`] on the
@@ -18,6 +18,11 @@ pub enum Message {
     ToggleSwap,
     /// Step the dummy's custom-screen policy through its cycle.
     CyclePolicy,
+    /// Start/stop recording a drill for the dummy (recording puts the
+    /// player on the dummy's seat).
+    ToggleRecord,
+    /// Toggle the dummy looping the recorded drill.
+    TogglePlayback,
     /// Open/close the forced-hand picker panel.
     ToggleChips,
     /// Switch which player's hand the picker edits.
@@ -60,6 +65,16 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         Message::CyclePolicy => {
             if let Some(s) = state.active_as::<TrainingSession>() {
                 s.cycle_policy();
+            }
+        }
+        Message::ToggleRecord => {
+            if let Some(s) = state.active_as::<TrainingSession>() {
+                s.toggle_record();
+            }
+        }
+        Message::TogglePlayback => {
+            if let Some(s) = state.active_as::<TrainingSession>() {
+                s.toggle_playback();
             }
         }
         Message::ToggleChips => {
@@ -330,6 +345,7 @@ fn bottom_bar<'a>(
     };
     let chips_available = s.chip_forcing_available();
     let picker_open = state.training_panes.as_ref().is_some_and(|p| p.picker_open);
+    let drill = s.drill_mode();
     let bar = row![
         toggle_button(
             Icon::PictureInPicture2,
@@ -348,6 +364,22 @@ fn bottom_bar<'a>(
             policy != DummyPolicy::Manual,
             policy_label,
             Some(Message::CyclePolicy)
+        ),
+        toggle_button(
+            Icon::CircleDot,
+            drill == DrillMode::Recording,
+            if drill == DrillMode::Recording {
+                t!(lang, "training-record-stop")
+            } else {
+                t!(lang, "training-record")
+            },
+            Some(Message::ToggleRecord),
+        ),
+        toggle_button(
+            Icon::Repeat,
+            drill == DrillMode::Playing,
+            t!(lang, "training-playback"),
+            (s.has_drill() || drill == DrillMode::Playing).then_some(Message::TogglePlayback),
         ),
         toggle_button(
             Icon::Swords,

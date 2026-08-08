@@ -19,6 +19,7 @@ crash-no-log = Tango がエラーで終了しました。
 # Discord rich presence
 discord-presence-looking = 募集中
 discord-presence-in-single-player = 一人用モード中
+discord-presence-in-training = トレーニング中
 discord-presence-in-lobby = ロビー待機中
 discord-presence-in-progress = 対戦中
 
@@ -66,7 +67,6 @@ play-version-placeholder = —
 # Play bottom strip
 play-link-code = リンクコード（空欄でランダム生成）
 play-link-code-random = ランダムリンクコード
-play-training = トレーニング
 training-pip = 相手の画面
 training-swap = 左右を入れ替える
 training-chips = チップ強制
@@ -76,6 +76,9 @@ training-chips-unavailable = このゲームではチップ強制は使えませ
 training-dummy-auto-confirm = ダミーのチップ: 自動で決定
 training-dummy-auto-possess = ダミーのチップ: 自分で選ぶ
 training-dummy-manual = ダミーのチップ: 手動
+training-record = ダミーの動きを記録
+training-record-stop = 記録を停止
+training-playback = 記録した動きをループ再生
 play-fight = 対戦
 play-cancel = キャンセル
 play-status-idle = ネットプレイするにはリンクコードを入力、空欄で一人用モードになります。

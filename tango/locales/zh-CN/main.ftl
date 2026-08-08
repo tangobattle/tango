@@ -19,6 +19,7 @@ crash-no-log = 糟糕，Tango 遇到错误并已崩溃！
 # Discord rich presence
 discord-presence-looking = 正在寻找对战
 discord-presence-in-single-player = 单人游戏中
+discord-presence-in-training = 训练中
 discord-presence-in-lobby = 大厅中
 discord-presence-in-progress = 对战进行中
 
@@ -66,7 +67,6 @@ play-version-placeholder = —
 # Play bottom strip
 play-link-code = 链接代码（留空则随机生成）
 play-link-code-random = 随机链接代码
-play-training = 训练
 training-pip = 对手画面
 training-swap = 交换位置
 training-chips = 强制芯片
@@ -76,6 +76,9 @@ training-chips-unavailable = 此游戏不支持强制芯片
 training-dummy-auto-confirm = 假人芯片：自动确认
 training-dummy-auto-possess = 假人芯片：由你挑选
 training-dummy-manual = 假人芯片：手动
+training-record = 为假人录制套路
+training-record-stop = 停止录制
+training-playback = 循环播放录制的套路
 play-fight = 战斗
 play-cancel = 离开
 play-status-idle = 输入链接代码开始联机对战，留空则进行单人游戏。

@@ -15,7 +15,6 @@ window-title = Tango
     .running = Tango (en cours d'exécution)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Quitter Tango
-play-training = Entraînement
 training-pip = Écran de l'adversaire
 training-swap = Changer de côté
 training-chips = Puces forcées
@@ -25,6 +24,9 @@ training-chips-unavailable = Le forçage de puces n'est pas disponible pour ce j
 training-dummy-auto-confirm = Puces du mannequin : confirmation auto
 training-dummy-auto-possess = Puces du mannequin : vous choisissez
 training-dummy-manual = Puces du mannequin : manuel
+training-record = Enregistrer un exercice pour le mannequin
+training-record-stop = Arrêter l'enregistrement
+training-playback = Boucler l'exercice enregistré
 play-fight = Bagarre !
 play-link-code = Code de connexion (laisser vide pour un code aléatoire)
 play-no-game = Aucun jeu sélectionné
@@ -124,6 +126,7 @@ welcome-open-folder = Ouvrir le dossier
 welcome-continue = J'ai terminé !
 discord-presence-looking = À la recherche d'un match
 discord-presence-in-single-player = En mode solo
+discord-presence-in-training = En entraînement
 discord-presence-in-lobby = Dans un lobby
 discord-presence-in-progress = Match en cours
 

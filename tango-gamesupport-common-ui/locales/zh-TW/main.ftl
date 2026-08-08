@@ -1,3 +1,4 @@
+play-training = 訓練
 play-play = 開始
 save-tab-cover = 封面
 save-tab-navicust = 領航客製

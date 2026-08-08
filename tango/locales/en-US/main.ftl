@@ -19,6 +19,7 @@ crash-no-log = Oops, Tango has encountered an error and has crashed!
 # Discord rich presence
 discord-presence-looking = Looking for match
 discord-presence-in-single-player = In single player
+discord-presence-in-training = In training
 discord-presence-in-lobby = In lobby
 discord-presence-in-progress = Match in progress
 
@@ -66,7 +67,6 @@ play-version-placeholder = —
 play-link-code = Link code (leave empty for a random one)
 play-link-code-random = Random link code
 play-play = Play
-play-training = Training
 training-pip = Opponent screen
 training-swap = Switch sides
 training-chips = Forced chips
@@ -76,6 +76,9 @@ training-chips-unavailable = Chip forcing isn't available for this game
 training-dummy-auto-confirm = Dummy chips: auto-confirm
 training-dummy-auto-possess = Dummy chips: you pick
 training-dummy-manual = Dummy chips: manual
+training-record = Record a drill for the dummy
+training-record-stop = Stop recording
+training-playback = Loop the recorded drill
 play-fight = Fight
 play-cancel = Leave
 play-status-idle = Enter a link code to start netplay, or leave blank for single-player.

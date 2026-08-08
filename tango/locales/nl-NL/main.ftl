@@ -15,7 +15,6 @@ window-title = Tango
     .running = Tango (actief)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Tango afsluiten
-play-training = Training
 training-pip = Scherm van tegenstander
 training-swap = Van kant wisselen
 training-chips = Geforceerde chips
@@ -25,6 +24,9 @@ training-chips-unavailable = Chips forceren is niet beschikbaar voor dit spel
 training-dummy-auto-confirm = Dummychips: automatisch bevestigen
 training-dummy-auto-possess = Dummychips: jij kiest
 training-dummy-manual = Dummychips: handmatig
+training-record = Oefening voor de dummy opnemen
+training-record-stop = Opname stoppen
+training-playback = Opgenomen oefening herhalen
 play-fight = Vechten!
 play-link-code = Link code (laat leeg voor een willekeurige)
 play-no-game = Geen spel geselecteerd
@@ -124,6 +126,7 @@ welcome-open-folder = Map openen
 welcome-continue = Ik ben klaar!
 discord-presence-looking = Op zoek naar een spel
 discord-presence-in-single-player = In de singleplayer
+discord-presence-in-training = In training
 discord-presence-in-lobby = In de lobby
 discord-presence-in-progress = Spel gaande
 

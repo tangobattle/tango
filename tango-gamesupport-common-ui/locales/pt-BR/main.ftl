@@ -1,3 +1,4 @@
+play-training = Treino
 play-play = Jogar
 save-tab-cover = Capa
 save-tab-folder = Folder

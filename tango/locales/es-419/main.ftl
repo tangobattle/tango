@@ -15,7 +15,6 @@ window-title = Tango
     .running = Tango (en ejecución)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Salir de Tango
-play-training = Entrenamiento
 training-pip = Pantalla del rival
 training-swap = Cambiar de lado
 training-chips = Chips forzados
@@ -25,6 +24,9 @@ training-chips-unavailable = Forzar chips no está disponible en este juego
 training-dummy-auto-confirm = Chips del dummy: confirmación automática
 training-dummy-auto-possess = Chips del dummy: tú eliges
 training-dummy-manual = Chips del dummy: manual
+training-record = Grabar rutina para el dummy
+training-record-stop = Detener grabación
+training-playback = Repetir la rutina grabada
 play-fight = ¡Netbattle!
 play-link-code = Código de conexión (déjalo vacío para generar uno aleatorio)
 play-no-game = Ningún juego seleccionado
@@ -124,6 +126,7 @@ welcome-open-folder = Abrir carpeta
 welcome-continue = ¡Estoy listo/a!
 discord-presence-looking = Buscando pelea
 discord-presence-in-single-player = En partida de un jugador
+discord-presence-in-training = En entrenamiento
 discord-presence-in-lobby = En sala
 discord-presence-in-progress = Partida en progreso
 

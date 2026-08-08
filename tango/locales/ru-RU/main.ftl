@@ -15,7 +15,6 @@ window-title = Танго
     .running = Танго(запушен)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Выйти из Танго
-play-training = Тренировка
 training-pip = Экран соперника
 training-swap = Поменять стороны
 training-chips = Заданные чипы
@@ -25,6 +24,9 @@ training-chips-unavailable = Задание чипов недоступно дл
 training-dummy-auto-confirm = Чипы манекена: автоподтверждение
 training-dummy-auto-possess = Чипы манекена: выбираете вы
 training-dummy-manual = Чипы манекена: вручную
+training-record = Записать связку для манекена
+training-record-stop = Остановить запись
+training-playback = Повторять записанную связку
 play-fight = В бой!
 play-link-code = Код ссылки (оставьте пустым для случайного)
 play-no-game = Игра не выбрана
@@ -124,6 +126,7 @@ welcome-open-folder = Открыть папку
 welcome-continue = Я Готов!
 discord-presence-looking = Поиск матча
 discord-presence-in-single-player = В одиночной игре
+discord-presence-in-training = На тренировке
 discord-presence-in-lobby = В лобби
 discord-presence-in-progress = Матч в процессе
 

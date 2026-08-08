@@ -15,7 +15,6 @@ window-title = Tango
     .running = Tango (đang chạy)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Thoát Tango
-play-training = Luyện tập
 training-pip = Màn hình đối thủ
 training-swap = Đổi bên
 training-chips = Chip ép buộc
@@ -25,6 +24,9 @@ training-chips-unavailable = Ép chip không khả dụng cho trò chơi này
 training-dummy-auto-confirm = Chip của hình nộm: tự động xác nhận
 training-dummy-auto-possess = Chip của hình nộm: bạn chọn
 training-dummy-manual = Chip của hình nộm: thủ công
+training-record = Ghi bài tập cho hình nộm
+training-record-stop = Dừng ghi
+training-playback = Lặp lại bài tập đã ghi
 play-fight = Đấu!
 play-link-code = Mã kết nối (để trống để tạo mã ngẫu nhiên)
 play-no-game = Chưa chọn game
@@ -124,6 +126,7 @@ welcome-open-folder = Mở thư mục
 welcome-continue = Đã xong!
 discord-presence-looking = Đang tìm trận
 discord-presence-in-single-player = Trong chế độ 1 người chơi
+discord-presence-in-training = Đang tập luyện
 discord-presence-in-lobby = Trong hàng chờ
 discord-presence-in-progress = Trận đấu đang diễn ra
 

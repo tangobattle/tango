@@ -1,3 +1,4 @@
+play-training = Тренировка
 play-play = Воспроизвести
 save-tab-cover = Покрытие
 save-tab-folder = Папка

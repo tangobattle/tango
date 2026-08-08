@@ -554,6 +554,11 @@ impl tango_backend_mgba::GameSupport for Pvp {
             last_bt: [u32; 2],
             /// Post-close countdown per core (see `POST_CLOSE`).
             post_close: [u8; 2],
+            /// Whether a forced hand was being held last tick, per
+            /// core per player — a clear must WRITE the hand empty
+            /// once, not just stop writing: the stranded phantoms
+            /// would fire as duds and wedge the next custom open.
+            was_forced: [[bool; 2]; 2],
         }
         impl tango_match::trainer::Trainer<mgba::core::Core> for Trainer {
             fn tick(
@@ -613,9 +618,10 @@ impl tango_backend_mgba::GameSupport for Pvp {
                         // picks — leave it alone until the close edge.
                         continue;
                     }
-                    let Some(ids) = control.forced_hand(player) else {
-                        continue;
-                    };
+                    let forced = control.forced_hand(player);
+                    let held = forced.is_some();
+                    let cleared = self.was_forced[core_index][player] && !held;
+                    self.was_forced[core_index][player] = held;
                     // battle_state is stale-live outside battle, so
                     // the flag alone isn't proof of a live hand — two
                     // live player units are.
@@ -623,6 +629,27 @@ impl tango_backend_mgba::GameSupport for Pvp {
                         continue;
                     }
                     let base = self.offsets.ewram.chip_blocks + player as u32 * 0x50;
+                    if cleared {
+                        // Clearing hands the pick back to the game:
+                        // empty the hand once (rather than stranding
+                        // forced phantoms it never picked) and stop —
+                        // the next custom screen deals organically. A
+                        // clear surfacing exactly at a close edge is
+                        // the one exception: the game just committed a
+                        // real pick, which stands.
+                        if !closed {
+                            core.raw_write_16(base, -1, 0);
+                            for slot in 0..6u32 {
+                                core.raw_write_16(base + 2 + slot * 2, -1, 0xffff);
+                                core.raw_write_16(base + 0x0e + slot * 2, -1, 0);
+                                core.raw_write_16(base + 0x32 + slot * 2, -1, 0xffff);
+                            }
+                        }
+                        continue;
+                    }
+                    let Some(ids) = forced else {
+                        continue;
+                    };
                     if opening && !closed {
                         // The whole hand reads empty for the opening
                         // frames — with fired pinned at 0 the entire
@@ -647,6 +674,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
             prev: [[0; 2]; 2],
             last_bt: [0; 2],
             post_close: [0; 2],
+            was_forced: [[false; 2]; 2],
         }))
     }
 }

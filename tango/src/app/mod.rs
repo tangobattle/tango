@@ -1818,6 +1818,8 @@ impl App {
                 discord::make_base_activity(None)
             } else if active.is::<session::singleplayer::SinglePlayerSession>() {
                 discord::make_single_player_activity(start, lang, game_info)
+            } else if active.is::<session::training::TrainingSession>() {
+                discord::make_training_activity(start, lang, game_info)
             } else {
                 discord::make_in_progress_activity(start, lang, game_info)
             };

@@ -15,7 +15,6 @@ window-title = Tango
     .running = Tango (läuft)
 # Tooltip on the top bar's close button (fullscreen only).
 window-quit = Tango beenden
-play-training = Training
 training-pip = Gegnerbildschirm
 training-swap = Seiten wechseln
 training-chips = Erzwungene Chips
@@ -25,6 +24,9 @@ training-chips-unavailable = Chip-Erzwingen ist für dieses Spiel nicht verfügb
 training-dummy-auto-confirm = Dummy-Chips: automatisch bestätigen
 training-dummy-auto-possess = Dummy-Chips: du wählst
 training-dummy-manual = Dummy-Chips: manuell
+training-record = Übung für den Dummy aufnehmen
+training-record-stop = Aufnahme beenden
+training-playback = Aufgenommene Übung wiederholen
 play-fight = Kämpfen!
 play-link-code = Link-Code (leer lassen für einen zufälligen)
 play-no-game = Kein Spiel ausgewählt
@@ -124,6 +126,7 @@ welcome-open-folder = Ordner öffnen
 welcome-continue = Ich bin fertig!
 discord-presence-looking = Suche nach einem Kampf
 discord-presence-in-single-player = Im Einzelspieler
+discord-presence-in-training = Im Training
 discord-presence-in-lobby = In der Lobby
 discord-presence-in-progress = Spiel im Gange
 

@@ -101,6 +101,17 @@ pub fn make_single_player_activity(
     }
 }
 
+pub fn make_training_activity(
+    start_time: std::time::SystemTime,
+    lang: &unic_langid::LanguageIdentifier,
+    game_info: Option<GameInfo>,
+) -> rpc::activity::Activity {
+    rpc::activity::Activity {
+        state: Some(i18n::t!(lang, "discord-presence-in-training")),
+        ..make_single_player_activity(start_time, lang, game_info)
+    }
+}
+
 pub fn make_in_lobby_activity(
     ident: &crate::netplay::LinkIdent,
     lang: &unic_langid::LanguageIdentifier,

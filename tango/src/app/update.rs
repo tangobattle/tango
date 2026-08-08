@@ -188,10 +188,7 @@ impl App {
                         self.session.training_panes = Some(session::TrainingPanes {
                             chips: loaded.chips.clone(),
                             picker_open: false,
-                            // Editing the dummy's hand is the common
-                            // first reach, and the player starts on
-                            // seat 0 — open on the other side.
-                            picker_side: 1,
+                            picker_side: 0,
                             query: String::new(),
                         });
                         self.session.audio_binding = audio;

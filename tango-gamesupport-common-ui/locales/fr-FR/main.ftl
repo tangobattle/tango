@@ -1,3 +1,4 @@
+play-training = Entraînement
 play-play = Jouer
 save-tab-cover = Couverture
 save-tab-folder = Folder

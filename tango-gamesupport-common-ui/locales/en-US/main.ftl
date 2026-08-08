@@ -1,3 +1,4 @@
+play-training = Training
 play-play = Play
 save-tab-cover = Cover
 save-tab-navicust = NaviCust
