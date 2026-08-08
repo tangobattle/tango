@@ -562,25 +562,25 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 core_index: usize,
                 control: &tango_match::trainer::TrainerControl,
             ) {
-                // A forced hand is effectively permanent: the block is
-                // re-asserted every battle tick outside that player's
-                // own open custom screen, refilled from the game's own
-                // fire cursor so using a chip never changes what the
-                // hand shows (see `write_hand` — including its hard
-                // rules). The fired count is reset ONLY on the 4 -> 0
-                // edge of the player's own flag: their confirm, a
-                // fresh turn.
+                // A forced hand is PERMANENT: every battle tick
+                // outside that player's own open custom screen, the
+                // fired cursor is rewound to 0 and the whole block
+                // re-asserted (see `write_hand`) — a fire's increment
+                // lives only inside its own frame, so the hand never
+                // depletes, the in-game display always mirrors the
+                // forced list, and the loaded chip is always its
+                // lead, with no per-turn fire limit.
                 //
-                // The one moment the hand must NOT read full is a
-                // custom screen OPENING: the game walks each unfired
-                // pick back toward its deck record, and a phantom the
-                // record doesn't back wedges that walk — the screens
-                // half-open (battle clock frozen, flags never 4) and
-                // the battle locks up for good. The battle clock
-                // stalling outside the pick and the post-close resume
-                // is that opening (hit-stop frames trip it too,
-                // harmlessly — the next tick refills), and the hand's
-                // unfired tail empties for those frames so the walk
+                // The one moment the hand must instead read EMPTY is
+                // a custom screen OPENING: the game walks each
+                // unfired pick back toward its deck record, and a
+                // phantom the record doesn't back wedges that walk —
+                // the screens half-open (battle clock frozen, flags
+                // never 4) and the battle locks up for good. The
+                // battle clock stalling outside the pick and the
+                // post-close resume is that opening (hit-stop frames
+                // trip it too, harmlessly — the next tick refills),
+                // and the hand empties for those frames so the walk
                 // sees nothing. Clearing the forced hand mid-turn
                 // leaves the committed chips to the game; from the
                 // next close on, the pick is fully organic. Both
@@ -623,21 +623,21 @@ impl tango_backend_mgba::GameSupport for Pvp {
                         continue;
                     }
                     let base = self.offsets.ewram.chip_blocks + player as u32 * 0x50;
-                    if closed {
-                        core.raw_write_16(base, -1, 0);
-                    }
-                    let fired = if closed {
-                        0
-                    } else {
-                        core.raw_read_16(base, -1).min(6) as usize
-                    };
                     if opening && !closed {
-                        for slot in fired..6 {
-                            core.raw_write_16(base + 2 + slot as u32 * 2, -1, 0xffff);
-                            core.raw_write_16(base + 0x32 + slot as u32 * 2, -1, 0xffff);
+                        // The whole hand reads empty for the opening
+                        // frames — with fired pinned at 0 the entire
+                        // list is "unfired", and every slot would be a
+                        // phantom for the pick-return walk.
+                        for slot in 0..6u32 {
+                            core.raw_write_16(base + 2 + slot * 2, -1, 0xffff);
+                            core.raw_write_16(base + 0x32 + slot * 2, -1, 0xffff);
                         }
                     } else {
-                        write_hand(self.offsets, core, player as u32, &ids, fired);
+                        // The pin: a fire's increment is rewound the
+                        // same tick, so the hand never depletes and the
+                        // lead is always loaded.
+                        core.raw_write_16(base, -1, 0);
+                        write_hand(self.offsets, core, player as u32, &ids, 0);
                     }
                 }
             }
@@ -714,42 +714,23 @@ fn battle_units(ewram: &EWRAMOffsets, core: &mut mgba::core::Core) -> Option<[Ra
     }
     Some([units[0]?, units[1]?])
 }
-/// Overwrite `player`'s chip block with the forced hand, REFILLED from
-/// the fire cursor: `ids[fired + k] = forced[k]`, so the visible hand
-/// is always the whole forced list and the loaded chip is always its
-/// lead — a fire advances the cursor and the next tick's rewrite slides
-/// the list under it. The inverse of `loaded_chips`'s read; see
-/// `EWRAMOffsets::chip_blocks` for the plain layout.
+/// Overwrite `player`'s chip block with the forced hand from cursor
+/// position `fired` (the trainer pins the cursor to 0, so in practice
+/// this writes the whole list): ids at +0x02, the save-format picks at
+/// +0x32 (`id | code << 9`, each chip's first ROM code — organic
+/// entries AirShot* = 0x3404, CannonB = 0x0201 pinned the format), and
+/// the matching damage array at +0x0e (u16 per slot, indexed like the
+/// ids — the custom screen computes it at pick time, the fire path
+/// deals `damage[fired]`, and a slot left 0 is a fire that hits for
+/// nothing), all off the ROM's own chip table
+/// (`ROMOffsets::chip_data`). Slot 5 stays empty: the array is 6 wide,
+/// and `ids[6]` would read the damage array as a chip id.
 ///
-/// Three hard rules, all probe-derived the expensive way:
-/// - The fired count is the GAME's: touched only at the player's own
-///   custom close (a fresh turn starts unfired). Pinning it to 0
-///   mid-battle (the obvious "permanent hand") kills the next custom
-///   screen outright — the shared-pause negotiation reconciles the
-///   block's count against the game's own bookkeeping and never
-///   grants again (organic opens read f=44 on both cores the same
-///   tick; a tampered count reads f=40/f=00 forever).
-/// - Slot 5 stays empty as the cursor's hard stop: the array is 6 wide
-///   and `ids[6]` would read the damage array as a chip id. So a hand
-///   refills through at most 5 fires per turn; the next custom close
-///   rewinds the cursor.
-/// - The damage array at +0x0e (u16 per slot, indexed like the ids —
-///   the custom screen computes it at pick time and the fire path
-///   deals `damage[fired]`; a slot left 0 fires for nothing) is
-///   written ONLY on `write_damage` ticks: the close edge and each
-///   cursor move. Rewriting it continuously breaks the next custom
-///   screen exactly like a tampered fired count — the game stages the
-///   open request through those cells, and a per-tick rewrite erases
-///   the request as fast as it's staged. Filled from the ROM's own
-///   chip table (`ROMOffsets::chip_data`).
-///
-/// The ids at +0x02 and the save-format picks at +0x32 (`id | code <<
-/// 9`; organic entries AirShot* = 0x3404, CannonB = 0x0201 pinned it;
-/// forced entries carry the * code, bits 9-15 = 26, which every chip
-/// accepts) ARE safe to re-assert every tick — and must be: a slot the
-/// game's own (unmapped, heap-side) pick record doesn't back gets
-/// refreshed into the nameless dud pseudo-chip 0x185 ~25 ticks after
-/// it loads, and the per-tick re-assert is what outruns that.
+/// The per-tick re-assert is load-bearing: the block is derived state
+/// the game refreshes against its true (heap-side, unmapped) pick
+/// record — a slot that record doesn't back morphs into the nameless
+/// dud pseudo-chip 0x185 ~25 ticks after it loads, and outrunning that
+/// between ticks is what keeps a forced chip real.
 fn write_hand(offsets: &Offsets, core: &mut mgba::core::Core, player: u32, ids: &[u16], fired: usize) {
     let base = offsets.ewram.chip_blocks + player * 0x50;
     let valid: Vec<u16> = ids
@@ -773,17 +754,13 @@ fn write_hand(offsets: &Offsets, core: &mut mgba::core::Core, player: u32, ids: 
             id | code << 9
         });
         core.raw_write_16(base + 0x32 + slot as u32 * 2, -1, annotated.unwrap_or(0xffff));
-    }
-    // The loaded (cursor) slot's damage cell, plus cell 0 — the lead's
-    // damage lives in whichever the fire path consults; the cells past
-    // the cursor stay the game's own.
-    let lead_attack = valid
-        .first()
-        .map(|&id| core.raw_read_16(offsets.rom.chip_data + id as u32 * 0x2c + 0x1a, -1))
-        .unwrap_or(0);
-    core.raw_write_16(base + 0x0e, -1, lead_attack);
-    if fired > 0 && fired < 5 {
-        core.raw_write_16(base + 0x0e + fired as u32 * 2, -1, lead_attack);
+        // The matching damage cell, straight off the ROM chip table —
+        // the fire path deals `damage[fired]`, and a fire's mid-frame
+        // load of the next slot stashes from here too.
+        let attack = id
+            .map(|id| core.raw_read_16(offsets.rom.chip_data + id as u32 * 0x2c + 0x1a, -1))
+            .unwrap_or(0);
+        core.raw_write_16(base + 0x0e + slot as u32 * 2, -1, attack);
     }
 }
 

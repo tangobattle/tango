@@ -9,13 +9,15 @@
 //! lands on Beast Out), then the probe asserts both cores agree that
 //! both players' committed hands are the forced lists (fired = 0,
 //! ids[0] = the forced lead), then A-taps fire. A forced hand is
-//! PERMANENT — firing never depletes it — so every confirmed
-//! `ChipUsed` must be the forced LEAD, each turn's damage must
-//! accumulate at least three of the lead's base attack on the
-//! opposing unit (a hand that only hits once, or hits for zero,
-//! fails), and the L-opened second turn covers the negotiation
-//! canary: a corrupted block half-grants the shared pause and turn 2
-//! never opens on both cores.
+//! PERMANENT — the trainer rewinds the fire cursor every tick, so
+//! firing never depletes it: every observed fire (read off the cursor
+//! between the pair's tick and the trainer's rewind — telemetry can't
+//! see pinned fires) must be the forced LEAD, each turn's damage must
+//! accumulate at least two of the lead's base attack per side (a hand
+//! that only hits once, or hits for zero, fails), p0 deliberately
+//! leaves its hand loaded across every custom open (the
+//! phantom-pick-return wedge canary), and each turn's L-opened screen
+//! covers the shared-pause negotiation.
 //!
 //! Usage: training_forced_hand <rom> <save>
 //!
@@ -264,6 +266,22 @@ fn main() {
 
         pair.tick(&keys);
         tick += 1;
+        // With the fired cursor pinned by the trainer, fires are
+        // visible only here — between the pair's tick and the
+        // trainer's rewind: a nonzero cursor is a fire of the
+        // (pin-stable) lead. Telemetry's chip events can't see pinned
+        // fires at all, so this is the probe's fire record.
+        if turns > 0 && turns == asserted_turns {
+            for p in 0..2usize {
+                let base = 0x020349c0 + p as u32 * 0x50;
+                let core = pair.core_mut(0);
+                if core.raw_read_16(base, -1) > 0 {
+                    let lead = core.raw_read_16(base + 2, -1);
+                    println!("[{tick:5}] player {p} fired chip {lead:#05x}");
+                    fires[p].push(lead);
+                }
+            }
+        }
         // Diagnostic trace: each core's custom flags + p0's fired cell,
         // for pinning down who rewrites what around a custom episode.
         // (battle_state = 0x02034880, flags at +0x14/+0x15 — same
