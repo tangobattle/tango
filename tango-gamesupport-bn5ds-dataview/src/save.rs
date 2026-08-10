@@ -709,11 +709,7 @@ fn checksum(buf: &[u8]) -> u16 {
 
 /// The generation counter stamped in `block`'s footer.
 fn generation(data: &[u8], block: usize) -> u32 {
-    u32::from_le_bytes(
-        data[block * BLOCK_SIZE + GENERATION_OFFSET..][..4]
-            .try_into()
-            .unwrap(),
-    )
+    u32::from_le_bytes(data[block * BLOCK_SIZE + GENERATION_OFFSET..][..4].try_into().unwrap())
 }
 
 /// Whether `block` carries the game's format tag — the one thing that
@@ -1085,8 +1081,12 @@ impl Save {
         let mut bonus = PartycustBonus::default();
         let mut items = [0u8; MAX_PARTY_PROGRAMS_EQUIPPED];
         for (at, index) in programs.into_iter().enumerate() {
-            let Some(program) = assets.party_program(index) else { return false };
-            let Some(equipped) = bonus.plus(program.bonus()) else { return false };
+            let Some(program) = assets.party_program(index) else {
+                return false;
+            };
+            let Some(equipped) = bonus.plus(program.bonus()) else {
+                return false;
+            };
             let Some(item) = items.get_mut(at) else { return false };
             *item = program.item_id() as u8;
             bonus = equipped;
@@ -1114,8 +1114,7 @@ impl Save {
         self.active_mut()[record + PARTYCUST_SUPPORT_INTO_RECORD] = bonus.support as u8;
         self.active_mut()[record + PARTYCUST_CHIP_ATTACK_INTO_RECORD..][..2]
             .copy_from_slice(&bonus.chip_attack.to_le_bytes());
-        self.active_mut()[record + PARTYCUST_MAX_HP_INTO_RECORD..][..2]
-            .copy_from_slice(&bonus.max_hp.to_le_bytes());
+        self.active_mut()[record + PARTYCUST_MAX_HP_INTO_RECORD..][..2].copy_from_slice(&bonus.max_hp.to_le_bytes());
         self.active_mut()[record + PARTYCUST_EFFECTIVE_HP_INTO_RECORD..][..2]
             .copy_from_slice(&base.saturating_add(bonus.max_hp).to_le_bytes());
     }
@@ -1299,7 +1298,6 @@ impl tango_gamesupport_common_dataview::save::Save for Save {
         let twin = (self.block ^ 1) * BLOCK_SIZE;
         self.data.copy_within(base..base + BLOCK_SIZE, twin);
     }
-
 }
 
 pub struct ChipsView<S> {
@@ -1344,8 +1342,8 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
         }
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
-            &self.save.active()[FOLDER_OFFSET
-                + (folder_index * self.folder_size() + chip_index) * std::mem::size_of::<RawChip>()..]
+            &self.save.active()
+                [FOLDER_OFFSET + (folder_index * self.folder_size() + chip_index) * std::mem::size_of::<RawChip>()..]
                 [..std::mem::size_of::<RawChip>()],
         );
 
@@ -1399,8 +1397,7 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
         if folder_index >= NUM_FOLDERS || chip_index >= 30 || chip.id > 0x1ff {
             return false;
         }
-        self.save.active_mut()
-            [FOLDER_OFFSET + (folder_index * 30 + chip_index) * std::mem::size_of::<RawChip>()..]
+        self.save.active_mut()[FOLDER_OFFSET + (folder_index * 30 + chip_index) * std::mem::size_of::<RawChip>()..]
             [..std::mem::size_of::<RawChip>()]
             .copy_from_slice(bytemuck::bytes_of(&{
                 let mut raw = RawChip::default();
@@ -1417,8 +1414,7 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
         }
         // 0xffff reads back as an invalid code, so `chip()` returns
         // None — i.e. an empty slot.
-        self.save.active_mut()
-            [FOLDER_OFFSET + (folder_index * 30 + chip_index) * std::mem::size_of::<RawChip>()..]
+        self.save.active_mut()[FOLDER_OFFSET + (folder_index * 30 + chip_index) * std::mem::size_of::<RawChip>()..]
             [..std::mem::size_of::<RawChip>()]
             .fill(0xff);
         true
@@ -1570,11 +1566,8 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common_dataview::rom::Assets) {
-        let materialized = tango_gamesupport_common_dataview::navicust::materialize(
-            &*self,
-            [NAVICUST_SIZE, NAVICUST_SIZE],
-            assets,
-        );
+        let materialized =
+            tango_gamesupport_common_dataview::navicust::materialize(&*self, [NAVICUST_SIZE, NAVICUST_SIZE], assets);
         let mut grid = [0u8; NAVICUST_GRID_SECTION_SIZE];
         for (cell, slot) in grid.iter_mut().zip(materialized) {
             // Cells hold the slot + 1, so 0 stays "empty".
@@ -1586,10 +1579,8 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
         let bar = tango_gamesupport_common_dataview::navicust::materialize_color_bar(&*self, assets);
         let mut bytes = [0u8; NAVICUST_COLOR_BAR_LEN];
         for (slot, color) in bar.iter().flatten().enumerate().take(NAVICUST_COLOR_BAR_LEN) {
-            bytes[slot] = tango_gamesupport_common_dataview::navicust::color_to_raw(
-                color,
-                crate::rom::navicust_part_color,
-            );
+            bytes[slot] =
+                tango_gamesupport_common_dataview::navicust::color_to_raw(color, crate::rom::navicust_part_color);
         }
         self.save.active_mut()[NAVICUST_COLOR_BAR_OFFSET..][..NAVICUST_COLOR_BAR_LEN].copy_from_slice(&bytes);
     }
@@ -1630,6 +1621,21 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
                 }
             }
         }
+
+        match self.save.cross() {
+            Cross::None => {}
+            Cross::BassProto => {
+                max_hp += 200;
+            }
+            Cross::BassColonel => {
+                const BONUS: u32 = 20;
+                max_hp = (max_hp as u32 * (100 + BONUS) / 100) as u16;
+            }
+            Cross::Sol => {
+                max_hp += 200;
+            }
+        }
+
         max_hp
     }
 
@@ -1644,6 +1650,10 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     ) -> tango_gamesupport_common_dataview::save::FolderLimits {
         let mut mega: isize = BASE_MEGA_LIMIT;
         let mut giga: usize = BASE_GIGA_LIMIT;
+
+        if matches!(self.save.cross(), Cross::BassColonel | Cross::BassProto | Cross::Sol) {
+            mega -= 2;
+        }
 
         if let Some(navicust) = tango_gamesupport_common_dataview::save::Save::view_navicust(&*self.save) {
             for part in command_line_parts(&*navicust) {
@@ -1774,8 +1784,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
 
     fn materialized(&self) -> tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData {
         tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData::from_wram(
-            &self.save.active()[AUTO_BATTLE_DATA_OFFSET..]
-                [..NUM_AUTO_BATTLE_DATA_SLOTS * std::mem::size_of::<u16>()],
+            &self.save.active()[AUTO_BATTLE_DATA_OFFSET..][..NUM_AUTO_BATTLE_DATA_SLOTS * std::mem::size_of::<u16>()],
         )
     }
 }
@@ -1798,10 +1807,9 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common_dataview::rom::Assets) {
-        let materialized =
-            tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData::materialize(
-                &*self, assets,
-            );
+        let materialized = tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData::materialize(
+            &*self, assets,
+        );
         self.set_materialized(&materialized);
     }
 }
@@ -2013,7 +2021,10 @@ mod tests {
         assert_eq!(navicust.count(), NUM_NAVICUST_SLOTS);
         assert_eq!(navicust.size(), [NAVICUST_SIZE, NAVICUST_SIZE]);
         let part = navicust.navicust_part(3).unwrap();
-        assert_eq!((part.id, part.col, part.row, part.rot, part.compressed), (188, 1, 4, 2, true));
+        assert_eq!(
+            (part.id, part.col, part.row, part.rot, part.compressed),
+            (188, 1, 4, 2, true)
+        );
         // An id of 0 is an empty slot, not part 0.
         assert!(navicust.navicust_part(0).is_none());
     }
@@ -2260,7 +2271,10 @@ mod tests {
         // ATTACK and support as bytes, and the HP folded into the
         // effective max HP every other screen reads.
         let record = NAVI_RECORD_OFFSET + 8 * NAVI_RECORD_SIZE;
-        assert_eq!(&save.active()[record + PARTYCUST_MAX_HP_INTO_RECORD..][..2], &[0x2c, 0x01]);
+        assert_eq!(
+            &save.active()[record + PARTYCUST_MAX_HP_INTO_RECORD..][..2],
+            &[0x2c, 0x01]
+        );
         assert_eq!(save.active()[record + PARTYCUST_SUPPORT_INTO_RECORD], 1);
         assert_eq!(save.navi_hp(8), 300);
         // And the slot's entry is the game's: the member, then the item
@@ -2290,8 +2304,12 @@ mod tests {
         // No member is nothing to customize, and an entry longer than
         // the widest gauge is not one the game could have written.
         assert!(!save.view_party_mut().set_party_programs(1, [0], &assets));
-        assert!(!save.view_party_mut().set_party_programs(0, [crate::NUM_PARTY_PROGRAMS], &assets));
-        assert!(!save.view_party_mut().set_party_programs(0, [0; MAX_PARTY_PROGRAMS_EQUIPPED + 1], &assets));
+        assert!(!save
+            .view_party_mut()
+            .set_party_programs(0, [crate::NUM_PARTY_PROGRAMS], &assets));
+        assert!(!save
+            .view_party_mut()
+            .set_party_programs(0, [0; MAX_PARTY_PROGRAMS_EQUIPPED + 1], &assets));
     }
 
     /// Changing a member takes its programs back off, and packing the
@@ -2351,7 +2369,11 @@ mod tests {
             abd.clear_materialized();
         }
         let block = save.active();
-        assert_eq!(&block[combo..][..2], &0x8000u16.to_le_bytes(), "a combo slot was blanked");
+        assert_eq!(
+            &block[combo..][..2],
+            &0x8000u16.to_le_bytes(),
+            "a combo slot was blanked"
+        );
         assert_eq!(
             &block[AUTO_BATTLE_DATA_OFFSET..][..2],
             &0xffffu16.to_le_bytes(),
@@ -2525,7 +2547,10 @@ mod tests {
 
         let dump = save.to_sram_dump();
         // The edited pair is mirrored...
-        assert_eq!(dump[2 * BLOCK_SIZE..3 * BLOCK_SIZE], dump[3 * BLOCK_SIZE..4 * BLOCK_SIZE]);
+        assert_eq!(
+            dump[2 * BLOCK_SIZE..3 * BLOCK_SIZE],
+            dump[3 * BLOCK_SIZE..4 * BLOCK_SIZE]
+        );
         // ...its checksum pairs hold the game's invariants...
         let block = &dump[2 * BLOCK_SIZE..3 * BLOCK_SIZE];
         let word = |o: usize| u16::from_le_bytes(block[o..o + 2].try_into().unwrap());
