@@ -65,7 +65,7 @@ save-tab-navicust = ナビカス
 navi-edit-select = ナビ
 
 save-tab-program-deck = プログラムデッキ
-save-tab-party = パーティ
+save-tab-party = パーティー
 deck-mb = { $used }/{ $capacity }MB
 deck-mb-uncapped = { $used }MB
 deck-slot-in = スロットイン { $max }MB
