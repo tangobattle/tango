@@ -101,6 +101,7 @@ pub static EXE4RS: Game = Game {
     rom_code: b"B4WJ",
     revision: 0x01,
     crc32: 0xcf0e8b05,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, true, dataview::save::Variant::RedSun),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -147,6 +148,7 @@ pub static EXE4BM: Game = Game {
     rom_code: b"B4BJ",
     revision: 0x01,
     crc32: 0x709bbf07,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, true, dataview::save::Variant::BlueMoon),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -193,6 +195,7 @@ pub static BN4RS: Game = Game {
     rom_code: b"B4WE",
     revision: 0x00,
     crc32: 0x2120695c,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: |data| parse_save(data, false, dataview::save::Variant::RedSun),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -239,6 +242,7 @@ pub static BN4BM: Game = Game {
     rom_code: b"B4BE",
     revision: 0x00,
     crc32: 0x758a46e9,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: |data| parse_save(data, false, dataview::save::Variant::BlueMoon),
     load_rom_assets_fn: Some(|rom, wram, charset| {

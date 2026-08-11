@@ -154,7 +154,7 @@ fn scan_rom_archive(path: &std::path::Path) -> std::collections::HashMap<crate::
             log::warn!("bnlc: {}/{}: {e}", path.display(), entry_path.display());
             continue;
         }
-        let Some(game) = crate::game::detect(&rom) else {
+        let Some(game) = crate::game::detect(&mut rom) else {
             log::warn!("bnlc: {}/{}: not recognized", path.display(), entry_path.display());
             continue;
         };

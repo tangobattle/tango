@@ -318,6 +318,7 @@ pub static EXE3W: Game = Game {
     rom_code: b"A6BJ",
     revision: 0x01,
     crc32: 0xe48e6bc9,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Variant::White),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -340,6 +341,7 @@ pub static EXE3B: Game = Game {
     rom_code: b"A3XJ",
     revision: 0x01,
     crc32: 0xfd57493b,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Variant::Blue),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -362,6 +364,7 @@ pub static BN3W: Game = Game {
     rom_code: b"A6BE",
     revision: 0x00,
     crc32: 0x0be4410a,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Variant::White),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -384,6 +387,7 @@ pub static BN3B: Game = Game {
     rom_code: b"A3XE",
     revision: 0x00,
     crc32: 0xc0c780f9,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Variant::Blue),
     load_rom_assets_fn: Some(|rom, wram, charset| {

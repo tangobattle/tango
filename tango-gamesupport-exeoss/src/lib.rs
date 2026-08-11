@@ -79,6 +79,7 @@ pub static EXEOSS: Game = Game {
     rom_code: b"B6XJ",
     revision: 0x00,
     crc32: 0x0644_1e8b,
+    rom_size: 0x0100_0000,
     region: Region::JP,
 
     parse_save_fn: |data| parse_save(data),

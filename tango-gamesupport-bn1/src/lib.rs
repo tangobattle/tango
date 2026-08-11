@@ -55,6 +55,7 @@ pub static EXE1: Game = Game {
     rom_code: b"AREJ",
     revision: 0x00,
     crc32: 0xd9516e50,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| {
         let save = dataview::save::Save::new(data)?;
@@ -105,6 +106,7 @@ pub static BN1: Game = Game {
     rom_code: b"AREE",
     revision: 0x00,
     crc32: 0x1d347971,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: |data| {
         let save = dataview::save::Save::new(data)?;

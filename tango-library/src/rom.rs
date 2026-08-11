@@ -38,14 +38,14 @@ pub fn scan_roms(storage: &dyn Storage, listing: &Listing) -> std::collections::
 fn scan_stored_roms(storage: &dyn Storage, listing: &Listing) -> std::collections::HashMap<GameRef, Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
     for entry in listing.entries() {
-        let buf = match storage.read(&entry.path) {
+        let mut buf = match storage.read(&entry.path) {
             Ok(b) => b,
             Err(e) => {
                 log::warn!("{}: {e}", entry.path.display());
                 continue;
             }
         };
-        let Some(game) = crate::game::detect(&buf) else {
+        let Some(game) = crate::game::detect(&mut buf) else {
             log::debug!("rom scan: {}: not a recognized rom", entry.path.display());
             continue;
         };

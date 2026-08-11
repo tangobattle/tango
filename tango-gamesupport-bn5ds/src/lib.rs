@@ -109,6 +109,7 @@ pub static BN5DS: Game = Game {
     rom_code: b"A5TE",
     revision: 0x00,
     crc32: 0x16f0_3f13,
+    rom_size: 0x0200_0000,
     region: Region::US,
 
     parse_save_fn: |data| parse_save(data),
@@ -138,6 +139,7 @@ pub static EXE5DS: Game = Game {
     rom_code: b"A5TJ",
     revision: 0x00,
     crc32: 0x9fdf_2ece,
+    rom_size: 0x0200_0000,
     region: Region::JP,
 
     parse_save_fn: |data| parse_save(data),

@@ -145,6 +145,10 @@ pub struct Game {
     pub revision: u8,
     /// CRC32 of the full clean ROM, used to validate a detected dump.
     pub crc32: u32,
+    /// Size in bytes of the full clean ROM image. A dump trimmed below
+    /// this is grown back with 0xff before the CRC32 check — see
+    /// [`detect`].
+    pub rom_size: usize,
     pub region: Region,
 
     /// Parse a cartridge SRAM dump into a save, validating that the dump
@@ -190,6 +194,10 @@ impl Game {
 
     pub fn crc32(&self) -> u32 {
         self.crc32
+    }
+
+    pub fn rom_size(&self) -> usize {
+        self.rom_size
     }
 
     pub fn region(&self) -> Region {
@@ -316,14 +324,31 @@ const HEADER_LAYOUTS: &[(usize, usize)] = &[
     (0x0c, 0x1e),
 ];
 
-/// Identify a clean ROM dump: match the `code`/`revision` header bytes,
-/// then confirm the CRC32. Returns `None` if unrecognized or corrupted.
-pub fn detect(games: &[GameRef], rom: &[u8]) -> Option<GameRef> {
-    HEADER_LAYOUTS
+/// Identify a ROM dump: match the `code`/`revision` header bytes, then
+/// confirm the CRC32. Returns `None` if unrecognized or corrupted.
+///
+/// A dump trimmed below its game's registered [`Game::rom_size`] is
+/// recognized too, and grown back in place: a cart reads 0xff past the
+/// used image, which is exactly what trimming strips, and the CRC32
+/// still gates the result. Either way a `Some` return leaves `rom`
+/// holding the full clean image.
+pub fn detect(games: &[GameRef], rom: &mut Vec<u8>) -> Option<GameRef> {
+    let candidates: Vec<GameRef> = HEADER_LAYOUTS
         .iter()
         .filter_map(|&(code_at, revision_at)| {
             let code: &[u8; 4] = rom.get(code_at..code_at + 4)?.try_into().ok()?;
             find_by_rom_info(games, code, *rom.get(revision_at)?)
         })
-        .find(|entry| crc32fast::hash(rom) == entry.crc32())
+        .collect();
+    let trimmed_len = rom.len();
+    for entry in candidates {
+        if trimmed_len < entry.rom_size() {
+            rom.resize(entry.rom_size(), 0xff);
+        }
+        if crc32fast::hash(rom) == entry.crc32() {
+            return Some(entry);
+        }
+        rom.truncate(trimmed_len);
+    }
+    None
 }

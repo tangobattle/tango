@@ -87,6 +87,7 @@ pub static EXE5B: Game = Game {
     rom_code: b"BRBJ",
     revision: 0x00,
     crc32: 0xc73f23c0,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::JP, dataview::save::Variant::Protoman),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -125,6 +126,7 @@ pub static EXE5C: Game = Game {
     rom_code: b"BRKJ",
     revision: 0x00,
     crc32: 0x16842635,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::JP, dataview::save::Variant::Colonel),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -163,6 +165,7 @@ pub static BN5P: Game = Game {
     rom_code: b"BRBE",
     revision: 0x00,
     crc32: 0xa73e83a4,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::US, dataview::save::Variant::Protoman),
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -201,6 +204,7 @@ pub static BN5C: Game = Game {
     rom_code: b"BRKE",
     revision: 0x00,
     crc32: 0xa552f683,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: |data| parse_save(data, dataview::save::Region::US, dataview::save::Variant::Colonel),
     load_rom_assets_fn: Some(|rom, wram, charset| {

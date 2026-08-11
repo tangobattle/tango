@@ -39,6 +39,7 @@ pub static EXE45: Game = Game {
     rom_code: b"BR4J",
     revision: 0x00,
     crc32: 0xa646601b,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| {
         Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(

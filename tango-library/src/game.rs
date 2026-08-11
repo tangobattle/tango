@@ -59,8 +59,10 @@ pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
 /// The flat game registry, derived from [`FAMILIES`].
 pub static GAMES: LazyLock<Vec<GameRef>> = LazyLock::new(|| tango_gamesupport::games_of(&FAMILIES));
 
-/// Identify a clean ROM dump against the registry.
-pub fn detect(rom: &[u8]) -> Option<GameRef> {
+/// Identify a ROM dump against the registry. A dump trimmed below its
+/// cart size is grown back to the full image in place — see
+/// [`tango_gamesupport::detect`].
+pub fn detect(rom: &mut Vec<u8>) -> Option<GameRef> {
     tango_gamesupport::detect(&GAMES, rom)
 }
 

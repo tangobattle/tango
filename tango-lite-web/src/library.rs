@@ -144,12 +144,15 @@ fn rom_extension(game: GameRef) -> &'static str {
 /// including a recognized game whose CRC32 doesn't match, since a bad
 /// dump desyncs rather than failing cleanly.
 pub async fn import_rom(file_name: &str, bytes: &[u8]) -> Option<GameRef> {
-    let game = game::detect(bytes)?;
+    // Detection grows a trimmed dump back to the full image, so that —
+    // not the dropped file — is what gets stored.
+    let mut bytes = bytes.to_vec();
+    let game = game::detect(&mut bytes)?;
     let (family, variant) = game.family_and_variant();
     let ext = rom_extension(game);
     let path = with(|library| library.config.roms_path().join(format!("{family}-{variant}.{ext}")))?;
     log::info!("importing {file_name} as {family} v{variant}");
-    with(|library| library.files.write(&path, bytes))?.ok()?;
+    with(|library| library.files.write(&path, &bytes))?.ok()?;
     rescan().await;
     Some(game)
 }

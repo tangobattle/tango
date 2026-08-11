@@ -71,6 +71,7 @@ pub static EXE2: Game = Game {
     rom_code: b"AE2J",
     revision: 0x00,
     crc32: 0x046eed8d,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: |data| {
         Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(
@@ -97,6 +98,7 @@ pub static BN2: Game = Game {
     rom_code: b"AE2E",
     revision: 0x00,
     crc32: 0x6d961f82,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: |data| {
         Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(

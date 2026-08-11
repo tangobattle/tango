@@ -62,6 +62,7 @@ pub static BCC: Game = Game {
     rom_code: b"A89E",
     revision: 0x00,
     crc32: 0x26be44fd,
+    rom_size: 0x800000,
     region: Region::US,
     parse_save_fn: parse_save,
     load_rom_assets_fn: Some(|rom, wram, charset| {
@@ -88,6 +89,7 @@ pub static EXEBCGP: Game = Game {
     rom_code: b"A89J",
     revision: 0x00,
     crc32: 0x9217fb18,
+    rom_size: 0x800000,
     region: Region::JP,
     parse_save_fn: parse_save,
     load_rom_assets_fn: Some(|rom, wram, charset| {
