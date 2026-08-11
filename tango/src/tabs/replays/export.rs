@@ -73,6 +73,9 @@ pub enum ExportMessage {
         replay: std::path::PathBuf,
         output: std::path::PathBuf,
         clip: crate::replay_render::Clip,
+        /// The player's perspective-swap toggle at capture time — a
+        /// swapped viewer exports the perspective it was showing.
+        swap_sides: bool,
     },
 }
 
@@ -121,9 +124,15 @@ impl ReplaysState {
                     round_marks,
                     has_setup,
                     clip: None,
+                    swap_sides: false,
                 })
             }
-            ExportMessage::StartClip { replay, output, clip } => {
+            ExportMessage::StartClip {
+                replay,
+                output,
+                clip,
+                swap_sides,
+            } => {
                 // The player's clip export rides the same per-replay
                 // job machinery as the panel's — the tab shows its
                 // progress and owns its canceller; the panel is
@@ -149,6 +158,7 @@ impl ReplaysState {
                     round_marks: vec![],
                     has_setup,
                     clip: Some(clip),
+                    swap_sides,
                 })
             }
             ExportMessage::Progress {

@@ -169,6 +169,7 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
         clip: &clip,
         scale: SCALE,
         twosided: false,
+        swap_sides: false,
     };
 
     // Booting the re-sim pair blocks; let the screen show the progress

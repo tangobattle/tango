@@ -195,7 +195,8 @@ pub struct Request<'a> {
     pub backend: &'a dyn tango_match::Backend,
     /// The recording's own header — the same boot the player uses, so
     /// the re-sim reproduces the recorded match. Its `local_player`
-    /// names the side whose screen and audio track come first.
+    /// names the side whose screen and audio track come first (the
+    /// other one under [`Self::swap_sides`]).
     pub config: tango_match::ReplayConfig,
     /// Which rounds to write, indexed by [`Clip::round_marks`]
     /// interval. Unselected rounds still simulate; they just aren't
@@ -207,16 +208,22 @@ pub struct Request<'a> {
     pub round_titles: &'a [String],
     /// The tick window to write.
     pub clip: &'a Clip,
+    /// Render both seats — shown perspective first — with an audio
+    /// track each, instead of the shown screen alone. A single-screen
+    /// console's seats sit side by side; a multi-screen console (the
+    /// DS) already fills its row with its own screens, so its seats
+    /// stack vertically.
+    pub twosided: bool,
+    /// Show the opposite seat's perspective: the recording's remote
+    /// side supplies the leading screen and audio track, the way the
+    /// player presents the match while its swap toggle is on.
+    /// Presentation only — the re-sim still boots from `config` as
+    /// recorded.
+    pub swap_sides: bool,
     /// The scale doubles as the quality choice, which is how the form
     /// presents it: one slider whose leftmost stop is lossless.
     /// `None` renders losslessly at native size; `Some(n)` renders an
     /// `n`-times nearest-neighbor upscale.
-    pub twosided: bool,
-    /// Render both seats — local perspective first — with an audio
-    /// track each, instead of the local screen alone. A single-screen
-    /// console's seats sit side by side; a multi-screen console (the
-    /// DS) already fills its row with its own screens, so its seats
-    /// stack vertically.
     pub scale: Option<usize>,
 }
 
@@ -319,7 +326,10 @@ pub struct Render<W: Writer> {
     canceller: Canceller,
     phase: Phase,
 
-    local_player: usize,
+    /// The seat whose screen and audio lead the output — the
+    /// recording's local side, or the other one under
+    /// [`Request::swap_sides`].
+    first_seat: usize,
     twosided: bool,
     clip_start: u32,
     clip_end: u32,
@@ -376,12 +386,14 @@ impl<W: Writer> Render<W> {
             clip,
             scale,
             twosided,
+            swap_sides,
         } = request;
         canceller.check()?;
         let local_player = config.local_player;
         if local_player >= 2 {
             return Err(Error::BadLocalPlayer(local_player));
         }
+        let first_seat = if swap_sides { 1 - local_player } else { local_player };
 
         // One seat's canvas is its screens stacked vertically — for a
         // single-screen console that's the screen itself — so each side
@@ -447,7 +459,7 @@ impl<W: Writer> Render<W> {
             output: Some(output),
             canceller: canceller.clone(),
             phase: Phase::Rendering,
-            local_player,
+            first_seat,
             twosided,
             clip_start: clip.start,
             clip_end: clip.end,
@@ -552,11 +564,11 @@ impl<W: Writer> Render<W> {
         self.prev_should_write = should_write;
 
         // Drain + resample each seat's tick of audio; blit its frame.
-        // Track/screen order: local perspective first. An unwritten
+        // Track/screen order: shown perspective first. An unwritten
         // tick still drains — the consoles' own rings are small, and
         // sound left there would open the next span as a stale burst —
         // it just goes nowhere.
-        let order: [usize; 2] = [self.local_player, 1 - self.local_player];
+        let order: [usize; 2] = [self.first_seat, 1 - self.first_seat];
         for (slot, &seat) in order.iter().enumerate() {
             if !self.twosided && slot > 0 {
                 break;

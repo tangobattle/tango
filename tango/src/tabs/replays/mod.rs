@@ -281,6 +281,11 @@ pub enum Effect {
         /// (see [`HpChart::has_setup`]).
         has_setup: bool,
         clip: Option<crate::replay_render::Clip>,
+        /// Render the opposite seat's perspective — the player's swap
+        /// toggle as it stood when the clip export started. Always
+        /// false for the panel's whole-replay exports, which have no
+        /// swap notion.
+        swap_sides: bool,
     },
     /// Task returned from the save view's `ui.update`. Generic Task
     /// pipe so save_editor-internal side effects (currently just

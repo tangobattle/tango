@@ -1396,20 +1396,21 @@ impl App {
                 }
                 // The transport bar's Export-clip chip: everything
                 // positional is captured NOW, while the session is alive —
-                // the jump-start snapshot nearest the span start and the
-                // session's round boundaries — then the save dialog runs
-                // async and the pick flows through the replays tab's
-                // export-job machinery (progress, cancel, and the panel all
-                // live there). The session handler itself is a no-op.
+                // the jump-start snapshot nearest the span start, the
+                // session's round boundaries, and the perspective swap —
+                // then the save dialog runs async and the pick flows
+                // through the replays tab's export-job machinery
+                // (progress, cancel, and the panel all live there). The
+                // session handler itself is a no-op.
                 if let session::Message::Replay(session::view::replay::Message::ExportClip { start, end }) = &m {
                     let (start, end) = (*start, *end);
                     let Some(path) = self.session.replay_path.clone() else {
                         return iced::Task::none();
                     };
-                    let (snapshot, round_marks) = self
+                    let (snapshot, round_marks, swap_sides) = self
                         .session
                         .active_as::<session::replay::ReplaySession>()
-                        .map(|s| (s.clip_start_capture(start), s.round_boundaries()))
+                        .map(|s| (s.clip_start_capture(start), s.round_boundaries(), s.swap_perspective()))
                         .unwrap_or_default();
                     let clip = crate::replay_render::Clip {
                         start,
@@ -1424,6 +1425,7 @@ impl App {
                             replay: replay_for_msg.clone(),
                             output,
                             clip: clip.clone(),
+                            swap_sides,
                         })
                     });
                 }

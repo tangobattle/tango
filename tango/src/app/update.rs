@@ -688,8 +688,9 @@ impl App {
                 round_marks,
                 has_setup,
                 clip,
+                swap_sides,
             } => self
-                .spawn_replay_render(replay, output, settings, rounds, round_marks, has_setup, clip)
+                .spawn_replay_render(replay, output, settings, rounds, round_marks, has_setup, clip, swap_sides)
                 .map(Message::Replays),
             E::AnalyzeReplay(path) => {
                 // Full re-simulation of the replay — seconds of CPU on a
@@ -833,6 +834,9 @@ impl App {
         // numbering starts at the second.
         has_setup: bool,
         clip: Option<crate::replay_render::Clip>,
+        // Render the opposite seat's perspective — the viewer's swap
+        // toggle when the clip export started.
+        swap_sides: bool,
     ) -> iced::Task<tabs::replays::Message> {
         // Decode just enough of the replay to get both sides' game
         // registrations + raw ROM bytes. Failures show up as a
@@ -1028,6 +1032,7 @@ impl App {
                     clip: &clip,
                     scale: scale_arg,
                     twosided: user_settings.twosided,
+                    swap_sides,
                 };
                 let result = crate::replay_render::render(request, &output_for_thread, &canceller_thread, cb)
                     .map(|()| output_for_thread)
