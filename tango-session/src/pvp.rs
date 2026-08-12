@@ -1449,12 +1449,7 @@ fn build_replay_writer(
         (remote_side, local_side, [remote_sram, local_sram])
     };
     let writer = tango_replay::Writer::new(
-        // Buffered: write_input runs on the drive thread once per
-        // confirmed tick, and unbuffered it costs a few small write
-        // syscalls each time. The format already recovers truncated tails,
-        // so a hard crash losing the buffered tail of an (already
-        // incomplete) replay changes nothing; finish() flushes.
-        std::io::BufWriter::new(sink),
+        sink,
         // SIO-engine stream: one continuous run of pair ticks.
         tango_replay::VERSION,
         local_player_index,
