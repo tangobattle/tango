@@ -10,6 +10,14 @@ use crate::session::Message as SessionMessage;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::{column, row};
 
+/// The replay transport's discrete playback rates, shared by the speed
+/// menu and the keyboard stepper so both controls always land on the same
+/// values.
+const SPEED_STEPS: [f32; 4] = [0.5, 1.0, 2.0, 4.0];
+
+/// Arrow-key seek distance: five seconds of recorded 60 Hz input.
+const SEEK_JUMP: i32 = 300;
+
 /// Messages the replay view emits. Wrapped as
 /// [`SessionMessage::Replay`] on the way out; inert unless a replay
 /// session is active.
@@ -18,6 +26,9 @@ pub enum Message {
     /// Toggle play/pause (the transport button, or clicking the
     /// screen itself — any video player's idiom).
     TogglePlay,
+    /// Move the playhead by a signed number of recorded frames. Keyboard
+    /// frame-step and skip shortcuts both use this transport command.
+    SeekRelative(i32),
     /// Scrub-bar drag in progress — fires per tick change while the
     /// button is held. Pauses playback and blits the nearest prefetched
     /// snapshot's framebuffer as an instant preview; the exact seek
@@ -77,11 +88,67 @@ pub enum Message {
     SkipToQueued,
 }
 
+/// Map a raw keyboard press to a replay transport command. This stays
+/// beside the replay view and its message handler so every replay-only
+/// key—including modifier and repeat semantics—has one owner.
+pub(crate) fn keyboard_shortcut(event: &iced::keyboard::Event, speed: f32) -> Option<Message> {
+    use iced::keyboard::key::{Code, Physical};
+    use iced::keyboard::{Event, Modifiers};
+
+    let Event::KeyPressed {
+        physical_key: Physical::Code(code),
+        modifiers,
+        repeat,
+        ..
+    } = event
+    else {
+        return None;
+    };
+
+    match (*code, *modifiers, *repeat) {
+        (Code::ArrowLeft, Modifiers::NONE, _) => Some(Message::SeekRelative(-SEEK_JUMP)),
+        (Code::ArrowRight, Modifiers::NONE, _) => Some(Message::SeekRelative(SEEK_JUMP)),
+        (Code::Comma, Modifiers::NONE, _) => Some(Message::SeekRelative(-1)),
+        (Code::Period, Modifiers::NONE, _) => Some(Message::SeekRelative(1)),
+        (Code::Comma, Modifiers::SHIFT, _) => Some(Message::SetSpeed(
+            SPEED_STEPS
+                .iter()
+                .rev()
+                .copied()
+                .find(|&candidate| candidate < speed)
+                .unwrap_or(SPEED_STEPS[0]),
+        )),
+        (Code::Period, Modifiers::SHIFT, _) => Some(Message::SetSpeed(
+            SPEED_STEPS
+                .iter()
+                .copied()
+                .find(|&candidate| candidate > speed)
+                .unwrap_or(SPEED_STEPS[SPEED_STEPS.len() - 1]),
+        )),
+        (Code::Space, Modifiers::NONE, false) => Some(Message::TogglePlay),
+        (Code::KeyF, Modifiers::NONE, false) => Some(Message::ToggleSwapPerspective),
+        (Code::KeyP, Modifiers::NONE, false) => Some(Message::TogglePip),
+        _ => None,
+    }
+}
+
 /// Apply a replay-view message. Takes the whole session [`State`]:
 /// the scrub bookkeeping lives there, beside the session slot.
 pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
     match msg {
         Message::TogglePlay => state.toggle_replay_play(),
+        Message::SeekRelative(delta) => {
+            if let Some(s) = state.active_as::<ReplaySession>() {
+                // Chain off the in-flight seek's target so a burst of
+                // presses accumulates instead of snapping to one base tick.
+                let base = s.pending_seek_target().unwrap_or_else(|| s.current_tick());
+                let target = base.saturating_add_signed(delta).min(s.total_ticks());
+                // Preserve the logical play state across the asynchronous
+                // seek (the playback thread pauses for the chase either way).
+                let playing = !s.is_paused() || s.seek_will_resume();
+                s.seek_to(target, playing);
+            }
+        }
         Message::ScrubPreview(target) => {
             // Field-level borrow (not `active_as`): `scrub` is
             // mutated while the session ref is live.
@@ -301,14 +368,13 @@ fn replay_bar<'a>(
     // same plate chrome as the toggles beside it. The current step
     // carries the menu's check and the tooltip names it; the plate
     // lights up while off realtime.
-    const SPEED_STEPS: [f32; 4] = [0.5, 1.0, 2.0, 4.0];
     let current = r.speed();
     let speed_idx = SPEED_STEPS
         .iter()
-        .position(|&v| (current - v).abs() < 0.05)
-        .unwrap_or(1);
+        .position(|&v| current == v)
+        .expect("replay speed is always a transport preset");
     let speed_step_label = |v: f32| {
-        if (v - v.trunc()).abs() < 1e-3 {
+        if v.fract() == 0.0 {
             format!("{}×", v as i32)
         } else {
             format!("{:.1}×", v)
@@ -1091,4 +1157,40 @@ fn input_display_overlay<'a>(
         })
         .into(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::keyboard::key::{Code, Physical};
+    use iced::keyboard::{Event, Key, Location, Modifiers};
+
+    fn key_press(code: Code, modifiers: Modifiers, repeat: bool) -> Event {
+        Event::KeyPressed {
+            key: Key::Unidentified,
+            modified_key: Key::Unidentified,
+            physical_key: Physical::Code(code),
+            location: Location::Standard,
+            modifiers,
+            text: None,
+            repeat,
+        }
+    }
+
+    #[test]
+    fn keyboard_shortcuts_keep_transport_semantics_together() {
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::Period, Modifiers::NONE, true), 1.0),
+            Some(Message::SeekRelative(1))
+        ));
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::Period, Modifiers::SHIFT, false), 1.0),
+            Some(Message::SetSpeed(2.0))
+        ));
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::KeyF, Modifiers::NONE, false), 1.0),
+            Some(Message::ToggleSwapPerspective)
+        ));
+        assert!(keyboard_shortcut(&key_press(Code::KeyF, Modifiers::NONE, true), 1.0).is_none());
+    }
 }

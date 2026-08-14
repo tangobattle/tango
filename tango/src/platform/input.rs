@@ -616,12 +616,6 @@ impl HeldState {
         }
     }
 
-    /// Whether `physical` is currently held. Lets edge-triggered keybinds
-    /// (e.g. spacebar play/pause) tell a fresh press from OS key-repeat.
-    pub fn is_key_held(&self, physical: &Physical) -> bool {
-        self.keys.contains(physical)
-    }
-
     pub fn set_button(&mut self, id: GamepadId, b: GamepadButton, pressed: bool) {
         let pad = self.gamepads.entry(id).or_default();
         if pressed {

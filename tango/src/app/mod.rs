@@ -1976,7 +1976,15 @@ impl App {
                 (Some(p), EnterScope::Root { dy }) => anim::slide_in(composed, p, iced::Vector::new(0.0, dy)),
                 _ => composed,
             };
-            return crate::platform::input_capture::InputCapture::new(composed, |input| {
+            // Snapshot the replay's current rate into the input callback.
+            // Shortcut messages rebuild the view after dispatch, so each
+            // repeated Shift+, / Shift+. press steps from the freshly
+            // selected preset.
+            let replay_speed = self
+                .session
+                .active_as::<session::replay::ReplaySession>()
+                .map(|replay| replay.speed());
+            return crate::platform::input_capture::InputCapture::new(composed, move |input| {
                 // Esc is reserved as the in-session escape/menu key —
                 // it never reaches the joyflag pipeline so the user
                 // can't accidentally hide it behind a mapping. Both
@@ -1997,6 +2005,15 @@ impl App {
                             return Some(Message::Session(session::Message::EscReleased));
                         }
                         _ => {}
+                    }
+                }
+                // Give the replay view its raw keyboard event before
+                // `to_event` strips modifiers and repeat state. It returns the
+                // same messages as its on-screen controls; PiP therefore also
+                // follows the App's normal persistence path.
+                if let (Some(speed), crate::platform::input_capture::Input::Keyboard(kb)) = (replay_speed, &input) {
+                    if let Some(shortcut) = session::view::replay::keyboard_shortcut(kb, speed) {
+                        return Some(Message::Session(session::Message::Replay(shortcut)));
                     }
                 }
                 input.to_event().map(|ev| Message::Session(session::Message::Input(ev)))

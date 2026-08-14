@@ -726,8 +726,8 @@ pub enum Message {
     /// Raw input event from the keyboard or a gamepad. The
     /// handler updates the held-state set, resolves the user's
     /// Mapping into joyflags, and pushes them to the active
-    /// session. Speed-up uses the same mechanism (edge-
-    /// detected).
+    /// session. Live-session speed-up uses the same mechanism
+    /// (edge-detected); replay transport keys are decoded before it.
     Input(InputEvent),
     /// Pointer event over the emulator surface of a console with a
     /// touch screen, already mapped into that screen's pixels by the
@@ -792,22 +792,6 @@ pub enum Message {
 /// settings input pane's live binding highlight consumes the same
 /// normalized stream.
 pub use crate::platform::input::Event as InputEvent;
-
-/// Per-keypress playhead delta for the replay seek keybinds, in recorded
-/// frames. Arrow keys jump ±5 seconds (300 frames at 60fps); comma/period
-/// frame-step by ±1. `None` for any other key.
-fn replay_seek_delta(physical: iced::keyboard::key::Physical) -> Option<i32> {
-    use iced::keyboard::key::{Code, Physical};
-    // 5 seconds at the GBA's 60fps.
-    const JUMP: i32 = 300;
-    match physical {
-        Physical::Code(Code::ArrowLeft) => Some(-JUMP),
-        Physical::Code(Code::ArrowRight) => Some(JUMP),
-        Physical::Code(Code::Comma) => Some(-1),
-        Physical::Code(Code::Period) => Some(1),
-        _ => None,
-    }
-}
 
 impl State {
     /// Apply a session message to the state. Returns the iced Task
@@ -883,6 +867,9 @@ impl State {
         self.session_seq += 1;
         self.last_mouse_move = std::time::Instant::now();
         self.controls_hovered = false;
+        // Hold-to-fast-forward is session-local state. In particular,
+        // replay playback uses discrete speed presets instead.
+        self.speed_up_engaged = false;
         // Same reasoning as the hover pin — a menu whose widget went
         // away with the old session never publishes its close.
         self.bar_menu_open = false;
@@ -1024,47 +1011,13 @@ impl State {
                 self.close_session();
             }
             Message::Input(ev) => {
-                // Replay transport keybinds: arrow keys jump ±5s, comma/period
-                // step ±1 frame. A replay plays back recorded input, so these
-                // keys are free to drive the seek bar; live sessions fall
-                // through to the joyflag pipeline below as normal. Fires on
-                // every press, key-repeat included, so holding scrubs.
-                if let InputEvent::Key {
-                    physical,
-                    pressed: true,
-                } = &ev
-                {
-                    // Edge: compare against the held set *before* the match
-                    // below records this press, so OS key-repeat (which the
-                    // seek keys want but the pause toggle doesn't) is filtered.
-                    let fresh_press = !self.input_held.is_key_held(physical);
-                    if let Some(s) = self.active_as::<replay::ReplaySession>() {
-                        if let Some(delta) = replay_seek_delta(*physical) {
-                            // Chain off the in-flight seek's target so a burst
-                            // of presses accumulates instead of all snapping to
-                            // the same spot.
-                            let base = s.pending_seek_target().unwrap_or_else(|| s.current_tick());
-                            let target = base.saturating_add_signed(delta).min(s.total_ticks());
-                            // Preserve the logical play state across the seek
-                            // (the thread is paused for the chase either way).
-                            let playing = !s.is_paused() || s.seek_will_resume();
-                            s.seek_to(target, playing);
-                        } else if fresh_press
-                            && matches!(
-                                physical,
-                                iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::Space)
-                            )
-                        {
-                            self.toggle_replay_play();
-                        }
-                    }
-                }
                 self.input_held.apply(&ev);
                 self.push_input(mapping);
-                // Speed-up: only fire set_speed on the rising or
-                // falling edge so we don't spam the session's audio
-                // sync target with no-op writes.
-                let now_engaged = mapping.speed_up_held(&self.input_held);
+                // Live-session speed-up: only fire set_speed on the
+                // rising or falling edge so we don't spam the audio sync
+                // target with no-op writes. Replays use preset controls.
+                let now_engaged = self.active_as::<replay::ReplaySession>().is_none()
+                    && mapping.speed_up_held(&self.input_held);
                 if now_engaged != self.speed_up_engaged {
                     self.speed_up_engaged = now_engaged;
                     let factor = if now_engaged { 4.0 } else { 1.0 };
