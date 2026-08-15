@@ -14,7 +14,7 @@ mod save_manage;
 
 pub use save_manage::{create_new_save, creation_template, duplicate_save, rename_save, SaveAction};
 
-use crate::app::Scanners;
+use crate::library::Scanners;
 use crate::i18n::t;
 use crate::library::{game, rom};
 use crate::loadout::{self, Loadout};

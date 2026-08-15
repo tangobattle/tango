@@ -20,7 +20,7 @@ pub mod view;
 
 pub use tango_session::{pvp, replay, singleplayer, training, Session};
 
-use crate::app::Scanners;
+use crate::library::Scanners;
 use crate::config;
 use crate::i18n::t;
 use crate::library::game;

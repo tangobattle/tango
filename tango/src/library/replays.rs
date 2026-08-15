@@ -25,7 +25,7 @@ use crate::library::rom::GameRef;
 /// `on_progress` is the analysis's per-tick reporter: `(ticks done,
 /// ticks total)` plus the in-flight builder for live partial previews.
 pub fn compute_and_cache_match_stats(
-    scanners: crate::app::Scanners,
+    scanners: super::Scanners,
     patches_path: std::path::PathBuf,
     cache_path: std::path::PathBuf,
     replays_path: std::path::PathBuf,

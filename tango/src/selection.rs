@@ -71,7 +71,7 @@ pub fn from_patched_rom(
 /// the local rom + patch from the scanners cache; returns Err
 /// if anything's missing.
 pub fn for_replay_local(
-    scanners: &crate::app::Scanners,
+    scanners: &crate::library::Scanners,
     config: &crate::config::Config,
     replay: &tango_replay::Replay,
 ) -> anyhow::Result<LoadedSave> {

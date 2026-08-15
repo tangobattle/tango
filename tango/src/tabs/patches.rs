@@ -1,4 +1,4 @@
-use crate::app::Scanners;
+use crate::library::Scanners;
 use crate::i18n::t;
 use crate::library::game;
 use crate::library::patch::{Catalog, Download, Downloads, VersionKey};

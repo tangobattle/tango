@@ -1,4 +1,4 @@
-use crate::app::Scanners;
+use crate::library::Scanners;
 use crate::i18n::t;
 use crate::library::replays;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
