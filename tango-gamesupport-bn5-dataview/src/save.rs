@@ -330,7 +330,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     }
 
     fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
-        if id >= super::NUM_PACK_CHIPS {
+        if id >= super::NUM_PACK_CHIPS || variant >= 4 {
             return None;
         }
         self.save.buf.get(0x2eac + id * 0xc + variant).map(|&b| b as usize)
@@ -473,6 +473,9 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
     }
 
     fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
+        if id >= super::NUM_PACK_CHIPS || variant >= 4 {
+            return false;
+        }
         self.save.buf[0x2eac + id * 0xc + variant] = count as u8;
         true
     }
@@ -540,10 +543,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     }
 
     fn materialized(&self) -> tango_gamesupport_common_dataview::navicust::MaterializedNavicust {
-        tango_gamesupport_common_dataview::navicust::materialized_from_wram(
-            &self.save.buf[0x4d48..][..(5 * 5)],
-            [5, 5],
-        )
+        tango_gamesupport_common_dataview::navicust::materialized_from_wram(&self.save.buf[0x4d48..][..(5 * 5)], [5, 5])
     }
 
     fn navicust_color_bar(&self) -> Vec<Option<tango_gamesupport_common_dataview::rom::NavicustPartColor>> {
@@ -691,10 +691,9 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
     }
 
     fn rebuild_materialized(&mut self, assets: &dyn tango_gamesupport_common_dataview::rom::Assets) {
-        let materialized =
-            tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData::materialize(
-                &*self, assets,
-            );
+        let materialized = tango_gamesupport_common_dataview::auto_battle_data::MaterializedAutoBattleData::materialize(
+            &*self, assets,
+        );
         self.set_materialized(&materialized);
     }
 }

@@ -79,13 +79,22 @@ pub struct Version {
     /// The `.tangopatch` this came from.
     pub path: PathBuf,
     pub netplay: Compatibility,
-    pub rom_overrides: tango_patch::Overrides,
+    pub rom_overrides: BTreeMap<tango_patch::RomTarget, tango_patch::Overrides>,
     pub supported_games: HashSet<GameRef>,
     /// Per-game save templates the patch ships. Keyed by template name
     /// (empty string = the default template); values are owned Save
     /// trait objects ready to be serialized via `to_sram_dump`.
     pub save_templates: HashMap<GameRef, BTreeMap<String, tango_gamesupport::BoxedSave>>,
     pub readme: Option<String>,
+}
+
+impl Version {
+    /// The override object for this exact ROM, or an empty object when the
+    /// package does not override it.
+    pub fn rom_overrides_for(&self, game: GameRef) -> tango_patch::Overrides {
+        let target = tango_patch::RomTarget::new(*game.rom_code, game.revision);
+        self.rom_overrides.get(&target).cloned().unwrap_or_default()
+    }
 }
 
 /// An installed patch: its versions plus the metadata of the newest one.
@@ -644,12 +653,15 @@ mod tests {
     fn manifest(name: &str, version: &str, netplay: &str) -> tango_patch::Manifest {
         tango_patch::Manifest::parse(&format!(
             r#"
-format = 1
+format = 2
 name = "{name}"
 version = "{version}"
 title = "Test {name}"
 authors = ["Someone <someone@example.com>"]
 netplay = "{netplay}"
+
+[rom_overrides.BR6E_00]
+legal_chip_ranges = [[1, 17], [19, 20]]
 "#
         ))
         .unwrap()
@@ -691,6 +703,10 @@ netplay = "{netplay}"
         crate::game::find_by_rom_info(b"BR6E", 0).expect("gamesupport-bn6 must be enabled for this test")
     }
 
+    fn bn6_gregar() -> GameRef {
+        crate::game::find_by_rom_info(b"BR5E", 0).expect("gamesupport-bn6 must be enabled for this test")
+    }
+
     fn v(s: &str) -> semver::Version {
         s.parse().unwrap()
     }
@@ -714,6 +730,18 @@ netplay = "{netplay}"
 
         let version = catalog.version("bn6_test", &v("1.0.0")).unwrap();
         assert_eq!(version.netplay, Compatibility::Group("testing".into()));
+        assert_eq!(
+            version.rom_overrides[&"BR6E_00".parse().unwrap()]
+                .legal_chip_ranges
+                .as_deref()
+                .unwrap(),
+            [[1, 17], [19, 20]]
+        );
+        assert_eq!(
+            version.rom_overrides_for(bn6_falzar()).legal_chip_ranges,
+            Some(vec![[1, 17], [19, 20]])
+        );
+        assert!(version.rom_overrides_for(bn6_gregar()).is_empty());
         assert_eq!(version.readme.as_deref(), Some("# hello"));
         assert!(version.supported_games.contains(&bn6_falzar()));
         assert!(catalog.is_installed("bn6_test", &v("1.0.0")));

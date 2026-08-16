@@ -60,6 +60,15 @@ pub struct SaveModel {
     pub assets: Box<dyn crate::dataview::rom::Assets + Send + Sync>,
 }
 
+impl SaveModel {
+    /// Whether the effective ROM dataview accepts this chip id. The patched
+    /// assets wrapper has already replaced the base answer when the manifest
+    /// supplies explicit ranges.
+    pub fn chip_is_legal(&self, chip_id: usize) -> bool {
+        self.assets.chip_is_legal(chip_id)
+    }
+}
+
 /// Probe every section's writable view once. Constructing a mutable view
 /// has no side effects, so this is a pure capability check.
 pub fn probe_editability(save: &mut (dyn crate::dataview::save::Save + Send + Sync)) -> Editability {

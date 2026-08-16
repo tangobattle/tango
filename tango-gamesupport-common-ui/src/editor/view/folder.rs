@@ -97,7 +97,8 @@ pub fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave, g
 /// slot. Each pane scrolls independently. The equipped navi's
 /// [`crate::dataview::save::FolderLimits`] (mega/giga caps, per-chip copy
 /// cap, Regular/Tag memory) are surfaced in the folder header and enforced
-/// by greying out library chips / REG / TAG toggles that would break them.
+/// by red, explained chip text plus disabled REG / TAG toggles that would
+/// break their separate memory rules. Limit-breaking additions remain allowed.
 pub fn render_folder_edit<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
@@ -137,6 +138,19 @@ pub fn render_folder_edit<'a>(
             .map(|c| c.mb() as u32),
         _ => None,
     };
+    let tag_pair_mb: Option<u32> = match edit.tags.as_slice() {
+        [a, b] => Some(
+            chips_view
+                .chip(folder_idx, *a)
+                .and_then(|c| assets.chip(c.id))
+                .map_or(0, |c| c.mb() as u32)
+                + chips_view
+                    .chip(folder_idx, *b)
+                    .and_then(|c| assets.chip(c.id))
+                    .map_or(0, |c| c.mb() as u32),
+        ),
+        _ => None,
+    };
 
     // ----- Left pane: the folder -----
     let folder_size = chips_view.folder_size();
@@ -172,6 +186,41 @@ pub fn render_folder_edit<'a>(
         // A third tag can't be added: once two are picked, only the
         // already-tagged chips stay toggleable (so one can be deselected).
         let tag_allowed = is_tag || (!is_regular && tag_fits && edit.tags.len() < 2);
+        // A navi/navicust change can lower limits beneath a folder that was
+        // legal when it was built. Mark every equivalent chip that
+        // contributes to the violation; no arbitrary copy becomes "the" bad
+        // one merely because the folder was reordered.
+        let mut issues = chip
+            .as_ref()
+            .into_iter()
+            .flat_map(|c| usage.violations_for_chip(loaded, c.id, &limits))
+            .map(|v| existing_violation_reason(lang, v))
+            .collect::<Vec<_>>();
+        if is_regular {
+            if let (Some(used), Some(limit)) = (this_mb, limits.reg_memory) {
+                if used > limit {
+                    issues.push(t!(
+                        lang,
+                        "folder-illegal-regular-memory",
+                        used = used as i64,
+                        limit = limit as i64
+                    ));
+                }
+            }
+        }
+        if is_tag {
+            if let (Some(used), Some(limit)) = (tag_pair_mb, limits.tag_memory) {
+                if used > limit {
+                    issues.push(t!(
+                        lang,
+                        "folder-illegal-tag-memory",
+                        used = used as i64,
+                        limit = limit as i64
+                    ));
+                }
+            }
+        }
+        let issue = (!issues.is_empty()).then(|| issues.join("\n"));
         folder_rows.push(folder_slot_row(
             loaded,
             slot,
@@ -182,6 +231,7 @@ pub fn render_folder_edit<'a>(
             is_tag,
             reg_allowed,
             tag_allowed,
+            issue,
         ));
     }
     // Draggable list: grab a chip row and drop it to reorder. The handler
@@ -279,10 +329,26 @@ pub fn render_folder_edit<'a>(
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
-        // Disabled when the folder is full or adding this chip would break
-        // the navi's mega/giga/copy limits.
-        let addable = filled < folder_size && usage.can_add(loaded, id, &limits);
-        lib_list = lib_list.push(library_entry_row(loaded, id, name, code, shown, chips_have_mb, addable));
+        // A full folder uses the old disabled gray wash. Otherwise, red text
+        // explains which limit the still-allowed addition would exceed.
+        let full = filled >= folder_size;
+        let issue = if full {
+            Some(t!(lang, "folder-cannot-add-full"))
+        } else {
+            usage
+                .add_violation(loaded, id, &limits)
+                .map(|v| add_violation_reason(lang, v))
+        };
+        lib_list = lib_list.push(library_entry_row(
+            loaded,
+            id,
+            name,
+            code,
+            shown,
+            chips_have_mb,
+            issue,
+            !full,
+        ));
         shown += 1;
     }
     let lib_header = library_header(
@@ -311,6 +377,7 @@ fn folder_slot_row<'a>(
     is_tag: bool,
     reg_allowed: bool,
     tag_allowed: bool,
+    issue: Option<String>,
 ) -> Element<'a, Action> {
     let assets = loaded.assets.as_ref();
     let chips_have_mb = assets.chips_have_mb();
@@ -374,15 +441,16 @@ fn folder_slot_row<'a>(
     });
     // Tooltip wraps only the chip content — not the leading grip gutter — so
     // hovering the drag handle doesn't pop the chip card.
-    let tipped = with_chip_tooltip(loaded, chip_id, accent, inner.padding([3, 12]).into());
-    edit_row_wrap(tipped, accent, slot, leading)
+    let illegal = issue.is_some();
+    let tipped = with_chip_tooltip_issue(loaded, chip_id, accent, issue, inner.padding([3, 12]).into());
+    edit_row_wrap_maybe_danger_text(tipped, accent, slot, leading, illegal)
 }
 
 /// One chip+code in the editor's right pane (the library / palette).
 /// Shows the chip's stats (element / code / ATK / MB, like the read-only
 /// list). The whole row is a click-to-add button that drops this
-/// chip+code into the folder; it's disabled (`addable == false`) when the
-/// folder is full or adding the chip would break the navi's folder limits.
+/// chip+code into the folder. A full folder disables it; a folder-limit
+/// violation only turns its text red and leaves it addable.
 fn library_entry_row<'a>(
     loaded: &'a OpenSave,
     chip_id: usize,
@@ -390,6 +458,7 @@ fn library_entry_row<'a>(
     code: crate::dataview::save::ChipCode,
     row_idx: usize,
     chips_have_mb: bool,
+    issue: Option<String>,
     addable: bool,
 ) -> Element<'a, Action> {
     use crate::widgets;
@@ -399,6 +468,7 @@ fn library_entry_row<'a>(
         info.as_ref().map(|i| i.dark()).unwrap_or(false),
     );
     let [element, atk, mb] = chip_stat_cells(loaded, chip_id, chips_have_mb);
+    let illegal = issue.is_some() && addable;
 
     let code_cell = container(text(code.to_string()).size(TEXT_BODY).font(iced::Font::MONOSPACE))
         .width(Length::Fixed(22.0))
@@ -421,12 +491,12 @@ fn library_entry_row<'a>(
     // padding of its own), so `list_item`'s zebra base paints the full
     // width behind it and the gutter stays tinted even when a chip has no
     // accent. Same composition as `edit_row_wrap` / `card_wrap`, so the
-    // library row isn't a bespoke wrapper. Disabled when not addable (no
-    // empty slot, or it would break the navi's folder limits). ChipCode is Copy.
+    // library row isn't a bespoke wrapper. Only a full folder disables it;
+    // folder-limit warnings keep the row clickable. ChipCode is Copy.
     let stripe: Element<'a, Action> = container(Space::new())
         .width(Length::Fixed(6.0))
         .height(Length::Fill)
-        .style(move |_t: &iced::Theme| container::Style {
+        .style(move |_theme: &iced::Theme| container::Style {
             background: accent.map(iced::Background::Color),
             ..Default::default()
         })
@@ -434,17 +504,18 @@ fn library_entry_row<'a>(
     let content = row![stripe, container(inner).width(Fill).padding([3, 12])]
         .height(Length::Shrink)
         .align_y(Alignment::Center);
-    let mut body = button(content)
-        .width(Fill)
-        .padding(0)
-        .style(widgets::list_item(false, row_idx));
+    let body = button(content).width(Fill).padding(0);
+    let mut body = if illegal {
+        body.style(widgets::danger_text_list_item(row_idx))
+    } else {
+        body.style(widgets::list_item(false, row_idx))
+    };
     if addable {
         body = body.on_press(Action::AddChip { chip_id, code });
     }
-    // Un-addable chips (folder full, or adding would break a folder limit)
-    // read as disabled: a translucent wash in the pane's background colour
-    // over the whole non-pressable row. The Stack takes the button's size,
-    // so the wash covers it exactly.
+    // A full folder has no slot to receive another chip. Restore the original
+    // disabled treatment: a translucent pane-coloured wash over the whole
+    // row, distinct from the red text used for advisory limit violations.
     let row_el: Element<'a, Action> = if addable {
         body.into()
     } else {
@@ -463,7 +534,49 @@ fn library_entry_row<'a>(
         ]
         .into()
     };
-    with_chip_tooltip(loaded, Some(chip_id), accent, row_el)
+    with_chip_tooltip_issue(loaded, Some(chip_id), accent, issue, row_el)
+}
+
+fn existing_violation_reason(lang: &LanguageIdentifier, violation: FolderLimitViolation) -> String {
+    match violation {
+        FolderLimitViolation::IllegalForGame => t!(lang, "folder-illegal-for-game"),
+        FolderLimitViolation::Copies { used, limit } => {
+            t!(lang, "folder-illegal-copies", used = used as i64, limit = limit as i64)
+        }
+        FolderLimitViolation::Navi { used, limit } => {
+            t!(lang, "folder-illegal-navi", used = used as i64, limit = limit as i64)
+        }
+        FolderLimitViolation::Mega { used, limit } => {
+            t!(lang, "folder-illegal-mega", used = used as i64, limit = limit as i64)
+        }
+        FolderLimitViolation::Giga { used, limit } => {
+            t!(lang, "folder-illegal-giga", used = used as i64, limit = limit as i64)
+        }
+        FolderLimitViolation::Dark { used, limit } => {
+            t!(lang, "folder-illegal-dark", used = used as i64, limit = limit as i64)
+        }
+    }
+}
+
+fn add_violation_reason(lang: &LanguageIdentifier, violation: FolderLimitViolation) -> String {
+    match violation {
+        FolderLimitViolation::IllegalForGame => t!(lang, "folder-illegal-for-game"),
+        FolderLimitViolation::Copies { limit, .. } => {
+            t!(lang, "folder-add-exceeds-copies", limit = limit as i64)
+        }
+        FolderLimitViolation::Navi { limit, .. } => {
+            t!(lang, "folder-add-exceeds-navi", limit = limit as i64)
+        }
+        FolderLimitViolation::Mega { limit, .. } => {
+            t!(lang, "folder-add-exceeds-mega", limit = limit as i64)
+        }
+        FolderLimitViolation::Giga { limit, .. } => {
+            t!(lang, "folder-add-exceeds-giga", limit = limit as i64)
+        }
+        FolderLimitViolation::Dark { limit, .. } => {
+            t!(lang, "folder-add-exceeds-dark", limit = limit as i64)
+        }
+    }
 }
 
 /// Localized label for a [`LibrarySort`] picker entry. A free function
@@ -487,7 +600,6 @@ fn sorted_library_entries(
 ) -> Vec<(usize, String, crate::dataview::save::ChipCode)> {
     use crate::dataview::save::ChipCode;
     let assets = loaded.assets.as_ref();
-    let chips_view = loaded.save.view_chips();
     struct E {
         id: usize,
         name: String,
@@ -498,25 +610,17 @@ fn sorted_library_entries(
     }
     let mut rows: Vec<E> = Vec::new();
     for id in 0..assets.num_chips() {
+        if !loaded.chip_is_legal(id) {
+            continue;
+        }
         let Some(info) = assets.chip(id) else { continue };
         let Some(name) = info.name() else { continue };
         let (atk, elem, mb) = (info.attack_power(), info.element(), info.mb());
-        // One row per valid code (e.g. Cannon A / Cannon B / Cannon *),
-        // but only for codes the player owns (pack count > 0). `variant`
-        // is the code's index within the chip's code list — the index the
-        // pack table is keyed by. Ids past the pack table (Program
-        // Advances, etc.) return `None` and are dropped. The editor only
-        // renders for games with a pack, so a missing count means "not
-        // owned", not "unsupported".
-        for (variant, ch) in info.codes().into_iter().enumerate() {
+        // One row per valid code (e.g. Cannon A / Cannon B / Cannon *).
+        // The game/patch legality ranges decide which chip ids are offered;
+        // inventory counts do not constrain the editor palette.
+        for ch in info.codes() {
             let Some(code) = ChipCode::from_char(ch) else { continue };
-            let owned = chips_view
-                .as_ref()
-                .and_then(|v| v.pack_count(id, variant))
-                .is_some_and(|c| c > 0);
-            if !owned {
-                continue;
-            }
             rows.push(E {
                 id,
                 name: name.clone(),
@@ -542,12 +646,10 @@ fn sorted_library_entries(
     rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
 }
 
-// The folder's legality rules — the 30-slot cap, the class/copy tallies,
-// and the whole-folder check that gates Save — live with the model, in
-// `tango_gamesupport::model::rules`: the apply path enforces the same ones, so
-// there is one copy of each. Re-exported under the old paths because
+// The folder's class/copy tallies and structured advisory answers live with
+// the model, in `tango_gamesupport::model::rules`. Re-exported here because
 // this is where the panes that render them look.
-pub use crate::model::rules::{folder_limits_satisfied, FolderUsage};
+pub use crate::model::rules::{FolderLimitViolation, FolderUsage};
 
 #[derive(Default)]
 pub struct GroupedChip {
@@ -757,7 +859,20 @@ pub fn chip_popover<'a, M: 'a>(
     description: Option<String>,
     accent: Option<iced::Color>,
 ) -> Element<'a, M> {
-    if description.is_none() && image_handle.is_none() {
+    chip_popover_with_issue(inner, image_handle, description, accent, None)
+}
+
+/// [`chip_popover`] with a compact legality panel below the normal
+/// artwork/description card. The warning is wrapped narrowly so it cannot
+/// stretch or rearrange the preview above it.
+pub fn chip_popover_with_issue<'a, M: 'a>(
+    inner: Element<'a, M>,
+    image_handle: Option<(u32, u32, iced_image::Handle)>,
+    description: Option<String>,
+    accent: Option<iced::Color>,
+    issue: Option<String>,
+) -> Element<'a, M> {
+    if description.is_none() && image_handle.is_none() && issue.is_none() {
         return inner;
     }
     let mut tip = column![].spacing(6);
@@ -778,6 +893,13 @@ pub fn chip_popover<'a, M: 'a>(
             tip = tip.push(text(line.to_string()).size(TEXT_CAPTION));
         }
     }
+    if let Some(issue) = issue {
+        let mut warning = column![].spacing(2);
+        for line in issue.lines().flat_map(wrap_issue_line) {
+            warning = warning.push(text(line).size(TEXT_CAPTION));
+        }
+        tip = tip.push(container(warning).padding([5, 7]).style(chip_issue_style));
+    }
     tooltip(
         inner,
         container(tip).padding(8).style(chip_tooltip_style(accent)),
@@ -787,6 +909,61 @@ pub fn chip_popover<'a, M: 'a>(
     .into()
 }
 
+/// Wrap one localized warning without forcing the tooltip to a fixed width.
+/// Each returned string is its own text widget, matching the authored-line
+/// treatment used by chip descriptions below.
+fn wrap_issue_line(line: &str) -> Vec<String> {
+    const MAX_CHARS: usize = 36;
+    let mut lines = vec![];
+    let mut current = String::new();
+    for word in line.split_whitespace() {
+        let word_len = word.chars().count();
+        if word_len > MAX_CHARS {
+            if !current.is_empty() {
+                lines.push(std::mem::take(&mut current));
+            }
+            // CJK sentences commonly contain no spaces. Chunk such a token by
+            // character so localized warnings keep the same compact panel.
+            let mut chars = word.chars().peekable();
+            while chars.peek().is_some() {
+                let chunk: String = chars.by_ref().take(MAX_CHARS).collect();
+                if chars.peek().is_some() {
+                    lines.push(chunk);
+                } else {
+                    current = chunk;
+                }
+            }
+            continue;
+        }
+        let joined_len = current.chars().count() + usize::from(!current.is_empty()) + word_len;
+        if !current.is_empty() && joined_len > MAX_CHARS {
+            lines.push(std::mem::take(&mut current));
+        }
+        if !current.is_empty() {
+            current.push(' ');
+        }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+/// A solid danger-red warning inset below the normal chip preview.
+fn chip_issue_style(theme: &iced::Theme) -> container::Style {
+    container::Style {
+        background: Some(iced::Background::Color(theme.palette().danger)),
+        text_color: Some(iced::Color::WHITE),
+        border: iced::Border {
+            radius: 3.0.into(),
+            width: 1.0,
+            color: iced::Color::from_rgba8(255, 255, 255, 0.25),
+        },
+        ..Default::default()
+    }
+}
+
 /// Wrap `inner` so hovering anywhere over it shows the chip's full
 /// image and description (the read-only list's chip popover). No-op
 /// when the chip has neither, or for an empty slot.
@@ -794,6 +971,19 @@ pub fn with_chip_tooltip<'a>(
     loaded: &'a OpenSave,
     chip_id: Option<usize>,
     accent: Option<iced::Color>,
+    inner: Element<'a, Action>,
+) -> Element<'a, Action> {
+    with_chip_tooltip_issue(loaded, chip_id, accent, None, inner)
+}
+
+/// [`with_chip_tooltip`] with a localized legality explanation prepended.
+/// Unlike the ordinary helper, an issue always produces a tooltip even when
+/// the chip has no artwork or description.
+pub fn with_chip_tooltip_issue<'a>(
+    loaded: &'a OpenSave,
+    chip_id: Option<usize>,
+    accent: Option<iced::Color>,
+    issue: Option<String>,
     inner: Element<'a, Action>,
 ) -> Element<'a, Action> {
     let Some(id) = chip_id else { return inner };
@@ -809,7 +999,7 @@ pub fn with_chip_tooltip<'a>(
     } else {
         loaded.chip_images.get(id).cloned().flatten()
     };
-    chip_popover(inner, image_handle, description, accent)
+    chip_popover_with_issue(inner, image_handle, description, accent, issue)
 }
 
 /// Element-icon / ATK / MB stat cells shared by both editor panes,

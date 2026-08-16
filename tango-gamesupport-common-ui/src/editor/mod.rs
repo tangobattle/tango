@@ -131,17 +131,12 @@ pub trait GameSaveEditor: Send + Sync {
         None
     }
 
-    /// Whether the edit session may commit right now. The default is the
-    /// Battle Network rule: a chip folder must be completely full and
-    /// inside its class/memory limits before it can be written back.
-    /// Games whose folder may legally have gaps (BCC's program deck)
-    /// override this.
+    /// Whether the edit session may commit right now. Battle Network folders
+    /// must be full and free of every problem called out by the editor. Games
+    /// whose folder-like structure follows different validity rules (BCC's
+    /// program deck) override this.
     fn can_save(&self, loaded: &OpenSave) -> bool {
-        let full = loaded.save.view_chips().is_none_or(|v| {
-            let folder = v.equipped_folder_index();
-            (0..v.folder_size()).all(|i| v.chip(folder, i).is_some())
-        });
-        full && crate::model::rules::folder_limits_satisfied(loaded)
+        crate::model::rules::folder_is_valid(loaded)
     }
 }
 

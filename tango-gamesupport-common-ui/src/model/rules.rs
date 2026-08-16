@@ -1,10 +1,10 @@
 //! The games' own limits on what a legal save looks like, and the
 //! tallies that answer them.
 //!
-//! These were scattered through the editors that render them, but they
-//! are rules rather than presentation — the apply path in [`crate::model::edit`]
-//! enforces exactly the same ones, and a second frontend needs them to
-//! grey out an un-addable chip just as this one does.
+//! These were scattered through the editors that render them, but their
+//! tallies are shared model logic. Some are hard guards in
+//! [`crate::model::edit`]; folder class/copy limits are advisory and let a
+//! frontend explain an illegal choice without blocking it.
 
 use crate::model::SaveModel;
 
@@ -15,11 +15,24 @@ pub const MAX_COPIES_PER_PART: usize = 9;
 /// Total MB budget across enabled PatchCard56s.
 pub const MAX_PATCH_CARD56_MB: u32 = 80;
 
+/// Why a chip either makes the current folder illegal or would cross a limit
+/// if added. The view turns these structured answers into localized hover
+/// text; the limit itself is advisory in the editor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderLimitViolation {
+    IllegalForGame,
+    Copies { used: usize, limit: usize },
+    Navi { used: usize, limit: usize },
+    Mega { used: usize, limit: usize },
+    Giga { used: usize, limit: usize },
+    Dark { used: usize, limit: usize },
+}
+
 /// Mega/Giga class usage and per-chip copies in one folder, used to honor
-/// the equipped navi's [`crate::dataview::save::FolderLimits`] both in an
-/// editor UI (greying out un-addable library chips) and in the apply path
-/// ([`crate::model::edit::apply_chip_edit`]). Built by scanning the folder's 30
-/// slots; cheap enough to rebuild per edit / per frame.
+/// the equipped navi's [`crate::dataview::save::FolderLimits`] both in the
+/// editor UI (red explanations on existing and would-be violations). Built by
+/// scanning the folder's 30 slots; cheap enough to rebuild per edit / per
+/// frame.
 pub struct FolderUsage {
     pub navi: usize,
     pub mega: usize,
@@ -68,38 +81,113 @@ impl FolderUsage {
         }
     }
 
-    /// Whether one more copy of `chip_id` fits under `limits` — the
-    /// per-chip copy cap plus the mega/giga class cap. The folder-full
-    /// (30-slot) check is separate. Unknown chips aren't blocked.
-    pub fn can_add(&self, save: &SaveModel, chip_id: usize, limits: &crate::dataview::save::FolderLimits) -> bool {
+    /// Which limit one more copy of `chip_id` would cross, or `None` when it
+    /// stays inside them. The folder-full check is separate. Unknown chips
+    /// have no warning.
+    pub fn add_violation(
+        &self,
+        save: &SaveModel,
+        chip_id: usize,
+        limits: &crate::dataview::save::FolderLimits,
+    ) -> Option<FolderLimitViolation> {
         use crate::dataview::rom::ChipClass;
+        if !save.chip_is_legal(chip_id) {
+            return Some(FolderLimitViolation::IllegalForGame);
+        }
         let Some(info) = save.assets.chip(chip_id) else {
-            return true;
+            return None;
         };
-        if self.copies.get(&chip_id).copied().unwrap_or(0) >= (limits.max_copies)(info.as_ref()) {
-            return false;
+        let copies = self.copies.get(&chip_id).copied().unwrap_or(0);
+        let copy_limit = (limits.max_copies)(info.as_ref());
+        if copies >= copy_limit {
+            return Some(FolderLimitViolation::Copies {
+                used: copies,
+                limit: copy_limit,
+            });
         }
         if info.dark() {
-            return limits.dark_limit.map(|limit| self.dark < limit).unwrap_or(true);
+            return limits
+                .dark_limit
+                .filter(|&limit| self.dark >= limit)
+                .map(|limit| FolderLimitViolation::Dark { used: self.dark, limit });
         }
         match info.class() {
-            ChipClass::Navi => limits.navi_limit.map(|limit| self.navi < limit).unwrap_or(true),
-            ChipClass::Mega => limits.mega_limit.map(|limit| self.mega < limit).unwrap_or(true),
-            ChipClass::Giga => limits.giga_limit.map(|limit| self.giga < limit).unwrap_or(true),
-            _ => true,
+            ChipClass::Navi => limits
+                .navi_limit
+                .filter(|&limit| self.navi >= limit)
+                .map(|limit| FolderLimitViolation::Navi { used: self.navi, limit }),
+            ChipClass::Mega => limits
+                .mega_limit
+                .filter(|&limit| self.mega >= limit)
+                .map(|limit| FolderLimitViolation::Mega { used: self.mega, limit }),
+            ChipClass::Giga => limits
+                .giga_limit
+                .filter(|&limit| self.giga >= limit)
+                .map(|limit| FolderLimitViolation::Giga { used: self.giga, limit }),
+            _ => None,
         }
+    }
+
+    /// Every folder limit the existing `chip_id` copies currently violate.
+    /// All equivalent copies/class members receive the same answer because no
+    /// one copy is intrinsically the illegal one; reordering the folder must
+    /// not move the warning to an arbitrary different chip.
+    pub fn violations_for_chip(
+        &self,
+        save: &SaveModel,
+        chip_id: usize,
+        limits: &crate::dataview::save::FolderLimits,
+    ) -> Vec<FolderLimitViolation> {
+        use crate::dataview::rom::ChipClass;
+        let mut violations = vec![];
+        if !save.chip_is_legal(chip_id) {
+            violations.push(FolderLimitViolation::IllegalForGame);
+        }
+        let Some(info) = save.assets.chip(chip_id) else {
+            return violations;
+        };
+        let copies = self.copies.get(&chip_id).copied().unwrap_or(0);
+        let copy_limit = (limits.max_copies)(info.as_ref());
+        if copies > copy_limit {
+            violations.push(FolderLimitViolation::Copies {
+                used: copies,
+                limit: copy_limit,
+            });
+        }
+        if info.dark() {
+            if let Some(limit) = limits.dark_limit.filter(|&limit| self.dark > limit) {
+                violations.push(FolderLimitViolation::Dark { used: self.dark, limit });
+            }
+            return violations;
+        }
+        let class_violation = match info.class() {
+            ChipClass::Navi => limits
+                .navi_limit
+                .filter(|&limit| self.navi > limit)
+                .map(|limit| FolderLimitViolation::Navi { used: self.navi, limit }),
+            ChipClass::Mega => limits
+                .mega_limit
+                .filter(|&limit| self.mega > limit)
+                .map(|limit| FolderLimitViolation::Mega { used: self.mega, limit }),
+            ChipClass::Giga => limits
+                .giga_limit
+                .filter(|&limit| self.giga > limit)
+                .map(|limit| FolderLimitViolation::Giga { used: self.giga, limit }),
+            _ => None,
+        };
+        if let Some(violation) = class_violation {
+            violations.push(violation);
+        }
+        violations
     }
 }
 
-/// Whether the equipped folder satisfies the navi's
-/// [`crate::dataview::save::FolderLimits`] — the mega/giga class caps, the
-/// per-chip copy cap, and Regular/Tag memory. `true` when the game defines
-/// no limits. Gates Save: a folder pane blocks *adding* a violation, but
-/// cross-tab edits can still leave an already-built folder illegal (e.g.
-/// pulling a MegFldr part on the Navi tab lowers the mega cap under the
-/// chips already in the folder), and a save edited elsewhere may arrive
-/// over a limit.
-pub fn folder_limits_satisfied(save: &SaveModel) -> bool {
+/// Whether the equipped Battle Network folder can be committed. A valid
+/// folder is full, contains only chips accepted by the effective game, stays
+/// within all copy/class limits, and keeps its Regular/Tag selections within
+/// their memory budgets. The editor may stage violations so the user can see
+/// and fix them; this is the final Save gate.
+pub fn folder_is_valid(save: &SaveModel) -> bool {
     let Some(view) = save.save.view_chips() else {
         return true;
     };
@@ -110,40 +198,31 @@ pub fn folder_limits_satisfied(save: &SaveModel) -> bool {
         .map(|nv| nv.folder_limits(&*save.assets))
         .unwrap_or_default();
     let usage = FolderUsage::scan(save, folder_idx);
-    if limits.navi_limit.map(|limit| usage.navi > limit).unwrap_or(false)
-        || limits.mega_limit.map(|limit| usage.mega > limit).unwrap_or(false)
-        || limits.giga_limit.map(|limit| usage.giga > limit).unwrap_or(false)
-        || limits.dark_limit.map(|limit| usage.dark > limit).unwrap_or(false)
-    {
-        return false;
-    }
-    // Per-chip copy cap.
-    for (&id, &count) in &usage.copies {
-        if let Some(chip) = save.assets.chip(id) {
-            if count > (limits.max_copies)(chip.as_ref()) {
-                return false;
-            }
+
+    // A Battle Network folder must be full, and every installed chip must be
+    // free of the same advisory violations painted red in the editor.
+    for slot in 0..view.folder_size() {
+        let Some(chip) = view.chip(folder_idx, slot) else {
+            return false;
+        };
+        if !usage.violations_for_chip(save, chip.id, &limits).is_empty() {
+            return false;
         }
     }
+
     let mb_of = |slot: usize| {
         view.chip(folder_idx, slot)
-            .and_then(|c| save.assets.chip(c.id))
-            .map_or(0u32, |c| c.mb() as u32)
+            .and_then(|chip| save.assets.chip(chip.id))
+            .map_or(0u32, |chip| chip.mb() as u32)
     };
-    // The Regular chip must fit Regular memory.
-    if let Some(cap) = limits.reg_memory {
-        if let Some(Some(reg)) = view.regular_chip_index(folder_idx) {
-            if mb_of(reg) > cap as u32 {
-                return false;
-            }
+    if let (Some(cap), Some(Some(regular))) = (limits.reg_memory, view.regular_chip_index(folder_idx)) {
+        if mb_of(regular) > cap as u32 {
+            return false;
         }
     }
-    // The Tag pair's combined MB must fit Tag memory.
-    if let Some(budget) = limits.tag_memory {
-        if let Some(Some([a, b])) = view.tag_chip_indexes(folder_idx) {
-            if mb_of(a) + mb_of(b) > budget {
-                return false;
-            }
+    if let (Some(budget), Some(Some([a, b]))) = (limits.tag_memory, view.tag_chip_indexes(folder_idx)) {
+        if mb_of(a) + mb_of(b) > budget {
+            return false;
         }
     }
     true

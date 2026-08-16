@@ -82,18 +82,16 @@ pub fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &O
     col.into()
 }
 
-/// The chips offered by the auto-battle-data editor's library, as chip
-/// ids: program advances and dark chips (always available to the deck)
-/// plus every other chip the player actually holds in their pack.
-/// Filtered by `filter` (case-insensitive name match) and in `sort`
-/// order. Ties fall back to id for a stable order. Stable sorts (Id /
-/// Name) keep a row in place while its count fields are edited; Used
-/// reorders as counts change.
+/// The chips offered by the auto-battle-data editor's library, as chip ids.
+/// Availability comes exclusively from the game's effective legal-chip
+/// ranges (including a patch override, when present). Filtered by `filter`
+/// (case-insensitive name match) and in `sort` order. Ties fall back to id for
+/// a stable order. Stable sorts (Id / Name) keep a row in place while its count
+/// fields are edited; Used reorders as counts change.
 fn sorted_auto_battle_data_chips(loaded: &OpenSave, sort: AutoBattleDataSort, filter: &str) -> Vec<usize> {
     use crate::dataview::rom::ChipClass as CC;
     let assets = loaded.assets.as_ref();
     let view = loaded.save.view_auto_battle_data();
-    let chips_view = loaded.save.view_chips();
     let filter = filter.to_lowercase();
     struct E {
         id: usize,
@@ -108,26 +106,12 @@ fn sorted_auto_battle_data_chips(loaded: &OpenSave, sort: AutoBattleDataSort, fi
         if !is_pa && !matches!(class, CC::Standard | CC::Mega | CC::Giga) {
             continue;
         }
+        if !loaded.chip_is_legal(id) {
+            continue;
+        }
         let Some(name) = info.name() else { continue };
         if name.trim().is_empty() {
             continue;
-        }
-        // Program advances are always offered, and so are dark chips:
-        // the games track their use counts even where the pack can never
-        // hold one (BN4 only ever offers dark chips in battle, but the
-        // dark soul plays back what you used). Every other chip must be
-        // in the player's pack (some code variant owned), matching the
-        // library editor's notion of "owned".
-        if !is_pa && !info.dark() {
-            let in_pack = (0..info.codes().len()).any(|variant| {
-                chips_view
-                    .as_ref()
-                    .and_then(|v| v.pack_count(id, variant))
-                    .is_some_and(|c| c > 0)
-            });
-            if !in_pack {
-                continue;
-            }
         }
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;

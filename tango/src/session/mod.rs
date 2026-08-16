@@ -1541,7 +1541,7 @@ pub async fn spawn_pvp(
             Some(crate::selection::AppliedPatch {
                 name: p.name.clone(),
                 version: p.version.clone(),
-                rom_overrides: version_meta.rom_overrides.clone(),
+                rom_overrides: version_meta.rom_overrides_for(remote_game),
             })
         });
         Some(crate::selection::from_patched_rom(
@@ -1571,7 +1571,7 @@ pub async fn spawn_pvp(
             Some(crate::selection::AppliedPatch {
                 name: name.clone(),
                 version: version.clone(),
-                rom_overrides: version_meta.rom_overrides.clone(),
+                rom_overrides: version_meta.rom_overrides_for(local_game),
             })
         });
         Some(crate::selection::from_patched_rom(

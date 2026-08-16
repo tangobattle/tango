@@ -2,7 +2,13 @@ pub(crate) mod ex_codes;
 mod msg;
 pub mod navicust;
 
+use tango_gamesupport_common_dataview::rom::LegalChips;
+
+const WHITE_LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[1..=301, 304..=308, 312..=312]);
+const BLUE_LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[1..=303, 309..=312]);
+
 pub struct Offsets {
+    legal_chips: LegalChips,
     chip_data: u32,
     chip_names_pointers: u32,
     chip_descriptions_pointers: u32,
@@ -21,6 +27,7 @@ const NAVICUST_BG_B: image::Rgba<u8> = image::Rgba([0x5a, 0x5a, 0x5a, 0xff]);
 
 #[rustfmt::skip]
 pub static A6BJ_01: Offsets = Offsets {
+    legal_chips:                    WHITE_LEGAL_CHIPS,
     chip_data:                      0x08011474,
     chip_names_pointers:            0x08027c34,
     chip_descriptions_pointers:     0x0800e3e8,
@@ -37,6 +44,7 @@ pub static A6BJ_01: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static A3XJ_01: Offsets = Offsets {
+    legal_chips:                    BLUE_LEGAL_CHIPS,
     chip_data:                      0x08011474,
     chip_names_pointers:            0x08027c1c,
     chip_descriptions_pointers:     0x0800e3e8,
@@ -53,6 +61,7 @@ pub static A3XJ_01: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static A6BE_00: Offsets = Offsets {
+    legal_chips:                    WHITE_LEGAL_CHIPS,
     chip_data:                      0x08011510,
     chip_names_pointers:            0x08027ad4,
     chip_descriptions_pointers:     0x0800e46c,
@@ -69,6 +78,7 @@ pub static A6BE_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static A3XE_00: Offsets = Offsets {
+    legal_chips:                    BLUE_LEGAL_CHIPS,
     chip_data:                      0x08011510,
     chip_names_pointers:            0x08027abc,
     chip_descriptions_pointers:     0x0800e46c,
@@ -499,6 +509,10 @@ pub(super) fn extra_ncp_color(id: u8) -> Option<tango_gamesupport_common_datavie
 }
 
 impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip_is_legal(&self, id: usize) -> bool {
+        self.offsets.legal_chips.contains(id)
+    }
+
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + 'a>> {
         if id >= self.num_chips() {
             return None;

@@ -24,6 +24,10 @@
 use byteorder::ByteOrder as _;
 
 use super::NUM_CHIPS;
+use tango_gamesupport_common_dataview::rom::LegalChips;
+
+// The bundled blank starter template has no nonzero pack counts.
+const LEGAL_CHIPS: LegalChips = LegalChips::NONE;
 
 /// The character sets, indexed by character code — one font per region.
 ///
@@ -90,6 +94,7 @@ const ICON_PALETTES_BEFORE_SHEET: u32 = 0xa0;
 
 #[derive(Clone, Copy)]
 pub struct Offsets {
+    legal_chips: LegalChips,
     /// The chip stats table: `[u16; 8]` per id — max HP at +0x00, price
     /// at +0x02, attack power at +0x04, MB at +0x06, a kind word at
     /// +0x08, the library's display order in the byte at +0x0e and the
@@ -133,6 +138,7 @@ pub struct Offsets {
 
 #[rustfmt::skip]
 pub static A89E_00: Offsets = Offsets {
+    legal_chips:                 LEGAL_CHIPS,
     chip_data:                  0x0822740c,
     chip_names_pointer:         0x080246bc,
     chip_descriptions_pointer:  0x080246f4,
@@ -145,6 +151,7 @@ pub static A89E_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static A89J_00: Offsets = Offsets {
+    legal_chips:                 LEGAL_CHIPS,
     chip_data:                  0x082a1ae0,
     chip_names_pointer:         0x08024420,
     chip_descriptions_pointer:  0x08024458,
@@ -225,6 +232,10 @@ impl Assets {
 
 
 impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip_is_legal(&self, id: usize) -> bool {
+        self.offsets.legal_chips.contains(id)
+    }
+
     fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         Some(Box::new(self.chip_info(id)?))
     }

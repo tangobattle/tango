@@ -8200,7 +8200,7 @@ dependencies = [
 [[package]]
 name = "tango-patch"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/tango-patch#83df43d0f456ef2eadfa85546f831dc316dc46ca"
+source = "git+https://github.com/tangobattle/tango-patch#2c0e2eec89d7b681ae9160fd1af9767d7e4816c1"
 dependencies = [
  "semver",
  "serde",

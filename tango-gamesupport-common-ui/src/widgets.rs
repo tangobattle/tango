@@ -42,3 +42,14 @@ pub fn zebra_row(idx: usize) -> impl Fn(&Theme) -> iced::widget::container::Styl
     }
 }
 
+/// Normal library-row chrome with danger-red text for over-limit chips that
+/// remain pressable. Full-folder choices use the separate disabled gray wash.
+pub fn danger_text_list_item(
+    idx: usize,
+) -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style {
+    move |theme: &Theme, status: iced::widget::button::Status| {
+        let mut style = tango_ui::widgets::list_item(false, idx)(theme, status);
+        style.text_color = theme.palette().danger;
+        style
+    }
+}

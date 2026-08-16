@@ -6,7 +6,15 @@ pub use patch_cards::{
     PatchCard4Shot, PatchCard4Soul,
 };
 
+use tango_gamesupport_common_dataview::rom::LegalChips;
+
+const RED_SUN_LEGAL_CHIPS: LegalChips =
+    LegalChips::from_ranges(&[1..=186, 201..=280, 301..=301, 304..=304, 307..=308, 310..=312]);
+const BLUE_MOON_LEGAL_CHIPS: LegalChips =
+    LegalChips::from_ranges(&[1..=186, 201..=280, 302..=303, 305..=306, 309..=309, 311..=312]);
+
 pub struct Offsets {
+    legal_chips: LegalChips,
     chip_data: u32,
     chip_names_pointers: u32,
     chip_descriptions_pointers: u32,
@@ -25,6 +33,7 @@ const NAVICUST_BG_BM: image::Rgba<u8> = image::Rgba([0x52, 0x10, 0xad, 0xff]);
 
 #[rustfmt::skip]
 pub static B4WJ_01: Offsets = Offsets {
+    legal_chips:                    RED_SUN_LEGAL_CHIPS,
     chip_data:                      0x0801972c,
     chip_names_pointers:            0x0804fa6c,
     chip_descriptions_pointers:     0x0801fd20,
@@ -41,6 +50,7 @@ pub static B4WJ_01: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static B4BJ_01: Offsets = Offsets {
+    legal_chips:                    BLUE_MOON_LEGAL_CHIPS,
     chip_data:                      0x0801972c,
     chip_names_pointers:            0x0804fa78,
     chip_descriptions_pointers:     0x0801fd20,
@@ -57,6 +67,7 @@ pub static B4BJ_01: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static B4WE_00: Offsets = Offsets {
+    legal_chips:                    RED_SUN_LEGAL_CHIPS,
     chip_data:                      0x080197ec,
     chip_names_pointers:            0x0804fb74,
     chip_descriptions_pointers:     0x0801fde0,
@@ -73,6 +84,7 @@ pub static B4WE_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static B4BE_00: Offsets = Offsets {
+    legal_chips:                    BLUE_MOON_LEGAL_CHIPS,
     chip_data:                      0x080197ec,
     chip_names_pointers:            0x0804fb80,
     chip_descriptions_pointers:     0x0801fde0,
@@ -531,6 +543,10 @@ impl Assets {
 }
 
 impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip_is_legal(&self, id: usize) -> bool {
+        self.offsets.legal_chips.contains(id)
+    }
+
     fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;

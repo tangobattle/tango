@@ -1,7 +1,22 @@
 mod msg;
 pub mod navicust;
 
+use tango_gamesupport_common_dataview::rom::LegalChips;
+
+const PROTOMAN_LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[
+    1..=180,
+    187..=198,
+    201..=280,
+    301..=303,
+    307..=308,
+    311..=312,
+    314..=314,
+]);
+const COLONEL_LEGAL_CHIPS: LegalChips =
+    LegalChips::from_ranges(&[1..=180, 187..=198, 201..=280, 304..=306, 309..=313]);
+
 pub struct Offsets {
+    legal_chips: LegalChips,
     chip_data: u32,
     chip_names_pointers: u32,
     chip_descriptions_pointers: u32,
@@ -35,6 +50,7 @@ const NAVI_ORDER_TOC: &[&[usize]] = &[&[0, 7, 8, 9, 10, 11, 12]];
 
 #[rustfmt::skip]
 pub static BRBJ_00: Offsets = Offsets {
+    legal_chips:                    PROTOMAN_LEGAL_CHIPS,
     chip_data:                            0x0801e1d0,
     chip_names_pointers:                  0x08040a68,
     chip_descriptions_pointers:           0x08023afc,
@@ -58,6 +74,7 @@ pub static BRBJ_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static BRKJ_00: Offsets = Offsets {
+    legal_chips:                    COLONEL_LEGAL_CHIPS,
     chip_data:                            0x0801e1cc,
     chip_names_pointers:                  0x08040a70,
     chip_descriptions_pointers:           0x08023af8,
@@ -81,6 +98,7 @@ pub static BRKJ_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static BRBE_00: Offsets = Offsets {
+    legal_chips:                    PROTOMAN_LEGAL_CHIPS,
     chip_data:                            0x0801e214,
     chip_names_pointers:                  0x08040b84,
     chip_descriptions_pointers:           0x08023b40,
@@ -104,6 +122,7 @@ pub static BRBE_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static BRKE_00: Offsets = Offsets {
+    legal_chips:                    COLONEL_LEGAL_CHIPS,
     chip_data:                            0x0801e210,
     chip_names_pointers:                  0x08040b8c,
     chip_descriptions_pointers:           0x08023b3c,
@@ -842,6 +861,10 @@ impl<'a> tango_gamesupport_common_dataview::rom::Navi for Navi<'a> {
 }
 
 impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip_is_legal(&self, id: usize) -> bool {
+        self.offsets.legal_chips.contains(id)
+    }
+
     fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;

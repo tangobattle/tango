@@ -212,21 +212,10 @@ pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
         None => return,
     };
 
-    // Guards that read the ROM assets (and FolderUsage, which scans all of
-    // `save`), resolved before the mutable chips view is taken.
+    // Guards that read the ROM assets, resolved before the mutable chips view
+    // is taken. Folder class/copy limits are intentionally not guards: the
+    // editor warns about them but still permits the addition.
     match &edit {
-        ChipEdit::AddChip { chip_id, .. } => {
-            // Enforce the equipped navi's folder limits (mega/giga class
-            // caps + the per-chip copy cap).
-            let limits = save
-                .save
-                .view_navi()
-                .map(|nv| nv.folder_limits(&*save.assets))
-                .unwrap_or_default();
-            if !crate::model::rules::FolderUsage::scan(save, folder_idx).can_add(save, *chip_id, &limits) {
-                return;
-            }
-        }
         ChipEdit::ToggleRegular { slot } => {
             // Setting a new Regular requires its MB to fit Regular memory
             // (the editor greys the toggle out otherwise). Clearing is free.

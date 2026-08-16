@@ -1,6 +1,11 @@
 mod msg;
 
+use tango_gamesupport_common_dataview::rom::LegalChips;
+
+const LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[1..=265, 270..=270]);
+
 pub struct Offsets {
+    legal_chips: LegalChips,
     chip_data: u32,
     chip_names_pointers: u32,
     chip_descriptions_pointers: u32,
@@ -12,6 +17,7 @@ pub struct Offsets {
 
 #[rustfmt::skip]
 pub static AE2E_00: Offsets = Offsets {
+    legal_chips:                    LEGAL_CHIPS,
     chip_data:                      0x0800e450,
     chip_names_pointers:            0x0800b528,
     chip_descriptions_pointers:     0x08026df4,
@@ -23,6 +29,7 @@ pub static AE2E_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static AE2J_00_AC: Offsets = Offsets {
+    legal_chips:                    LEGAL_CHIPS,
     chip_data:                      0x0800e2fc,
     chip_names_pointers:            0x0800b528,
     chip_descriptions_pointers:     0x0800affc,
@@ -297,6 +304,10 @@ pub(crate) fn style_type(id: u8) -> StyleType {
 }
 
 impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip_is_legal(&self, id: usize) -> bool {
+        self.offsets.legal_chips.contains(id)
+    }
+
     fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;

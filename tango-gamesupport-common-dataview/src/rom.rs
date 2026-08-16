@@ -1,5 +1,44 @@
 use byteorder::ReadBytesExt;
 
+/// The chip ids a ROM's chip table accepts. These sets are hardcoded from
+/// the nonzero pack counts in the corresponding bundled save templates.
+#[derive(Clone, Copy, Debug)]
+pub struct LegalChips {
+    ranges: &'static [std::ops::RangeInclusive<usize>],
+}
+
+impl LegalChips {
+    pub const NONE: Self = Self { ranges: &[] };
+
+    /// Build a hardcoded, non-contiguous set. Inclusive ranges keep long runs
+    /// and isolated chips readable.
+    pub const fn from_ranges(ranges: &'static [std::ops::RangeInclusive<usize>]) -> Self {
+        Self { ranges }
+    }
+
+    pub fn contains(self, chip_id: usize) -> bool {
+        self.ranges.iter().any(|range| range.contains(&chip_id))
+    }
+}
+
+#[cfg(test)]
+mod legal_chips_tests {
+    use super::LegalChips;
+
+    #[test]
+    fn ranges_are_non_contiguous_and_have_no_implicit_tail() {
+        let legal = LegalChips::from_ranges(&[1..=3, 7..=7]);
+        assert!(!legal.contains(0));
+        assert!(legal.contains(1));
+        assert!(legal.contains(3));
+        assert!(!legal.contains(4));
+        assert!(legal.contains(7));
+        assert!(!legal.contains(9));
+        assert!(!legal.contains(10));
+        assert!(!legal.contains(100));
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChipClass {
     Standard,
@@ -174,6 +213,13 @@ pub struct NavicustLayout {
 /// game without chips (or without anything at all) doesn't stub out
 /// tables that were never its vocabulary.
 pub trait Assets: crate::save::AsAny {
+    /// Chip legality for this exact ROM. Implementations return statically
+    /// extracted ranges; this never depends on the opened save's inventory.
+    fn chip_is_legal(&self, id: usize) -> bool {
+        let _ = id;
+        false
+    }
+
     fn chip(&self, id: usize) -> Option<Box<dyn Chip + '_>> {
         let _ = id;
         None

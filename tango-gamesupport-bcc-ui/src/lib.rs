@@ -58,9 +58,8 @@ impl GameSaveEditor for Ui {
         }
     }
 
-    /// A program deck may legally have empty slots — unlike a BN folder,
-    /// which must be full to be written back — so the edit session can
-    /// always commit.
+    /// A program deck may legally have empty slots, so the Battle Network
+    /// folder-full rule does not apply.
     fn can_save(&self, _loaded: &OpenSave) -> bool {
         true
     }

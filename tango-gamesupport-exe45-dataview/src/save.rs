@@ -169,7 +169,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     }
 
     fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
-        if id >= super::NUM_PACK_CHIPS {
+        if id >= super::NUM_PACK_CHIPS || variant >= 4 {
             return None;
         }
         // counts-first record: buf[base + id*0xc + variant], variant = code position.
@@ -239,7 +239,7 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
     }
 
     fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
-        if id >= super::NUM_PACK_CHIPS {
+        if id >= super::NUM_PACK_CHIPS || variant >= 4 {
             return false;
         }
         if let Some(b) = self.save.buf.get_mut(0x52c8 + id * 0xc + variant) {

@@ -144,7 +144,7 @@ impl<S: std::ops::Deref<Target = Save>> save::ChipsView for ChipsView<S> {
     }
 
     fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
-        if id >= super::NUM_PACK_CHIPS {
+        if id >= super::NUM_PACK_CHIPS || variant >= 5 {
             return None;
         }
         // counts-first record: buf[base + id*0x10 + variant], variant = code position.
@@ -185,7 +185,7 @@ impl<S: std::ops::DerefMut<Target = Save>> save::ChipsViewMut for ChipsView<S> {
     }
 
     fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
-        if id >= super::NUM_PACK_CHIPS {
+        if id >= super::NUM_PACK_CHIPS || variant >= 5 {
             return false;
         }
         if let Some(b) = self.save.buf.get_mut(0x04a0 + id * 0x10 + variant) {

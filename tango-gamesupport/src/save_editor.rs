@@ -13,8 +13,8 @@
 use unic_langid::LanguageIdentifier;
 
 /// A patch applied on top of a ROM, as the save UI needs to know it:
-/// its identity plus the `[rom_overrides]` scanned from its package
-/// (charset + display-name overrides).
+/// its identity plus the exact ROM's object from `[rom_overrides]`
+/// (charset, display-name, and chip-legality overrides).
 #[derive(Clone)]
 pub struct AppliedPatch {
     pub name: String,

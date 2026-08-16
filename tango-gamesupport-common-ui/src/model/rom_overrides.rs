@@ -153,6 +153,14 @@ impl<'a> crate::dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
 }
 
 impl crate::dataview::rom::Assets for OverridenAssets {
+    fn chip_is_legal(&self, id: usize) -> bool {
+        chip_is_legal_with_override(
+            self.assets.chip_is_legal(id),
+            self.overrides.legal_chip_ranges.as_deref(),
+            id,
+        )
+    }
+
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::dataview::rom::Chip + 'a>> {
         self.assets.chip(id).map(|chip| {
             Box::new(OverridenChip {
@@ -221,5 +229,24 @@ impl crate::dataview::rom::Assets for OverridenAssets {
         // entities live on the shared trait, so skipping this layer
         // loses nothing a patch could have overridden.
         self.assets.underlying_any()
+    }
+}
+
+fn chip_is_legal_with_override(base_legal: bool, ranges: Option<&[[usize; 2]]>, id: usize) -> bool {
+    ranges.map_or(base_legal, |ranges| {
+        ranges.iter().any(|[start, end]| *start <= id && id <= *end)
+    })
+}
+
+#[cfg(test)]
+mod legal_chip_tests {
+    use super::chip_is_legal_with_override;
+
+    #[test]
+    fn patch_ranges_replace_the_base_answer_including_when_empty() {
+        assert!(chip_is_legal_with_override(true, None, 2));
+        assert!(!chip_is_legal_with_override(true, Some(&[[7, 9]]), 2));
+        assert!(chip_is_legal_with_override(false, Some(&[[7, 9]]), 8));
+        assert!(!chip_is_legal_with_override(true, Some(&[]), 2));
     }
 }

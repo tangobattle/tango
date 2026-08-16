@@ -61,8 +61,11 @@ static BN5DS_LOGO: LazyImage = LazyLock::new(|| image::load_from_memory(include_
 /// cap, no HP docked), and "dark" is the same cart with every file
 /// turned the way the GBA dark templates read — karma 0, and the three
 /// HP-loss battles their MegaMan carries.
-static BN5DS_LIGHT: LazyLock<dataview::save::Save> =
-    LazyLock::new(|| dataview::save::SaveSet::parse(include_bytes!("saves/us.raw")).unwrap().current());
+static BN5DS_LIGHT: LazyLock<dataview::save::Save> = LazyLock::new(|| {
+    dataview::save::SaveSet::parse(include_bytes!("saves/us.raw"))
+        .unwrap()
+        .current()
+});
 static BN5DS_DARK: LazyLock<dataview::save::Save> = LazyLock::new(|| {
     use tango_gamesupport_common_dataview::save::Save as _;
     let mut data = include_bytes!("saves/us.raw").to_vec();

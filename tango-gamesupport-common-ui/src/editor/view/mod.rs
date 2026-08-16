@@ -1046,14 +1046,12 @@ pub fn view<'a>(
 /// The global edit mode's Save / Cancel pair, shown at the navi
 /// header's right edge while edit mode is on (or sliding out). One
 /// pair for the whole save: they commit / discard the edits on *all*
-/// tabs at once. Save is gated on a legal folder when chips are
-/// editable — a full 30 chips with no folder-limit violations (an
-/// incomplete or over-limit folder can't be written over the
-/// save); navicust / patch-card layouts are always valid to write.
+/// tabs at once. A Battle Network folder must be full and have no red
+/// legality warnings before Save is enabled.
 fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element<'a, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
-    let can_save = !loaded.editability.folder || loaded.save_editor.can_save(loaded);
+    let can_save = loaded.save_editor.can_save(loaded);
     row![
         widgets::labeled_icon_button(
             Icon::X,
@@ -1158,10 +1156,22 @@ pub fn edit_row_wrap<'a>(
     row_idx: usize,
     leading: Option<Element<'a, Action>>,
 ) -> Element<'a, Action> {
+    edit_row_wrap_maybe_danger_text(inner, accent, row_idx, leading, false)
+}
+
+/// [`edit_row_wrap`] with optional danger-red text. The zebra background and
+/// chip-class stripe remain unchanged.
+pub fn edit_row_wrap_maybe_danger_text<'a>(
+    inner: Element<'a, Action>,
+    accent: Option<iced::Color>,
+    row_idx: usize,
+    leading: Option<Element<'a, Action>>,
+    danger: bool,
+) -> Element<'a, Action> {
     let stripe: Element<'a, Action> = container(Space::new())
         .width(Length::Fixed(6.0))
         .height(Length::Fill)
-        .style(move |_t: &iced::Theme| container::Style {
+        .style(move |_theme: &iced::Theme| container::Style {
             background: accent.map(iced::Background::Color),
             ..Default::default()
         })
@@ -1175,7 +1185,13 @@ pub fn edit_row_wrap<'a>(
     r = r.push(stripe).push(container(inner).width(Fill));
     container(r)
         .width(Fill)
-        .style(crate::widgets::zebra_row(row_idx))
+        .style(move |theme: &iced::Theme| {
+            let mut style = crate::widgets::zebra_row(row_idx)(theme);
+            if danger {
+                style.text_color = Some(theme.palette().danger);
+            }
+            style
+        })
         .into()
 }
 
@@ -2026,16 +2042,4 @@ pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts:
 /// or `None` for tabs without an image form.
 pub fn tab_as_image(tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
     loaded.save_editor.tab_as_image(tab, loaded)
-}
-
-/// The Battle Network folder commit rule, for the per-game `can_save`
-/// impls: a chip folder must be completely full and inside its
-/// class/memory limits before it can be written back. (BCC's program
-/// deck legally has gaps, so it answers `true` itself.)
-pub fn bn_folder_can_save(loaded: &OpenSave) -> bool {
-    let full = loaded.save.view_chips().is_none_or(|v| {
-        let folder = v.equipped_folder_index();
-        (0..v.folder_size()).all(|i| v.chip(folder, i).is_some())
-    });
-    full && crate::model::rules::folder_limits_satisfied(loaded)
 }

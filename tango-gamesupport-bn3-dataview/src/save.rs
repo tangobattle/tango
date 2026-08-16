@@ -187,7 +187,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     }
 
     fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
-        if id >= super::NUM_PACK_CHIPS {
+        if id >= super::NUM_PACK_CHIPS || variant >= 6 {
             return None;
         }
         // counts-first record: buf[base + id*0x12 + variant], variant = code position.
@@ -252,7 +252,7 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
     }
 
     fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
-        if id >= super::NUM_PACK_CHIPS {
+        if id >= super::NUM_PACK_CHIPS || variant >= 6 {
             return false;
         }
         if let Some(b) = self.save.buf.get_mut(0x1f60 + id * 0x12 + variant) {
@@ -317,10 +317,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     }
 
     fn materialized(&self) -> tango_gamesupport_common_dataview::navicust::MaterializedNavicust {
-        tango_gamesupport_common_dataview::navicust::materialized_from_wram(
-            &self.save.buf[0x1d90..][..(5 * 5)],
-            [5, 5],
-        )
+        tango_gamesupport_common_dataview::navicust::materialized_from_wram(&self.save.buf[0x1d90..][..(5 * 5)], [5, 5])
     }
 
     fn navicust_color_bar(&self) -> Vec<Option<tango_gamesupport_common_dataview::rom::NavicustPartColor>> {

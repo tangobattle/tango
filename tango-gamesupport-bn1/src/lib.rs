@@ -18,7 +18,6 @@ const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol1,
     tga: "01.tga",
 };
-
 // ---------------- EXE1 JP (AREJ_00) ----------------
 /// Every cartridge in this family, as its ROM header names it.
 ///

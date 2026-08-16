@@ -34,7 +34,7 @@ pub fn build(
                     Some(AppliedPatch {
                         name,
                         version,
-                        rom_overrides: meta.rom_overrides.clone(),
+                        rom_overrides: meta.rom_overrides_for(game),
                     }),
                 ),
                 Err(e) => {

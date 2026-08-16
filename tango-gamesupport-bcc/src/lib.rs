@@ -23,7 +23,6 @@ const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol1,
     tga: "04.tga",
 };
-
 /// The bundled starter save. BCC's payload carries no region marker and
 /// both games read each other's saves, so one template serves both.
 /// Every cartridge in this family, as its ROM header names it.
@@ -40,12 +39,8 @@ static ENGINE_PVP_A89J_00: tango_backend_mgba::GbaBackend =
 
 static SAVE: LazyLock<dataview::save::Save> =
     LazyLock::new(|| dataview::save::Save::from_wram(include_bytes!("saves/default.raw")).unwrap());
-static TEMPLATES: SaveTemplates = LazyLock::new(|| {
-    vec![(
-        "",
-        tango_gamesupport_common_dataview::wrap_save(Box::new(SAVE.clone())),
-    )]
-});
+static TEMPLATES: SaveTemplates =
+    LazyLock::new(|| vec![("", tango_gamesupport_common_dataview::wrap_save(Box::new(SAVE.clone())))]);
 
 fn parse_save(data: &[u8]) -> Result<tango_gamesupport::BoxedSave, Error> {
     Ok(tango_gamesupport_common_dataview::wrap_save(Box::new(

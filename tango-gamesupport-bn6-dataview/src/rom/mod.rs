@@ -1,7 +1,21 @@
 mod msg;
 pub mod navicust;
 
+use tango_gamesupport_common_dataview::rom::LegalChips;
+
+// Statically extracted by taking every id with a nonzero pack count in the
+// corresponding bundled save template. The editor never reads the pack.
+const EXE6_GREGAR_LEGAL_CHIPS: LegalChips =
+    LegalChips::from_ranges(&[1..=202, 221..=280, 301..=305, 311..=312]);
+const EXE6_FALZAR_LEGAL_CHIPS: LegalChips =
+    LegalChips::from_ranges(&[1..=202, 221..=280, 306..=311, 313..=313]);
+const BN6_GREGAR_LEGAL_CHIPS: LegalChips =
+    LegalChips::from_ranges(&[1..=17, 19..=152, 154..=202, 221..=274, 301..=305]);
+const BN6_FALZAR_LEGAL_CHIPS: LegalChips =
+    LegalChips::from_ranges(&[1..=17, 19..=152, 154..=202, 221..=274, 306..=310]);
+
 pub struct Offsets {
+    legal_chips: LegalChips,
     chip_data: u32,
     chip_names_pointers: u32,
     chip_descriptions_pointers: u32,
@@ -35,6 +49,7 @@ const NAVI_ORDER_F: &[&[usize]] = &[&[0, 6, 7, 8, 9, 10, 11]];
 
 #[rustfmt::skip]
 pub static BR5J_00: Offsets = Offsets {
+    legal_chips:                    EXE6_GREGAR_LEGAL_CHIPS,
     chip_data:                            0x080221bc,
     chip_names_pointers:                  0x08043274,
     chip_descriptions_pointers:           0x08028164,
@@ -59,6 +74,7 @@ pub static BR5J_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static BR6J_00: Offsets = Offsets {
+    legal_chips:                    EXE6_FALZAR_LEGAL_CHIPS,
     chip_data:                            0x080221bc,
     chip_names_pointers:                  0x080432a4,
     chip_descriptions_pointers:           0x08028164,
@@ -83,6 +99,7 @@ pub static BR6J_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static BR5E_00: Offsets = Offsets {
+    legal_chips:                    BN6_GREGAR_LEGAL_CHIPS,
     chip_data:                            0x08021da8,
     chip_names_pointers:                  0x08042038,
     chip_descriptions_pointers:           0x08027d50,
@@ -107,6 +124,7 @@ pub static BR5E_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static BR6E_00: Offsets = Offsets {
+    legal_chips:                    BN6_FALZAR_LEGAL_CHIPS,
     chip_data:                            0x08021da8,
     chip_names_pointers:                  0x08042068,
     chip_descriptions_pointers:           0x08027d50,
@@ -836,6 +854,10 @@ impl<'a> tango_gamesupport_common_dataview::rom::Navi for Navi<'a> {
 }
 
 impl tango_gamesupport_common_dataview::rom::Assets for Assets {
+    fn chip_is_legal(&self, id: usize) -> bool {
+        self.offsets.legal_chips.contains(id)
+    }
+
     fn chip(&self, id: usize) -> Option<Box<dyn tango_gamesupport_common_dataview::rom::Chip + '_>> {
         if id >= self.num_chips() {
             return None;
@@ -913,6 +935,24 @@ impl tango_gamesupport_common_dataview::rom::Assets for Assets {
 
     fn navi_order(&self) -> &[&[usize]] {
         self.offsets.navi_order
+    }
+}
+
+#[cfg(test)]
+mod legal_chip_tests {
+    use super::*;
+
+    #[test]
+    fn legality_follows_the_exact_rom_offsets() {
+        assert!(BR5J_00.legal_chips.contains(312));
+        assert!(!BR5J_00.legal_chips.contains(313));
+        assert!(!BR6J_00.legal_chips.contains(312));
+        assert!(BR6J_00.legal_chips.contains(313));
+
+        assert!(!BR5E_00.legal_chips.contains(18));
+        assert!(!BR5E_00.legal_chips.contains(275));
+        assert!(BR5E_00.legal_chips.contains(305));
+        assert!(!BR6E_00.legal_chips.contains(311));
     }
 }
 

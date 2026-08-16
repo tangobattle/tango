@@ -7,8 +7,8 @@
 //! The cart's folder rules come with it: five copies of any one chip
 //! and five navi chips, which the save reports as its navi's
 //! [`FolderLimits`] and the shared editor enforces the way it does
-//! every other game's — greying a library chip out at the cap, and
-//! holding Save shut on a folder that is over one.
+//! every other game's — marking chip text red at and beyond the cap
+//! while still allowing the player to add and save those chips.
 //!
 //! [`FolderLimits`]: tango_gamesupport_common_dataview::save::FolderLimits
 
