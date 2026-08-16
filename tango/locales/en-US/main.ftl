@@ -121,6 +121,9 @@ lobby-blind-self-on = You are hiding your setup.
 session-opponent = Opponent setup
 session-self = My setup
 session-back-to-session = Back to session
+session-build-warning-title = Opponent has an invalid setup
+session-build-warning-detail = The match will continue. The following legality checks failed:
+session-build-warning-dismiss = Dismiss setup warning
 # PvP telemetry deck cell tooltips
 session-stat-tps = Tick/s (current/max)
 session-stat-skew = Skew

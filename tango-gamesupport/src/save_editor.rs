@@ -30,6 +30,89 @@ pub struct ChipDisplay {
     pub icon: Option<iced::widget::image::Handle>,
 }
 
+/// One chip implicated in a PvP build violation. Names are resolved while the
+/// save's patched ROM assets are available; `id` remains as a stable fallback
+/// for games or patches that do not publish one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildChip {
+    pub id: usize,
+    pub code: String,
+    pub name: Option<String>,
+}
+
+/// The legality rule violated by one chip slot. This enum is intentionally
+/// chip-specific: future NaviCust, Patch Card, or other subject types get
+/// their own kind enums rather than being attached to [`BuildViolation::Chip`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildViolationKind {
+    ChipIllegalForGame,
+    TooManyCopiesOfChip { used: usize, limit: usize },
+    TooManyNaviChips { used: usize, limit: usize },
+    TooManyMegaChips { used: usize, limit: usize },
+    TooManyGigaChips { used: usize, limit: usize },
+    TooManyDarkChips { used: usize, limit: usize },
+    RegularChipExceedsMemory { used: u32, limit: u32 },
+    TagChipsExceedMemory { used: u32, limit: u32 },
+}
+
+/// One raw legality problem in a PvP build. Subject-specific violations are
+/// returned at their source granularity; presentation layers may group them.
+/// Top-level rules remain separate variants. Future non-chip subjects add a
+/// new variant with their own typed subject and kind.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuildViolation {
+    FolderNotFull {
+        used: usize,
+        required: usize,
+    },
+    Chip {
+        slot: usize,
+        chip: BuildChip,
+        kind: BuildViolationKind,
+    },
+}
+
+/// Structured, still-unlocalized input for a view-time violation formatter.
+/// The PvP view may group raw slot violations before submitting them here.
+pub enum BuildViolationFormat<'a> {
+    FolderNotFull {
+        used: usize,
+        required: usize,
+    },
+    Chips {
+        chips: &'a [&'a BuildChip],
+        kind: BuildViolationKind,
+    },
+}
+
+/// A formatter supplied by the opaque save-editor implementation. Keeping a
+/// function pointer lets a blinded opponent's loaded save be discarded while
+/// the session view still formats its structured violations in the current UI
+/// language on every frame.
+pub type BuildViolationFormatter = for<'a> fn(&LanguageIdentifier, BuildViolationFormat<'a>) -> String;
+
+/// Legality of the exact save committed to a PvP match. There is deliberately
+/// no "unknown" state: failure to parse or load a committed save is a session
+/// construction error, while every successfully loaded save is checked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuildValidity {
+    Valid,
+    Invalid(Vec<BuildViolation>),
+}
+
+impl BuildValidity {
+    pub fn is_valid(&self) -> bool {
+        matches!(self, Self::Valid)
+    }
+
+    pub fn violations(&self) -> &[BuildViolation] {
+        match self {
+            Self::Valid => &[],
+            Self::Invalid(violations) => violations,
+        }
+    }
+}
+
 /// A message minted inside the save-editor view. Implemented (and
 /// consumed) only by the private UI layer; the app routes
 /// `Arc<dyn SaveEditorMessage>` through its message enums without looking
@@ -148,6 +231,15 @@ pub trait SaveEditor: Send + Sync {
     /// Serialize the current in-memory save (staged edits included) —
     /// what a netplay commitment or session launch runs on.
     fn sram(&self, data: &LoadedSave) -> Vec<u8>;
+
+    /// Validate the exact in-memory build represented by `data`, returning
+    /// structured violations suitable for an in-match advisory warning.
+    fn build_validity(&self, data: &LoadedSave) -> BuildValidity;
+
+    /// The save UI's canonical, localized presentation for build violations.
+    /// Callers pass the current language at render time; formatted strings must
+    /// never be cached in [`BuildValidity`].
+    fn build_violation_formatter(&self) -> BuildViolationFormatter;
 
     /// Carry where the view was looking — the open tab, the sort
     /// preferences — from a state built for this same save onto a

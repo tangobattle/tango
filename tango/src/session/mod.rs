@@ -87,6 +87,15 @@ pub struct PvpPanes {
     pub local_loaded: Option<selection::LoadedSave>,
     /// Opponent's loaded selection, unless they blinded their setup.
     pub opponent_loaded: Option<selection::LoadedSave>,
+    /// Local validation of the opponent's committed save. This is computed
+    /// from the bytes the match actually runs, never trusted from a peer flag.
+    pub opponent_build_validity: tango_gamesupport::BuildValidity,
+    /// View-time localizer supplied by the opponent game's opaque save editor.
+    /// Retained even when the loaded save itself is discarded for blindness.
+    pub opponent_build_violation_formatter: tango_gamesupport::BuildViolationFormatter,
+    /// A build warning remains visible until explicitly dismissed. Replacing
+    /// `PvpPanes` for the next match naturally resets it.
+    pub build_warning_dismissed: bool,
     /// Current width of each setup drawer (`[self, opponent]`), seeded
     /// from `config.pvp_setup_pane_widths` at match start and moved by
     /// dragging a drawer's inner edge. The App mirrors it back into
@@ -1523,12 +1532,11 @@ pub async fn spawn_pvp(
         remote_rom_raw
     };
 
-    // Build the opponent's LoadedSave only if they didn't blind their
-    // setup — otherwise we don't have visibility into their save.
-    // Loading parses chip/navi/navicust assets from the rom + wram,
-    // so the session pane can render them with the same widgets we
-    // use for the local side.
-    let opponent_loaded = if !pre_match.remote_settings.blind_setup {
+    // Always build the remote model long enough to validate the exact committed
+    // save the match will run. A valid blinded setup is still discarded from
+    // the drawer below; an invalid one keeps only the structured violations
+    // needed by the advisory warning.
+    let remote_loaded = {
         let remote_save = remote_game
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
@@ -1544,16 +1552,17 @@ pub async fn spawn_pvp(
                 rom_overrides: version_meta.rom_overrides_for(remote_game),
             })
         });
-        Some(crate::selection::from_patched_rom(
+        crate::selection::from_patched_rom(
             remote_game,
             remote_rom_bytes.clone(),
             std::path::PathBuf::new(),
             remote_save,
             applied_patch,
-        ))
-    } else {
-        None
+        )
     };
+    let opponent_build_validity = remote_loaded.editor.build_validity(&remote_loaded);
+    let opponent_build_violation_formatter = remote_loaded.editor.build_violation_formatter();
+    let opponent_loaded = (!pre_match.remote_settings.blind_setup).then_some(remote_loaded);
 
     // Build the local-side LoadedSave so the in-session "my setup"
     // toggle can render the same save-view we use for the
@@ -1574,15 +1583,14 @@ pub async fn spawn_pvp(
                 rom_overrides: version_meta.rom_overrides_for(local_game),
             })
         });
-        Some(crate::selection::from_patched_rom(
+        crate::selection::from_patched_rom(
             local_game,
             local_rom_bytes.clone(),
             std::path::PathBuf::new(),
             local_save,
             applied_patch,
-        ))
+        )
     };
-
     let (session, boot, audio) = pvp::PvpSession::new(pvp::PvpSessionArgs {
         local_game: local_game_impl,
         local_rom: std::sync::Arc::new(local_rom_bytes),
@@ -1607,8 +1615,11 @@ pub async fn spawn_pvp(
     Ok((
         session,
         PvpPanes {
-            local_loaded,
+            local_loaded: Some(local_loaded),
             opponent_loaded,
+            opponent_build_validity,
+            opponent_build_violation_formatter,
+            build_warning_dismissed: false,
             // Clamped on the way in: the persisted pair predates the
             // current bounds on an older config, or the window it was
             // sized against is gone.

@@ -207,6 +207,9 @@ lobby-blind-self-on = Bạn đang ẩn thiết lập.
 session-opponent = Thiết lập đối thủ
 session-self = Thiết lập của tôi
 session-back-to-session = Trở về phiên
+session-build-warning-title = Đối thủ có thiết lập không hợp lệ
+session-build-warning-detail = Trận đấu sẽ tiếp tục. Các kiểm tra tính hợp lệ sau đã thất bại:
+session-build-warning-dismiss = Đóng cảnh báo thiết lập
 # PvP telemetry deck cell tooltips
 session-stat-tps = Tick/giây (hiện tại/tối đa)
 session-stat-skew = Độ lệch

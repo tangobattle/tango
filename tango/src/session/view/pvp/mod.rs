@@ -6,6 +6,7 @@
 use super::*;
 use crate::session::pvp::PvpSession;
 use crate::session::Message as SessionMessage;
+use tango_gamesupport::{BuildChip, BuildViolation, BuildViolationFormat, BuildViolationFormatter, BuildViolationKind};
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::{column, row};
 
@@ -32,6 +33,9 @@ pub enum Message {
     /// Dismiss the disconnect confirm without disconnecting (the
     /// Cancel button + the modal backdrop both fire this).
     CloseDisconnectConfirm,
+    /// Dismiss the advisory describing invalid committed builds. The match
+    /// continues either way; this only removes the warning card.
+    DismissBuildWarning,
     /// Show/hide the opponent's setup side panel.
     ToggleOpponentPanel,
     /// Show/hide the local player's save-view panel.
@@ -76,6 +80,11 @@ pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::Langua
         }
         Message::CloseDisconnectConfirm => {
             state.disconnect.close();
+        }
+        Message::DismissBuildWarning => {
+            if let Some(panes) = state.pvp_panes.as_mut() {
+                panes.build_warning_dismissed = true;
+            }
         }
         Message::ToggleOpponentPanel => {
             state.opponent_panel.toggle();
@@ -237,6 +246,11 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
     if let Some(o) = telemetry_overlay(lang, p, state) {
         stacked = stacked.push(keep_above_drawers(o.map(SessionMessage::Pvp), drawer_moving));
     }
+    // Advisory only: invalid committed builds never alter the running
+    // session, but remain explicit until the player dismisses this card.
+    if let Some(o) = build_warning_overlay(lang, state) {
+        stacked = stacked.push(keep_above_drawers(o.map(SessionMessage::Pvp), drawer_moving));
+    }
     if let Some(o) = disconnect_overlay(lang, state) {
         stacked = stacked.push(o);
     }
@@ -246,6 +260,214 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
         stacked = stacked.push(o);
     }
     finish_session_stack(lang, state, stacked)
+}
+
+/// A non-modal, height-capped warning for the opponent's invalid committed
+/// build. Their save is validated locally from the exact bytes the match runs,
+/// so a modified peer cannot suppress the warning by lying on the wire.
+/// Exact opponent details are shown even when their setup drawer is blinded:
+/// once the build violates the rules, the violations take precedence over the
+/// setup-privacy preference.
+fn build_warning_overlay(lang: &LanguageIdentifier, state: &State) -> Option<Element<'static, Message>> {
+    const WARNING_WIDTH: f32 = 600.0;
+    const WARNING_MAX_HEIGHT: f32 = 360.0;
+
+    let panes = state.pvp_panes.as_ref()?;
+    if panes.build_warning_dismissed {
+        return None;
+    }
+    let opponent_violations = panes.opponent_build_validity.violations();
+    if opponent_violations.is_empty() {
+        return None;
+    }
+
+    let warning_text_style = |theme: &iced::Theme| iced::widget::text::Style {
+        color: Some(theme.palette().warning),
+    };
+    let header = row![
+        Icon::AlertTriangle
+            .widget()
+            .size(TEXT_BODY + 2.0)
+            .style(warning_text_style),
+        text(t!(lang, "session-build-warning-title"))
+            .size(TEXT_BODY + 2.0)
+            .style(warning_text_style),
+        horizontal_space(),
+        widgets::icon_button(
+            Icon::X,
+            t!(lang, "session-build-warning-dismiss"),
+            Message::DismissBuildWarning,
+            [4.0, 4.0],
+        ),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center);
+
+    let violations = build_warning_violations(
+        panes.opponent_build_violation_formatter,
+        opponent_violations,
+        lang,
+    );
+
+    let detail_list = iced::widget::scrollable(violations)
+        .style(widgets::chunky_scrollable)
+        .height(Length::Shrink)
+        .width(Fill);
+    let body = column![
+        header,
+        text(t!(lang, "session-build-warning-detail")).style(widgets::muted_text_style),
+        detail_list,
+    ]
+    .spacing(10)
+    .width(Fill);
+    let panel = container(body)
+        .width(Length::Fixed(WARNING_WIDTH))
+        .max_height(WARNING_MAX_HEIGHT)
+        .padding(16)
+        .style(build_warning_plate);
+
+    // Claim only the card's own mouse region. The rest of this full-window
+    // placement stays transparent, so controls and gameplay input outside the
+    // warning remain usable while it is visible.
+    let panel = iced::widget::mouse_area(panel).interaction(iced::mouse::Interaction::Idle);
+    Some(
+        container(panel)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Center)
+            .align_y(iced::alignment::Vertical::Top)
+            .padding(16)
+            .into(),
+    )
+}
+
+fn build_warning_violations(
+    formatter: BuildViolationFormatter,
+    violations: &[BuildViolation],
+    lang: &LanguageIdentifier,
+) -> Element<'static, Message> {
+    let mut rows = column![].spacing(4);
+    for violation in present_build_violations(violations) {
+        rows = rows.push(
+            row![
+                text("•").size(TEXT_CAPTION),
+                text(build_violation_text(formatter, lang, &violation))
+                    .size(TEXT_CAPTION)
+                    .width(Fill),
+            ]
+            .spacing(7)
+            .align_y(Alignment::Start),
+        );
+    }
+    rows.into()
+}
+
+/// A UI-only grouping of the raw, slot-scoped report. This keeps the warning
+/// compact without making game support decide how its consumers should render
+/// repeated violations.
+#[derive(Debug, PartialEq, Eq)]
+enum PresentedBuildViolation<'a> {
+    FolderNotFull {
+        used: usize,
+        required: usize,
+    },
+    Chips {
+        chips: Vec<&'a BuildChip>,
+        kind: BuildViolationKind,
+    },
+}
+
+fn present_build_violations(violations: &[BuildViolation]) -> Vec<PresentedBuildViolation<'_>> {
+    let mut presented = vec![];
+    for violation in violations {
+        match violation {
+            BuildViolation::FolderNotFull { used, required } => {
+                presented.push(PresentedBuildViolation::FolderNotFull {
+                    used: *used,
+                    required: *required,
+                });
+            }
+            BuildViolation::Chip { chip, kind, .. } => {
+                let group_idx = presented
+                    .iter()
+                    .position(|group| {
+                        matches!(
+                            group,
+                            PresentedBuildViolation::Chips {
+                                kind: grouped_kind,
+                                ..
+                            } if grouped_kind == kind
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        presented.push(PresentedBuildViolation::Chips {
+                            chips: vec![],
+                            kind: *kind,
+                        });
+                        presented.len() - 1
+                    });
+                let PresentedBuildViolation::Chips { chips, .. } = &mut presented[group_idx] else {
+                    unreachable!("chip violation group has a chip presentation")
+                };
+                if !chips.contains(&chip) {
+                    chips.push(chip);
+                }
+            }
+        }
+    }
+    for group in &mut presented {
+        if let PresentedBuildViolation::Chips { chips, .. } = group {
+            chips.sort_by_key(|chip| chip.id);
+        }
+    }
+    presented
+}
+
+fn build_violation_text(
+    formatter: BuildViolationFormatter,
+    lang: &LanguageIdentifier,
+    violation: &PresentedBuildViolation<'_>,
+) -> String {
+    match violation {
+        PresentedBuildViolation::FolderNotFull { used, required } => formatter(
+            lang,
+            BuildViolationFormat::FolderNotFull {
+                used: *used,
+                required: *required,
+            },
+        ),
+        PresentedBuildViolation::Chips { chips, kind } => formatter(
+            lang,
+            BuildViolationFormat::Chips {
+                chips,
+                kind: *kind,
+            },
+        ),
+    }
+}
+
+fn build_warning_plate(theme: &iced::Theme) -> iced::widget::container::Style {
+    let warning = theme.palette().warning;
+    let background = widgets::mix(
+        theme.palette().background,
+        warning,
+        if theme.extended_palette().is_dark { 0.13 } else { 0.08 },
+    );
+    iced::widget::container::Style {
+        background: Some(iced::Background::Color(background)),
+        text_color: Some(theme.palette().text),
+        border: iced::Border {
+            radius: widgets::tech_radius(12.0),
+            width: 1.5,
+            color: iced::Color { a: 0.85, ..warning },
+        },
+        shadow: iced::Shadow {
+            color: iced::Color { a: 0.22, ..warning },
+            offset: iced::Vector::new(0.0, 4.0),
+            blur_radius: 14.0,
+        },
+        snap: false,
+    }
 }
 
 /// The PvP setup drawers, one overlay layer per visible pane. Each
@@ -654,4 +876,171 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) -
     // Solid dim, no dismiss-on-press: the user leaves only via Disconnect (or
     // the link returning, which clears the overlay on its own).
     Some(widgets::modal_layer(panel.into(), 0.55, SessionMessage::NoOp, None))
+}
+
+#[cfg(test)]
+mod build_warning_tests {
+    use super::*;
+
+    fn chip(code: &str) -> BuildChip {
+        chip_with_id(1, code)
+    }
+
+    fn chip_with_id(id: usize, code: &str) -> BuildChip {
+        BuildChip {
+            id,
+            code: code.to_string(),
+            name: Some("Cannon".to_string()),
+        }
+    }
+
+    fn violation_chip(violation: &BuildViolation) -> &BuildChip {
+        let BuildViolation::Chip { chip, .. } = violation else {
+            panic!("expected chip violation")
+        };
+        chip
+    }
+
+    #[test]
+    fn warning_chrome_is_translated_in_every_supported_language() {
+        let english = t!(&crate::i18n::FALLBACK_LANG, "session-build-warning-title");
+        for language in crate::i18n::SUPPORTED_LANGS.iter().skip(1) {
+            assert_ne!(t!(language, "session-build-warning-title"), english);
+        }
+    }
+
+    fn test_formatter(_lang: &LanguageIdentifier, violation: BuildViolationFormat<'_>) -> String {
+        match violation {
+            BuildViolationFormat::FolderNotFull { used, required } => format!("folder {used}/{required}"),
+            BuildViolationFormat::Chips { chips, kind } => {
+                let chips = chips
+                    .iter()
+                    .map(|chip| format!("{} {}", chip.name.as_deref().unwrap_or("unknown"), chip.code))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let reason = match kind {
+                    BuildViolationKind::ChipIllegalForGame => "illegal".to_string(),
+                    BuildViolationKind::TooManyCopiesOfChip { used, limit } => {
+                        format!("copies {used}/{limit}")
+                    }
+                    _ => format!("{kind:?}"),
+                };
+                format!("{chips}: {reason}")
+            }
+        }
+    }
+
+    #[test]
+    fn exact_chip_codes_and_copy_limit_are_rendered() {
+        let violations = vec![
+            BuildViolation::Chip {
+                slot: 0,
+                chip: chip("A"),
+                kind: BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
+            },
+            BuildViolation::Chip {
+                slot: 1,
+                chip: chip("B"),
+                kind: BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
+            },
+        ];
+        let presented = present_build_violations(&violations);
+
+        assert_eq!(
+            build_violation_text(test_formatter, &crate::i18n::FALLBACK_LANG, &presented[0]),
+            "Cannon A, Cannon B: copies 6/5"
+        );
+    }
+
+    #[test]
+    fn raw_slot_violations_are_grouped_only_for_presentation() {
+        let copies = BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 };
+        let violations = vec![
+            BuildViolation::Chip {
+                slot: 0,
+                chip: chip("A"),
+                kind: copies,
+            },
+            BuildViolation::Chip {
+                slot: 1,
+                chip: chip_with_id(2, "A"),
+                kind: copies,
+            },
+            BuildViolation::Chip {
+                slot: 2,
+                chip: chip_with_id(0, "B"),
+                kind: copies,
+            },
+            BuildViolation::Chip {
+                slot: 3,
+                chip: chip("A"),
+                kind: copies,
+            },
+            BuildViolation::Chip {
+                slot: 2,
+                chip: chip_with_id(0, "B"),
+                kind: BuildViolationKind::ChipIllegalForGame,
+            },
+        ];
+
+        assert_eq!(
+            present_build_violations(&violations),
+            vec![
+                PresentedBuildViolation::Chips {
+                    chips: vec![
+                        violation_chip(&violations[2]),
+                        violation_chip(&violations[0]),
+                        violation_chip(&violations[1]),
+                    ],
+                    kind: copies,
+                },
+                PresentedBuildViolation::Chips {
+                    chips: vec![violation_chip(&violations[4])],
+                    kind: BuildViolationKind::ChipIllegalForGame,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn incomplete_folder_does_not_require_a_chip_label() {
+        let violation = BuildViolation::FolderNotFull { used: 29, required: 30 };
+        let presented = present_build_violations(std::slice::from_ref(&violation));
+
+        assert_eq!(
+            build_violation_text(test_formatter, &crate::i18n::FALLBACK_LANG, &presented[0]),
+            "folder 29/30"
+        );
+    }
+
+    #[test]
+    fn blinded_opponent_still_gets_an_exact_warning() {
+        let mut state = State::new();
+        state.pvp_panes = Some(crate::session::PvpPanes {
+            local_loaded: None,
+            // `None` is exactly how a blinded opponent is represented.
+            opponent_loaded: None,
+            opponent_build_validity: tango_gamesupport::BuildValidity::Invalid(vec![BuildViolation::Chip {
+                slot: 4,
+                chip: BuildChip {
+                    id: 99,
+                    code: "*".to_string(),
+                    name: Some("SecretChip".to_string()),
+                },
+                kind: BuildViolationKind::ChipIllegalForGame,
+            }]),
+            opponent_build_violation_formatter: test_formatter,
+            build_warning_dismissed: false,
+            pane_widths: [320.0, 320.0],
+            pane_drag: None,
+        });
+
+        assert!(build_warning_overlay(&crate::i18n::FALLBACK_LANG, &state).is_some());
+        let opponent_violations = state.pvp_panes.as_ref().unwrap().opponent_build_validity.violations();
+        let presented = present_build_violations(opponent_violations);
+        assert_eq!(
+            build_violation_text(test_formatter, &crate::i18n::FALLBACK_LANG, &presented[0]),
+            "SecretChip *: illegal"
+        );
+    }
 }

@@ -207,6 +207,9 @@ lobby-blind-self-on = Je verbergt je opzet.
 session-opponent = Opzet van tegenstander
 session-self = Mijn opzet
 session-back-to-session = Terug naar sessie
+session-build-warning-title = De tegenstander heeft een ongeldige opzet
+session-build-warning-detail = De wedstrijd gaat door. De volgende geldigheidscontroles zijn mislukt:
+session-build-warning-dismiss = Opzetwaarschuwing sluiten
 # PvP telemetry deck cell tooltips
 session-stat-tps = Tick/s (huidig/max.)
 session-stat-skew = Afwijking

@@ -9,7 +9,7 @@
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view as sv;
 use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::{BuildViolation, GameSaveEditor, SaveEditorShell};
 use unic_langid::LanguageIdentifier;
 
 pub mod deck;
@@ -60,7 +60,7 @@ impl GameSaveEditor for Ui {
 
     /// A program deck may legally have empty slots, so the Battle Network
     /// folder-full rule does not apply.
-    fn can_save(&self, _loaded: &OpenSave) -> bool {
-        true
+    fn build_violations(&self, _loaded: &OpenSave) -> Vec<BuildViolation> {
+        vec![]
     }
 }

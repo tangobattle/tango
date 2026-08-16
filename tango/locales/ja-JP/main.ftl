@@ -126,6 +126,9 @@ lobby-blind-self-on = 自分の構築を隠しています。
 session-opponent = 相手の構築
 session-self = 自分の構築
 session-back-to-session = 対戦に戻る
+session-build-warning-title = 相手の構築が無効です
+session-build-warning-detail = 対戦は続行されます。次の適法性チェックに失敗しました：
+session-build-warning-dismiss = 構築の警告を閉じる
 # PvP telemetry deck cell tooltips
 session-stat-tps = 毎秒ティック数（現在/上限）
 session-stat-skew = ずれ

@@ -21,6 +21,7 @@ use iced::Element;
 use unic_langid::LanguageIdentifier;
 
 pub use crate::editor::view::Action;
+pub use tango_gamesupport::BuildViolation;
 
 pub trait GameSaveEditor: Send + Sync {
     /// The section tabs this game's save editor offers, in display
@@ -131,12 +132,11 @@ pub trait GameSaveEditor: Send + Sync {
         None
     }
 
-    /// Whether the edit session may commit right now. Battle Network folders
-    /// must be full and free of every problem called out by the editor. Games
-    /// whose folder-like structure follows different validity rules (BCC's
-    /// program deck) override this.
-    fn can_save(&self, loaded: &OpenSave) -> bool {
-        crate::model::rules::folder_is_valid(loaded)
+    /// Structured source of truth for the PvP advisory. Build legality does
+    /// not gate saving: players may persist an illegal build and are warned if
+    /// they bring it into a match.
+    fn build_violations(&self, loaded: &OpenSave) -> Vec<BuildViolation> {
+        crate::model::rules::folder_violations(loaded)
     }
 }
 

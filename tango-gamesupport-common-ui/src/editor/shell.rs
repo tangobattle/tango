@@ -166,4 +166,17 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
     fn sram(&self, data: &LoadedSave) -> Vec<u8> {
         open_save(data).save.to_sram_dump()
     }
+
+    fn build_validity(&self, data: &LoadedSave) -> tango_gamesupport::BuildValidity {
+        let violations = self.0.build_violations(open_save(data));
+        if violations.is_empty() {
+            tango_gamesupport::BuildValidity::Valid
+        } else {
+            tango_gamesupport::BuildValidity::Invalid(violations)
+        }
+    }
+
+    fn build_violation_formatter(&self) -> tango_gamesupport::BuildViolationFormatter {
+        crate::build::format
+    }
 }

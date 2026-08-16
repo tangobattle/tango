@@ -207,6 +207,9 @@ lobby-blind-self-on = Вы скрываете свою сборку.
 session-opponent = Сборка соперника
 session-self = Моя сборка
 session-back-to-session = Вернуться к сессии
+session-build-warning-title = У соперника недопустимая сборка
+session-build-warning-detail = Матч продолжится. Не пройдены следующие проверки допустимости:
+session-build-warning-dismiss = Закрыть предупреждение о сборке
 # PvP telemetry deck cell tooltips
 session-stat-tps = Тик/с (текущее/макс.)
 session-stat-skew = Смещение

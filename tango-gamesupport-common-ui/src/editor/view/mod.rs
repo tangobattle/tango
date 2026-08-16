@@ -780,7 +780,7 @@ pub fn view<'a>(
     let mut actions = row![].spacing(6).align_y(Alignment::Center);
     if render_edit_buttons {
         if inline_actions {
-            actions = actions.push(edit_buttons(lang, loaded));
+            actions = actions.push(edit_buttons(lang));
         }
     } else {
         if inline_actions && save_editable {
@@ -1046,12 +1046,10 @@ pub fn view<'a>(
 /// The global edit mode's Save / Cancel pair, shown at the navi
 /// header's right edge while edit mode is on (or sliding out). One
 /// pair for the whole save: they commit / discard the edits on *all*
-/// tabs at once. A Battle Network folder must be full and have no red
-/// legality warnings before Save is enabled.
-fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element<'a, Action> {
+/// tabs at once. Legality warnings are advisory and do not disable Save.
+fn edit_buttons(lang: &LanguageIdentifier) -> Element<'_, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
-    let can_save = loaded.save_editor.can_save(loaded);
     row![
         widgets::labeled_icon_button(
             Icon::X,
@@ -1060,10 +1058,10 @@ fn edit_buttons<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Eleme
             [4.0, 10.0],
             widgets::neutral,
         ),
-        widgets::labeled_icon_button_maybe(
+        widgets::labeled_icon_button(
             Icon::Check,
             t!(lang, "save-edit-save"),
-            can_save.then_some(Action::SaveEdit),
+            Action::SaveEdit,
             [4.0, 10.0],
             widgets::primary_button,
         ),

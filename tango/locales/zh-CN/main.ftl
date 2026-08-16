@@ -121,6 +121,9 @@ lobby-blind-self-on = 你正在隐藏自己的配置。
 session-opponent = 对手配置
 session-self = 我的配置
 session-back-to-session = 返回对战
+session-build-warning-title = 对手的配置无效
+session-build-warning-detail = 比赛将继续。以下合法性检查未通过：
+session-build-warning-dismiss = 关闭配置警告
 # PvP telemetry deck cell tooltips
 session-stat-tps = 每秒帧数（当前/最大）
 session-stat-skew = 时钟偏移

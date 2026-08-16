@@ -327,7 +327,11 @@ pub fn render_folder_edit<'a>(
         // A full folder uses the old disabled gray wash. Otherwise, red text
         // explains which limit the still-allowed addition would exceed.
         let full = filled >= folder_size;
-        let issue = (!full).then(|| usage.add_issue(loaded, id, &limits)).flatten();
+        let issues = if full {
+            vec![]
+        } else {
+            usage.chip_issues(loaded, id, &limits, 1)
+        };
         lib_list = lib_list.push(library_entry_row(
             lang,
             loaded,
@@ -336,7 +340,7 @@ pub fn render_folder_edit<'a>(
             code,
             shown,
             chips_have_mb,
-            issue,
+            issues,
             !full,
         ));
         shown += 1;
@@ -368,7 +372,7 @@ fn folder_slot_row<'a>(
     is_tag: bool,
     reg_allowed: bool,
     tag_allowed: bool,
-    issues: Vec<FolderIssue>,
+    issues: Vec<BuildViolationKind>,
 ) -> Element<'a, Action> {
     let assets = loaded.assets.as_ref();
     let chips_have_mb = assets.chips_have_mb();
@@ -433,7 +437,7 @@ fn folder_slot_row<'a>(
     // Tooltip wraps only the chip content — not the leading grip gutter — so
     // hovering the drag handle doesn't pop the chip card.
     let illegal = !issues.is_empty();
-    let issue = render_existing_issues(lang, &issues);
+    let issue = render_build_violation_reasons(lang, &issues);
     let tipped = with_chip_tooltip_issue(loaded, chip_id, accent, issue, inner.padding([3, 12]).into());
     edit_row_wrap_maybe_danger_text(tipped, accent, slot, leading, illegal)
 }
@@ -451,7 +455,7 @@ fn library_entry_row<'a>(
     code: crate::dataview::save::ChipCode,
     row_idx: usize,
     chips_have_mb: bool,
-    issue: Option<FolderIssue>,
+    issues: Vec<BuildViolationKind>,
     addable: bool,
 ) -> Element<'a, Action> {
     use crate::widgets;
@@ -461,9 +465,9 @@ fn library_entry_row<'a>(
         info.as_ref().map(|i| i.dark()).unwrap_or(false),
     );
     let [element, atk, mb] = chip_stat_cells(loaded, chip_id, chips_have_mb);
-    let illegal = issue.is_some() && addable;
+    let illegal = !issues.is_empty() && addable;
     let issue = if addable {
-        issue.map(|issue| add_issue_reason(lang, issue))
+        render_build_violation_reasons(lang, &issues)
     } else {
         Some(t!(lang, "folder-cannot-add-full"))
     };
@@ -535,70 +539,15 @@ fn library_entry_row<'a>(
     with_chip_tooltip_issue(loaded, Some(chip_id), accent, issue, row_el)
 }
 
-fn existing_issue_reason(lang: &LanguageIdentifier, issue: FolderIssue) -> String {
-    match issue {
-        FolderIssue::IllegalForGame => t!(lang, "folder-illegal-for-game"),
-        FolderIssue::Copies { used, limit } => {
-            t!(lang, "folder-illegal-copies", used = used as i64, limit = limit as i64)
-        }
-        FolderIssue::Navi { used, limit } => {
-            t!(lang, "folder-illegal-navi", used = used as i64, limit = limit as i64)
-        }
-        FolderIssue::Mega { used, limit } => {
-            t!(lang, "folder-illegal-mega", used = used as i64, limit = limit as i64)
-        }
-        FolderIssue::Giga { used, limit } => {
-            t!(lang, "folder-illegal-giga", used = used as i64, limit = limit as i64)
-        }
-        FolderIssue::Dark { used, limit } => {
-            t!(lang, "folder-illegal-dark", used = used as i64, limit = limit as i64)
-        }
-        FolderIssue::RegularMemory { used, limit } => t!(
-            lang,
-            "folder-illegal-regular-memory",
-            used = used as i64,
-            limit = limit as i64
-        ),
-        FolderIssue::TagMemory { used, limit } => t!(
-            lang,
-            "folder-illegal-tag-memory",
-            used = used as i64,
-            limit = limit as i64
-        ),
-    }
-}
-
-fn render_existing_issues(lang: &LanguageIdentifier, issues: &[FolderIssue]) -> Option<String> {
+fn render_build_violation_reasons(lang: &LanguageIdentifier, issues: &[BuildViolationKind]) -> Option<String> {
     (!issues.is_empty()).then(|| {
         issues
             .iter()
             .copied()
-            .map(|issue| existing_issue_reason(lang, issue))
+            .map(|issue| crate::build::violation_reason(lang, issue))
             .collect::<Vec<_>>()
             .join("\n")
     })
-}
-
-fn add_issue_reason(lang: &LanguageIdentifier, issue: FolderIssue) -> String {
-    match issue {
-        FolderIssue::IllegalForGame => t!(lang, "folder-illegal-for-game"),
-        FolderIssue::Copies { limit, .. } => {
-            t!(lang, "folder-add-exceeds-copies", limit = limit as i64)
-        }
-        FolderIssue::Navi { limit, .. } => {
-            t!(lang, "folder-add-exceeds-navi", limit = limit as i64)
-        }
-        FolderIssue::Mega { limit, .. } => {
-            t!(lang, "folder-add-exceeds-mega", limit = limit as i64)
-        }
-        FolderIssue::Giga { limit, .. } => {
-            t!(lang, "folder-add-exceeds-giga", limit = limit as i64)
-        }
-        FolderIssue::Dark { limit, .. } => {
-            t!(lang, "folder-add-exceeds-dark", limit = limit as i64)
-        }
-        FolderIssue::RegularMemory { .. } | FolderIssue::TagMemory { .. } => existing_issue_reason(lang, issue),
-    }
 }
 
 /// Localized label for a [`LibrarySort`] picker entry. A free function
@@ -671,7 +620,8 @@ fn sorted_library_entries(
 // The folder's class/copy tallies and structured advisory answers live with
 // the model, in `tango_gamesupport::model::rules`. Re-exported here because
 // this is where the panes that render them look.
-pub use crate::model::rules::{FolderIssue, FolderSelections, FolderUsage};
+pub use crate::model::rules::{FolderSelections, FolderUsage};
+pub use tango_gamesupport::BuildViolationKind;
 
 #[derive(Default)]
 pub struct GroupedChip {
@@ -697,7 +647,7 @@ pub fn chip_row<M: 'static>(
     show_count_cell: bool,
     chips_have_mb: bool,
     row_idx: usize,
-    issues: Vec<FolderIssue>,
+    issues: Vec<BuildViolationKind>,
 ) -> Element<'static, M> {
     let info = chip_id.and_then(|id| loaded.assets.chip(id));
     let chip_class = info.as_ref().map(|i| i.class());
@@ -846,7 +796,7 @@ pub fn chip_row<M: 'static>(
     } else {
         loaded.chip_images.get(id).cloned().flatten()
     };
-    let issue = render_existing_issues(lang, &issues);
+    let issue = render_build_violation_reasons(lang, &issues);
     chip_popover_with_issue(card, image_handle, description, accent, issue)
 }
 

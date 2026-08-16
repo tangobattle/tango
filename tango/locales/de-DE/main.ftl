@@ -207,6 +207,9 @@ lobby-blind-self-on = Du verbirgst dein Setup.
 session-opponent = Gegner-Setup
 session-self = Mein Setup
 session-back-to-session = Zurück zur Sitzung
+session-build-warning-title = Der Gegner hat ein ungültiges Setup
+session-build-warning-detail = Das Match wird fortgesetzt. Die folgenden Legalitätsprüfungen sind fehlgeschlagen:
+session-build-warning-dismiss = Setup-Warnung schließen
 # PvP telemetry deck cell tooltips
 session-stat-tps = Tick/s (aktuell/max.)
 session-stat-skew = Versatz

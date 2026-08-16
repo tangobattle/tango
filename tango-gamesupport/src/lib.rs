@@ -122,7 +122,8 @@ pub type BoxedAssets = Box<dyn AssetsData>;
 pub mod save_editor;
 #[cfg(feature = "ui")]
 pub use save_editor::{
-    AppliedPatch, ChipDisplay, LoadedSave, LoadedSavePayload, SaveEditor, SaveEditorEvent, SaveEditorMessage,
+    AppliedPatch, BuildChip, BuildValidity, BuildViolation, BuildViolationFormat, BuildViolationFormatter,
+    BuildViolationKind, ChipDisplay, LoadedSave, LoadedSavePayload, SaveEditor, SaveEditorEvent, SaveEditorMessage,
     SaveEditorState,
 };
 

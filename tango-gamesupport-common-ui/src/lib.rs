@@ -14,6 +14,7 @@
 pub use tango_gamesupport_common_dataview as dataview;
 pub use tango_ui::{anim, copy_feedback};
 
+pub mod build;
 pub mod editor;
 pub mod i18n;
 pub mod model;

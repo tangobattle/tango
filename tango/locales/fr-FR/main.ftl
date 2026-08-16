@@ -207,6 +207,9 @@ lobby-blind-self-on = Vous cachez votre configuration.
 session-opponent = Configuration de l'adversaire
 session-self = Ma configuration
 session-back-to-session = Retour à la session
+session-build-warning-title = L’adversaire a une configuration non valide
+session-build-warning-detail = Le match va continuer. Les vérifications de légalité suivantes ont échoué :
+session-build-warning-dismiss = Fermer l’avertissement de configuration
 # PvP telemetry deck cell tooltips
 session-stat-tps = Tick/s (actuel/max)
 session-stat-skew = Décalage
