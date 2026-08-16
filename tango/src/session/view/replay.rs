@@ -279,6 +279,9 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     // in the tree at all, so no invisible buttons linger where it
     // used to be.
     if state.controls_anim.visible(now) {
+        if let Some(info) = replay_info_overlay(lang, r, state) {
+            stacked = stacked.push(info);
+        }
         stacked = stacked.push(replay_controls(
             lang,
             r,
@@ -306,6 +309,70 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
         stacked = stacked.push(o.map(SessionMessage::Replay));
     }
     finish_session_stack(lang, state, stacked)
+}
+
+/// The watched recording's identity, top-left opposite the session
+/// commands. It rides the controls' auto-hide transition: visible while the
+/// viewer is being operated, then clear of the game once the cursor rests.
+/// The filename leads; the denser replay header is one muted line beneath it.
+fn replay_info_overlay<'a>(
+    lang: &'a LanguageIdentifier,
+    r: &'a ReplaySession,
+    state: &'a State,
+) -> Option<Element<'a, SessionMessage>> {
+    let path = state.replay_path.as_ref()?;
+    let filename = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.display().to_string());
+
+    let metadata = r.metadata();
+    let game = crate::library::game::short_name(lang, r.local_game());
+    let family = r.local_game().family_and_variant().0;
+    let match_type =
+        crate::library::game::match_type_name(lang, family, metadata.match_type as u8, metadata.match_subtype as u8);
+    let (local, remote) = r.nicknames();
+    let players = match (local.is_empty(), remote.is_empty()) {
+        (false, false) => Some(format!("{local} vs {remote}")),
+        (false, true) => Some(local.to_owned()),
+        (true, false) => Some(remote.to_owned()),
+        (true, true) => None,
+    };
+    let recorded_at = std::time::UNIX_EPOCH
+        .checked_add(std::time::Duration::from_millis(metadata.ts))
+        .map(|time| {
+            chrono::DateTime::<chrono::Local>::from(time)
+                .format("%Y-%m-%d %H:%M")
+                .to_string()
+        });
+    let detail = std::iter::once(game)
+        .chain(std::iter::once(match_type))
+        .chain(players)
+        .chain(recorded_at)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" · ");
+
+    let copy = column![
+        text(filename).size(TEXT_BODY),
+        text(detail).size(TEXT_CAPTION).style(widgets::muted_text_style),
+    ]
+    .spacing(2);
+    let plate = container(copy).padding([8, 12]).max_width(520).style(hud_chip_plate);
+    let slid = anim::slide_in(
+        plate,
+        state.controls_anim.progress(iced::time::Instant::now()),
+        iced::Vector::new(0.0, -CONTROLS_SLIDE),
+    );
+    Some(
+        container(slid)
+            .width(Fill)
+            .height(Fill)
+            .align_x(iced::alignment::Horizontal::Left)
+            .align_y(iced::alignment::Vertical::Top)
+            .padding(12)
+            .into(),
+    )
 }
 
 /// The floating replay transport: the transport / toggles strip in a

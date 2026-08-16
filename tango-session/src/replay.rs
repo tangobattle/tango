@@ -36,6 +36,11 @@ struct InputDisplay {
 
 pub struct ReplaySession {
     game: &'static tango_gamesupport::Game,
+    /// Header carried by the recording. Playback itself only needs a
+    /// handful of these fields, but the host's viewer uses the full header
+    /// to identify the replay without reopening the file or reaching back
+    /// into its library index.
+    metadata: tango_replay::Metadata,
     /// The engine's native frame rate — what the speed dial's 1.0× means.
     expected_fps: f32,
     /// Inter-round seek-bar marks (see [`Self::round_boundaries`]):
@@ -336,6 +341,7 @@ impl ReplaySession {
 
         let session = Self {
             game: games[local_player],
+            metadata: replay.metadata.clone(),
             expected_fps,
             round_boundaries: round_marks,
             total_ticks,
@@ -493,6 +499,12 @@ impl ReplaySession {
     /// input display chips' captions. Either may be empty.
     pub fn nicknames(&self) -> (&str, &str) {
         (&self.input_display.nicknames.0, &self.input_display.nicknames.1)
+    }
+
+    /// The recording header, retained for viewer presentation (filename
+    /// lives with the host, while game/mode/players/date live here).
+    pub fn metadata(&self) -> &tango_replay::Metadata {
+        &self.metadata
     }
 
     /// Highest tick the background prefetcher has reached, for the
