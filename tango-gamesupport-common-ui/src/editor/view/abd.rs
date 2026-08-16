@@ -41,6 +41,7 @@ fn abd_grouped_sections(
 /// indicators, so `code=None` and a default badge struct (overridden only by
 /// the count); hover preview comes for free from `chip_row`.
 fn abd_grouped_section_rows<M: 'static>(
+    lang: &LanguageIdentifier,
     loaded: &OpenSave,
     title: String,
     runs: &[(Option<usize>, usize)],
@@ -53,7 +54,7 @@ fn abd_grouped_section_rows<M: 'static>(
             count: *count,
             ..GroupedChip::default()
         };
-        col = col.push(chip_row(loaded, *id, None, &g, true, chips_have_mb, idx));
+        col = col.push(chip_row(lang, loaded, *id, None, &g, true, chips_have_mb, idx, vec![]));
     }
     col.into()
 }
@@ -76,7 +77,7 @@ pub fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &O
     // shows them as distinct demarcated regions.
     let mut col = column![].spacing(crate::style::PANE_GAP).width(Fill);
     for (title, runs) in abd_grouped_sections(lang, &grouped) {
-        let rows = abd_grouped_section_rows::<M>(loaded, title, &runs, chips_have_mb);
+        let rows = abd_grouped_section_rows::<M>(lang, loaded, title, &runs, chips_have_mb);
         col = col.push(container(rows).width(Fill).style(crate::widgets::pane));
     }
     col.into()
@@ -242,6 +243,7 @@ pub fn render_auto_battle_data_edit<'a>(
     let mut deck = column![].spacing(1).padding(0);
     for (title, runs) in &sections {
         deck = deck.push(abd_grouped_section_rows::<Action>(
+            lang,
             loaded,
             title.clone(),
             runs,

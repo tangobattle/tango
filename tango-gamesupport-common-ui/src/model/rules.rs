@@ -15,17 +15,28 @@ pub const MAX_COPIES_PER_PART: usize = 9;
 /// Total MB budget across enabled PatchCard56s.
 pub const MAX_PATCH_CARD56_MB: u32 = 80;
 
-/// Why a chip either makes the current folder illegal or would cross a limit
-/// if added. The view turns these structured answers into localized hover
-/// text; the limit itself is advisory in the editor.
+/// A structured problem with a chip in the current folder, or with adding one
+/// more copy. Views keep these values intact until the row that presents them
+/// turns them into localized text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FolderLimitViolation {
+pub enum FolderIssue {
     IllegalForGame,
     Copies { used: usize, limit: usize },
     Navi { used: usize, limit: usize },
     Mega { used: usize, limit: usize },
     Giga { used: usize, limit: usize },
     Dark { used: usize, limit: usize },
+    RegularMemory { used: u32, limit: u32 },
+    TagMemory { used: u32, limit: u32 },
+}
+
+/// Slot selections whose legality depends on memory rather than chip class or
+/// copy count. The editor can supply its staged Tag pair; the save checker and
+/// read-only viewer use the pair currently stored in the save.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FolderSelections {
+    pub regular: Option<usize>,
+    pub tags: Option<[usize; 2]>,
 }
 
 /// Mega/Giga class usage and per-chip copies in one folder, used to honor
@@ -84,15 +95,15 @@ impl FolderUsage {
     /// Which limit one more copy of `chip_id` would cross, or `None` when it
     /// stays inside them. The folder-full check is separate. Unknown chips
     /// have no warning.
-    pub fn add_violation(
+    pub fn add_issue(
         &self,
         save: &SaveModel,
         chip_id: usize,
         limits: &crate::dataview::save::FolderLimits,
-    ) -> Option<FolderLimitViolation> {
+    ) -> Option<FolderIssue> {
         use crate::dataview::rom::ChipClass;
         if !save.chip_is_legal(chip_id) {
-            return Some(FolderLimitViolation::IllegalForGame);
+            return Some(FolderIssue::IllegalForGame);
         }
         let Some(info) = save.assets.chip(chip_id) else {
             return None;
@@ -100,7 +111,7 @@ impl FolderUsage {
         let copies = self.copies.get(&chip_id).copied().unwrap_or(0);
         let copy_limit = (limits.max_copies)(info.as_ref());
         if copies >= copy_limit {
-            return Some(FolderLimitViolation::Copies {
+            return Some(FolderIssue::Copies {
                 used: copies,
                 limit: copy_limit,
             });
@@ -109,76 +120,108 @@ impl FolderUsage {
             return limits
                 .dark_limit
                 .filter(|&limit| self.dark >= limit)
-                .map(|limit| FolderLimitViolation::Dark { used: self.dark, limit });
+                .map(|limit| FolderIssue::Dark { used: self.dark, limit });
         }
         match info.class() {
             ChipClass::Navi => limits
                 .navi_limit
                 .filter(|&limit| self.navi >= limit)
-                .map(|limit| FolderLimitViolation::Navi { used: self.navi, limit }),
+                .map(|limit| FolderIssue::Navi { used: self.navi, limit }),
             ChipClass::Mega => limits
                 .mega_limit
                 .filter(|&limit| self.mega >= limit)
-                .map(|limit| FolderLimitViolation::Mega { used: self.mega, limit }),
+                .map(|limit| FolderIssue::Mega { used: self.mega, limit }),
             ChipClass::Giga => limits
                 .giga_limit
                 .filter(|&limit| self.giga >= limit)
-                .map(|limit| FolderLimitViolation::Giga { used: self.giga, limit }),
+                .map(|limit| FolderIssue::Giga { used: self.giga, limit }),
             _ => None,
         }
     }
 
-    /// Every folder limit the existing `chip_id` copies currently violate.
-    /// All equivalent copies/class members receive the same answer because no
-    /// one copy is intrinsically the illegal one; reordering the folder must
-    /// not move the warning to an arbitrary different chip.
-    pub fn violations_for_chip(
+    /// Every issue attached to one existing folder slot. Copy/class issues are
+    /// shared by every equivalent chip because no one copy is intrinsically
+    /// the illegal one. Regular/Tag memory are checked here too, against the
+    /// supplied selections, so save validation and both folder views consume
+    /// the same structured result.
+    pub fn issues_for_slot(
         &self,
         save: &SaveModel,
-        chip_id: usize,
+        folder_idx: usize,
+        slot: usize,
         limits: &crate::dataview::save::FolderLimits,
-    ) -> Vec<FolderLimitViolation> {
+        selections: FolderSelections,
+    ) -> Vec<FolderIssue> {
         use crate::dataview::rom::ChipClass;
-        let mut violations = vec![];
+        let Some(view) = save.save.view_chips() else {
+            return vec![];
+        };
+        let Some(chip) = view.chip(folder_idx, slot) else {
+            return vec![];
+        };
+        let chip_id = chip.id;
+        let mut issues = vec![];
         if !save.chip_is_legal(chip_id) {
-            violations.push(FolderLimitViolation::IllegalForGame);
+            issues.push(FolderIssue::IllegalForGame);
         }
         let Some(info) = save.assets.chip(chip_id) else {
-            return violations;
+            return issues;
         };
         let copies = self.copies.get(&chip_id).copied().unwrap_or(0);
         let copy_limit = (limits.max_copies)(info.as_ref());
         if copies > copy_limit {
-            violations.push(FolderLimitViolation::Copies {
+            issues.push(FolderIssue::Copies {
                 used: copies,
                 limit: copy_limit,
             });
         }
         if info.dark() {
             if let Some(limit) = limits.dark_limit.filter(|&limit| self.dark > limit) {
-                violations.push(FolderLimitViolation::Dark { used: self.dark, limit });
+                issues.push(FolderIssue::Dark { used: self.dark, limit });
             }
-            return violations;
+        } else {
+            let class_issue = match info.class() {
+                ChipClass::Navi => limits
+                    .navi_limit
+                    .filter(|&limit| self.navi > limit)
+                    .map(|limit| FolderIssue::Navi { used: self.navi, limit }),
+                ChipClass::Mega => limits
+                    .mega_limit
+                    .filter(|&limit| self.mega > limit)
+                    .map(|limit| FolderIssue::Mega { used: self.mega, limit }),
+                ChipClass::Giga => limits
+                    .giga_limit
+                    .filter(|&limit| self.giga > limit)
+                    .map(|limit| FolderIssue::Giga { used: self.giga, limit }),
+                _ => None,
+            };
+            if let Some(issue) = class_issue {
+                issues.push(issue);
+            }
         }
-        let class_violation = match info.class() {
-            ChipClass::Navi => limits
-                .navi_limit
-                .filter(|&limit| self.navi > limit)
-                .map(|limit| FolderLimitViolation::Navi { used: self.navi, limit }),
-            ChipClass::Mega => limits
-                .mega_limit
-                .filter(|&limit| self.mega > limit)
-                .map(|limit| FolderLimitViolation::Mega { used: self.mega, limit }),
-            ChipClass::Giga => limits
-                .giga_limit
-                .filter(|&limit| self.giga > limit)
-                .map(|limit| FolderLimitViolation::Giga { used: self.giga, limit }),
-            _ => None,
+
+        let mb_at = |slot: usize| {
+            view.chip(folder_idx, slot)
+                .and_then(|chip| save.assets.chip(chip.id))
+                .map_or(0u32, |chip| chip.mb() as u32)
         };
-        if let Some(violation) = class_violation {
-            violations.push(violation);
+        if selections.regular == Some(slot) {
+            if let Some(limit) = limits.reg_memory.map(u32::from) {
+                let used = info.mb() as u32;
+                if used > limit {
+                    issues.push(FolderIssue::RegularMemory { used, limit });
+                }
+            }
         }
-        violations
+        if let Some(tags) = selections.tags.filter(|tags| tags.contains(&slot)) {
+            if let Some(limit) = limits.tag_memory {
+                let used = mb_at(tags[0]) + mb_at(tags[1]);
+                if used > limit {
+                    issues.push(FolderIssue::TagMemory { used, limit });
+                }
+            }
+        }
+        issues
     }
 }
 
@@ -198,30 +241,21 @@ pub fn folder_is_valid(save: &SaveModel) -> bool {
         .map(|nv| nv.folder_limits(&*save.assets))
         .unwrap_or_default();
     let usage = FolderUsage::scan(save, folder_idx);
+    let selections = FolderSelections {
+        regular: view.regular_chip_index(folder_idx).flatten(),
+        tags: view.tag_chip_indexes(folder_idx).flatten(),
+    };
 
     // A Battle Network folder must be full, and every installed chip must be
     // free of the same advisory violations painted red in the editor.
     for slot in 0..view.folder_size() {
-        let Some(chip) = view.chip(folder_idx, slot) else {
-            return false;
-        };
-        if !usage.violations_for_chip(save, chip.id, &limits).is_empty() {
+        if view.chip(folder_idx, slot).is_none() {
             return false;
         }
-    }
-
-    let mb_of = |slot: usize| {
-        view.chip(folder_idx, slot)
-            .and_then(|chip| save.assets.chip(chip.id))
-            .map_or(0u32, |chip| chip.mb() as u32)
-    };
-    if let (Some(cap), Some(Some(regular))) = (limits.reg_memory, view.regular_chip_index(folder_idx)) {
-        if mb_of(regular) > cap as u32 {
-            return false;
-        }
-    }
-    if let (Some(budget), Some(Some([a, b]))) = (limits.tag_memory, view.tag_chip_indexes(folder_idx)) {
-        if mb_of(a) + mb_of(b) > budget {
+        if !usage
+            .issues_for_slot(save, folder_idx, slot, &limits, selections)
+            .is_empty()
+        {
             return false;
         }
     }

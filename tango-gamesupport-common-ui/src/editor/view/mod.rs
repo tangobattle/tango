@@ -1270,6 +1270,17 @@ pub fn card_wrap<M: 'static>(
     accent: Option<iced::Color>,
     row_idx: usize,
 ) -> Element<'static, M> {
+    card_wrap_maybe_danger_text(inner, accent, row_idx, false)
+}
+
+/// [`card_wrap`] with optional danger-red text. The read-only Folder viewer
+/// uses this for the same legality feedback as its editable counterpart.
+pub fn card_wrap_maybe_danger_text<M: 'static>(
+    inner: Element<'static, M>,
+    accent: Option<iced::Color>,
+    row_idx: usize,
+    danger: bool,
+) -> Element<'static, M> {
     // Square corners on every row, like `edit_row_wrap` and the library
     // rows: rows sit flush against the pane edges and `zebra_row` is flat
     // by design, so rounding the first/last row only where a list happens
@@ -1285,7 +1296,13 @@ pub fn card_wrap<M: 'static>(
     let body: Element<'static, M> = container(inner).width(Fill).into();
     container(row![strip, body].height(Length::Shrink))
         .width(Fill)
-        .style(crate::widgets::zebra_row(row_idx))
+        .style(move |theme: &iced::Theme| {
+            let mut style = crate::widgets::zebra_row(row_idx)(theme);
+            if danger {
+                style.text_color = Some(theme.palette().danger);
+            }
+            style
+        })
         .into()
 }
 
