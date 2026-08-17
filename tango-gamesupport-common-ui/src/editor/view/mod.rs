@@ -894,12 +894,16 @@ pub fn view<'a>(
             Tab::ProgramDeck => t!(lang, "save-tab-program-deck"),
             Tab::Party => t!(lang, "save-tab-party"),
         };
+        let legality_errors = build_report
+            .error_tabs
+            .contains(tab)
+            .then(|| loaded.save_editor.tab_errors(lang, *tab, loaded));
         tabs_only = tabs_only.push(widgets::tab_button(
             tab_icon(*tab),
             label,
             Action::SelectTab(*tab),
             *tab == active,
-            build_report.error_tabs.contains(tab),
+            legality_errors.as_deref(),
         ));
     }
     // Horizontally scrollable strip with a hidden scrollbar, so a long /

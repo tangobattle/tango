@@ -9,38 +9,68 @@ pub use tango_ui::widgets::*;
 use iced::{Element, Theme};
 use lucide_icons::Icon;
 
+/// Plain danger-red bullet used beside localized legality errors.
+pub fn error_dot<'a, M: 'a>() -> Element<'a, M> {
+    iced::widget::text("•")
+    .style(|theme: &Theme| iced::widget::text::Style {
+        color: Some(theme.palette().danger),
+    })
+    .into()
+}
+
 /// Compact tab pill used by sub-navs (save_view's
 /// Cover/Navi/Folder/Patch Cards/Auto Battle Data strip, etc).
 /// Body-text size, modest padding — meant to sit inside a pane
-/// without competing with the global top nav.
+/// without competing with the global top nav. A legality error makes
+/// the label red and exposes every localized error in a whole-pill hover
+/// tooltip; no separate warning glyph competes with the tab icon.
 pub fn tab_button<'a, M: Clone + 'a>(
     icon: Icon,
     label: String,
     msg: M,
     active: bool,
-    has_legality_error: bool,
+    legality_errors: Option<&[String]>,
 ) -> Element<'a, M> {
-    use iced::widget::{button, row, text};
-    use iced::Alignment;
+    use iced::widget::{button, column, container, row, text, tooltip};
+    use iced::{Alignment, Length};
 
-    let mut content = row![icon.widget().size(crate::style::TEXT_BODY), text(label)]
+    let mut label = text(label);
+    if legality_errors.is_some() {
+        label = label.style(|theme: &Theme| iced::widget::text::Style {
+            color: Some(theme.palette().danger),
+        });
+    }
+    let content = row![icon.widget().size(crate::style::TEXT_BODY), label]
         .spacing(8)
         .align_y(Alignment::Center);
-    if has_legality_error {
-        content = content.push(
-            Icon::AlertCircle
-                .widget()
-                .size(crate::style::TEXT_BODY)
-                .style(|theme: &Theme| iced::widget::text::Style {
-                    color: Some(theme.palette().danger),
-                }),
-        );
-    }
-    button(content)
+    let button = button(content)
         .padding([6.0, 14.0])
         .style(pill_tab_style(active))
-        .on_press(msg)
-        .into()
+        .on_press(msg);
+
+    let Some(errors) = legality_errors.filter(|errors| !errors.is_empty()) else {
+        return button.into();
+    };
+    let mut error_list = column![].spacing(5);
+    for error in errors {
+        error_list = error_list.push(
+            row![
+                error_dot::<M>(),
+                text(error.clone())
+                    .size(crate::style::TEXT_CAPTION)
+                    .width(Length::Fixed(360.0)),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Start),
+        );
+    }
+    tooltip(
+        button,
+        container(error_list).padding(8).style(tooltip_chrome),
+        tooltip::Position::FollowCursor,
+    )
+    .gap(8)
+    .into()
 }
 
 /// Zebra row style for data tables. Odd rows get a faint text-

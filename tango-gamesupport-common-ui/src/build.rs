@@ -356,29 +356,48 @@ impl tango_gamesupport::BuildWarnings for Warnings {
     }
 }
 
-fn report_metadata(violations: &[RawBuildViolation]) -> (std::collections::HashSet<crate::editor::view::Tab>, bool) {
+fn violation_tab(violation: &RawBuildViolation) -> crate::editor::view::Tab {
     use crate::editor::view::Tab;
 
+    match violation {
+        RawBuildViolation::FolderNotFull { .. } | RawBuildViolation::Chip { .. } => Tab::Folder,
+        RawBuildViolation::PatchCard { .. } => Tab::PatchCards,
+        RawBuildViolation::NavicustPart { .. } | RawBuildViolation::NavicustMaterializationMismatch => Tab::Navicust,
+    }
+}
+
+/// Every localized shared-rule error belonging to one save-editor tab.
+/// Keeping this beside [`Warnings`] means the tab tooltip uses the exact same
+/// grouping, names, and translations as the in-match build warning.
+pub fn tab_errors(
+    lang: &unic_langid::LanguageIdentifier,
+    tab: crate::editor::view::Tab,
+    save: &crate::editor::Save,
+    assets: &crate::editor::Assets,
+) -> Vec<String> {
+    let violations = crate::dataview::build::violations(save, assets)
+        .into_iter()
+        .filter(|violation| violation_tab(violation) == tab)
+        .collect();
+    tango_gamesupport::BuildWarnings::format(&Warnings::new(violations, assets), lang)
+}
+
+fn report_metadata(violations: &[RawBuildViolation]) -> (std::collections::HashSet<crate::editor::view::Tab>, bool) {
     let mut error_tabs = std::collections::HashSet::new();
     let mut blocks_save = false;
     for violation in violations {
+        error_tabs.insert(violation_tab(violation));
         match violation {
             RawBuildViolation::FolderNotFull { .. } => {
-                error_tabs.insert(Tab::Folder);
                 // A folder must be complete for the save to be structurally
                 // usable. Legality violations within a complete folder stay
                 // advisory and do not disable Save.
                 blocks_save = true;
             }
-            RawBuildViolation::Chip { .. } => {
-                error_tabs.insert(Tab::Folder);
-            }
-            RawBuildViolation::PatchCard { .. } => {
-                error_tabs.insert(Tab::PatchCards);
-            }
-            RawBuildViolation::NavicustPart { .. } | RawBuildViolation::NavicustMaterializationMismatch => {
-                error_tabs.insert(Tab::Navicust);
-            }
+            RawBuildViolation::Chip { .. }
+            | RawBuildViolation::PatchCard { .. }
+            | RawBuildViolation::NavicustPart { .. }
+            | RawBuildViolation::NavicustMaterializationMismatch => {}
         }
     }
     (error_tabs, blocks_save)

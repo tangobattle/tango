@@ -857,7 +857,7 @@ pub fn chip_popover<'a, M: 'a>(
     chip_popover_with_issue(inner, image_handle, description, accent, None)
 }
 
-/// [`chip_popover`] with a compact legality panel below the normal
+/// [`chip_popover`] with a compact dot-led legality message below the normal
 /// artwork/description card. The warning is wrapped narrowly so it cannot
 /// stretch or rearrange the preview above it.
 pub fn chip_popover_with_issue<'a, M: 'a>(
@@ -870,8 +870,8 @@ pub fn chip_popover_with_issue<'a, M: 'a>(
     detail_popover_with_issue(inner, image_handle, description, accent, issue)
 }
 
-/// Shared artwork/description popover with the save editor's standard red
-/// legality inset. Chips, patch cards, NaviCust parts, and BCC deck cards all
+/// Shared artwork/description popover with the save editor's standard plain
+/// red legality dot. Chips, patch cards, NaviCust parts, and BCC deck cards all
 /// use this so every red subject explains itself the same way on hover.
 pub fn detail_popover_with_issue<'a, M: 'a>(
     inner: Element<'a, M>,
@@ -902,11 +902,19 @@ pub fn detail_popover_with_issue<'a, M: 'a>(
         }
     }
     if let Some(issue) = issue {
-        let mut warning = column![].spacing(2);
-        for line in issue.lines().flat_map(wrap_issue_line) {
-            warning = warning.push(text(line).size(TEXT_CAPTION));
+        // Callers join distinct legality findings with newlines. Give each
+        // finding its own dot, then wrap only that finding's text beneath it.
+        for issue in issue.lines() {
+            let mut warning = column![].spacing(2);
+            for line in wrap_issue_line(issue) {
+                warning = warning.push(text(line).size(TEXT_CAPTION));
+            }
+            tip = tip.push(
+                row![crate::widgets::error_dot::<M>(), warning]
+                    .spacing(6)
+                    .align_y(Alignment::Start),
+            );
         }
-        tip = tip.push(container(warning).padding([5, 7]).style(chip_issue_style));
     }
     tooltip(
         inner,
@@ -956,20 +964,6 @@ fn wrap_issue_line(line: &str) -> Vec<String> {
         lines.push(current);
     }
     lines
-}
-
-/// A solid danger-red warning inset below the normal chip preview.
-fn chip_issue_style(theme: &iced::Theme) -> container::Style {
-    container::Style {
-        background: Some(iced::Background::Color(theme.palette().danger)),
-        text_color: Some(iced::Color::WHITE),
-        border: iced::Border {
-            radius: 3.0.into(),
-            width: 1.0,
-            color: iced::Color::from_rgba8(255, 255, 255, 0.25),
-        },
-        ..Default::default()
-    }
 }
 
 /// Wrap `inner` so hovering anywhere over it shows the chip's full

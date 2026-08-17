@@ -335,7 +335,7 @@ pub fn render_navicust_tab<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenS
 
 /// The installed-parts badge strip shown under the grid: two columns
 /// (solid parts | plus parts), each badge colored by its NCP color with a
-/// description tooltip and, when illegal, the same red warning inset used
+/// description tooltip and, when illegal, the same red warning dot used
 /// for chips. Reads the live view, so it reflects staged edits.
 /// `None` when nothing is installed. Shared by the read-only Navi view and
 /// the editor's grid pane.
@@ -378,7 +378,7 @@ fn navicust_installed_parts<M: 'static>(
             Fill,
             illegal,
         );
-        // Use the same danger-red legality inset as chip tooltips. The compact
+        // Use the same danger-red legality dot as chip tooltips. The compact
         // slot warning deliberately omits the piece name and grid coordinates.
         let badge_el = folder::detail_popover_with_issue(badge_el, None, description, None, issue);
         any = true;

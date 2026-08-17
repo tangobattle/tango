@@ -173,6 +173,12 @@ pub trait GameSaveEditor: Send + Sync {
         let violations = crate::dataview::build::violations(save, assets);
         crate::build::report(&violations)
     }
+
+    /// Localized legality errors belonging to `tab`, shown when its red label
+    /// is hovered. Games with private rule sets extend or replace this list.
+    fn tab_errors(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave) -> Vec<String> {
+        crate::build::tab_errors(lang, tab, loaded.save.as_ref(), loaded.assets.as_ref())
+    }
 }
 
 /// The editor of a game that models nothing behind its save (netplay

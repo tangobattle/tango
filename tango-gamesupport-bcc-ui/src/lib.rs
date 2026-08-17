@@ -71,4 +71,14 @@ impl GameSaveEditor for Ui {
     fn build_report(&self, loaded: &OpenSave) -> BuildReport {
         deck::build_report(loaded)
     }
+
+    fn tab_errors(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave) -> Vec<String> {
+        if tab != Tab::ProgramDeck {
+            return vec![];
+        }
+        deck::warnings(loaded.save.as_ref(), loaded.assets.as_ref())
+            .into_iter()
+            .flat_map(|warnings| warnings.format(lang))
+            .collect()
+    }
 }
