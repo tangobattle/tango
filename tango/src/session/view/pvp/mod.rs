@@ -6,10 +6,7 @@
 use super::*;
 use crate::session::pvp::PvpSession;
 use crate::session::Message as SessionMessage;
-use tango_gamesupport::{
-    BuildChip, BuildPatchCard, BuildViolation, BuildViolationFormat, BuildViolationFormatter, BuildViolationKind,
-    PatchCardViolationKind,
-};
+use tango_gamesupport::BuildViolation;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::{column, row};
 
@@ -39,6 +36,8 @@ pub enum Message {
     /// Dismiss the advisory describing invalid committed builds. The match
     /// continues either way; this only removes the warning card.
     DismissBuildWarning,
+    /// Explicitly open/close the opponent build's violation list.
+    ToggleBuildWarningViolations,
     /// Show/hide the opponent's setup side panel.
     ToggleOpponentPanel,
     /// Show/hide the local player's save-view panel.
@@ -87,6 +86,11 @@ pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::Langua
         Message::DismissBuildWarning => {
             if let Some(panes) = state.pvp_panes.as_mut() {
                 panes.build_warning_dismissed = true;
+            }
+        }
+        Message::ToggleBuildWarningViolations => {
+            if let Some(panes) = state.pvp_panes.as_mut() {
+                panes.build_warning_violations_expanded = !panes.build_warning_violations_expanded;
             }
         }
         Message::ToggleOpponentPanel => {
@@ -306,23 +310,30 @@ fn build_warning_overlay(lang: &LanguageIdentifier, state: &State) -> Option<Ele
     .spacing(8)
     .align_y(Alignment::Center);
 
-    let violations = build_warning_violations(
-        panes.opponent_build_violation_formatter,
-        opponent_violations,
-        lang,
+    let expanded = panes.build_warning_violations_expanded;
+    let toggle = widgets::labeled_icon_button(
+        if expanded { Icon::ChevronUp } else { Icon::ChevronDown },
+        if expanded {
+            t!(lang, "session-build-warning-hide-violations")
+        } else {
+            t!(lang, "session-build-warning-show-violations")
+        },
+        Message::ToggleBuildWarningViolations,
+        [6.0, 8.0],
+        widgets::neutral,
     );
-
-    let detail_list = iced::widget::scrollable(violations)
-        .style(widgets::chunky_scrollable)
-        .height(Length::Shrink)
-        .width(Fill);
-    let body = column![
-        header,
-        text(t!(lang, "session-build-warning-detail")).style(widgets::muted_text_style),
-        detail_list,
-    ]
+    let mut body = column![header, toggle]
     .spacing(10)
     .width(Fill);
+    if expanded {
+        let violations = build_warning_violations(opponent_violations, lang);
+        body = body.push(
+            iced::widget::scrollable(violations)
+                .style(widgets::chunky_scrollable)
+                .height(Length::Shrink)
+                .width(Fill),
+        );
+    }
     let panel = container(body)
         .width(Length::Fixed(WARNING_WIDTH))
         .max_height(WARNING_MAX_HEIGHT)
@@ -344,150 +355,19 @@ fn build_warning_overlay(lang: &LanguageIdentifier, state: &State) -> Option<Ele
     )
 }
 
-fn build_warning_violations(
-    formatter: BuildViolationFormatter,
-    violations: &[BuildViolation],
-    lang: &LanguageIdentifier,
-) -> Element<'static, Message> {
+fn build_warning_violations(violations: &[BuildViolation], lang: &LanguageIdentifier) -> Element<'static, Message> {
     let mut rows = column![].spacing(4);
-    for violation in present_build_violations(violations) {
+    for violation in violations {
         rows = rows.push(
             row![
                 text("•").size(TEXT_CAPTION),
-                text(build_violation_text(formatter, lang, &violation))
-                    .size(TEXT_CAPTION)
-                    .width(Fill),
+                text(violation.format(lang)).size(TEXT_CAPTION).width(Fill),
             ]
             .spacing(7)
             .align_y(Alignment::Start),
         );
     }
     rows.into()
-}
-
-/// A UI-only grouping of the raw, slot-scoped report. This keeps the warning
-/// compact without making game support decide how its consumers should render
-/// repeated violations.
-#[derive(Debug, PartialEq, Eq)]
-enum PresentedBuildViolation<'a> {
-    FolderNotFull {
-        used: usize,
-        required: usize,
-    },
-    Chips {
-        chips: Vec<&'a BuildChip>,
-        kind: BuildViolationKind,
-    },
-    PatchCards {
-        patch_cards: Vec<&'a BuildPatchCard>,
-        kind: PatchCardViolationKind,
-    },
-}
-
-fn present_build_violations(violations: &[BuildViolation]) -> Vec<PresentedBuildViolation<'_>> {
-    let mut presented = vec![];
-    for violation in violations {
-        match violation {
-            BuildViolation::FolderNotFull { used, required } => {
-                presented.push(PresentedBuildViolation::FolderNotFull {
-                    used: *used,
-                    required: *required,
-                });
-            }
-            BuildViolation::Chip { chip, kind, .. } => {
-                let group_idx = presented
-                    .iter()
-                    .position(|group| {
-                        matches!(
-                            group,
-                            PresentedBuildViolation::Chips {
-                                kind: grouped_kind,
-                                ..
-                            } if grouped_kind == kind
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        presented.push(PresentedBuildViolation::Chips {
-                            chips: vec![],
-                            kind: *kind,
-                        });
-                        presented.len() - 1
-                    });
-                let PresentedBuildViolation::Chips { chips, .. } = &mut presented[group_idx] else {
-                    unreachable!("chip violation group has a chip presentation")
-                };
-                if !chips.contains(&chip) {
-                    chips.push(chip);
-                }
-            }
-            BuildViolation::PatchCard { patch_card, kind, .. } => {
-                let group_idx = presented
-                    .iter()
-                    .position(|group| {
-                        matches!(
-                            group,
-                            PresentedBuildViolation::PatchCards {
-                                kind: grouped_kind,
-                                ..
-                            } if grouped_kind == kind
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        presented.push(PresentedBuildViolation::PatchCards {
-                            patch_cards: vec![],
-                            kind: *kind,
-                        });
-                        presented.len() - 1
-                    });
-                let PresentedBuildViolation::PatchCards { patch_cards, .. } = &mut presented[group_idx] else {
-                    unreachable!("patch-card violation group has a patch-card presentation")
-                };
-                if !patch_cards.contains(&patch_card) {
-                    patch_cards.push(patch_card);
-                }
-            }
-        }
-    }
-    for group in &mut presented {
-        match group {
-            PresentedBuildViolation::Chips { chips, .. } => chips.sort_by_key(|chip| chip.id),
-            PresentedBuildViolation::PatchCards { patch_cards, .. } => {
-                patch_cards.sort_by_key(|patch_card| patch_card.id)
-            }
-            PresentedBuildViolation::FolderNotFull { .. } => {}
-        }
-    }
-    presented
-}
-
-fn build_violation_text(
-    formatter: BuildViolationFormatter,
-    lang: &LanguageIdentifier,
-    violation: &PresentedBuildViolation<'_>,
-) -> String {
-    match violation {
-        PresentedBuildViolation::FolderNotFull { used, required } => formatter(
-            lang,
-            BuildViolationFormat::FolderNotFull {
-                used: *used,
-                required: *required,
-            },
-        ),
-        PresentedBuildViolation::Chips { chips, kind } => formatter(
-            lang,
-            BuildViolationFormat::Chips {
-                chips,
-                kind: *kind,
-            },
-        ),
-        PresentedBuildViolation::PatchCards { patch_cards, kind } => formatter(
-            lang,
-            BuildViolationFormat::PatchCards {
-                patch_cards,
-                kind: *kind,
-            },
-        ),
-    }
 }
 
 fn build_warning_plate(theme: &iced::Theme) -> iced::widget::container::Style {
@@ -926,183 +806,18 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) -
 mod build_warning_tests {
     use super::*;
 
-    fn chip(code: &str) -> BuildChip {
-        chip_with_id(1, code)
-    }
-
-    fn chip_with_id(id: usize, code: &str) -> BuildChip {
-        BuildChip {
-            id,
-            code: code.to_string(),
-            name: Some("Cannon".to_string()),
-        }
-    }
-
-    fn patch_card(id: usize, name: &str, mb: u8) -> BuildPatchCard {
-        BuildPatchCard {
-            id,
-            name: Some(name.to_string()),
-            mb,
-        }
-    }
-
-    fn violation_chip(violation: &BuildViolation) -> &BuildChip {
-        let BuildViolation::Chip { chip, .. } = violation else {
-            panic!("expected chip violation")
-        };
-        chip
-    }
-
     #[test]
     fn warning_chrome_is_translated_in_every_supported_language() {
-        let english = t!(&crate::i18n::FALLBACK_LANG, "session-build-warning-title");
+        let english = [
+            t!(&crate::i18n::FALLBACK_LANG, "session-build-warning-title"),
+            t!(&crate::i18n::FALLBACK_LANG, "session-build-warning-show-violations"),
+            t!(&crate::i18n::FALLBACK_LANG, "session-build-warning-hide-violations"),
+        ];
         for language in crate::i18n::SUPPORTED_LANGS.iter().skip(1) {
-            assert_ne!(t!(language, "session-build-warning-title"), english);
+            assert_ne!(t!(language, "session-build-warning-title"), english[0]);
+            assert_ne!(t!(language, "session-build-warning-show-violations"), english[1]);
+            assert_ne!(t!(language, "session-build-warning-hide-violations"), english[2]);
         }
-    }
-
-    fn test_formatter(_lang: &LanguageIdentifier, violation: BuildViolationFormat<'_>) -> String {
-        match violation {
-            BuildViolationFormat::FolderNotFull { used, required } => format!("folder {used}/{required}"),
-            BuildViolationFormat::Chips { chips, kind } => {
-                let chips = chips
-                    .iter()
-                    .map(|chip| format!("{} {}", chip.name.as_deref().unwrap_or("unknown"), chip.code))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let reason = match kind {
-                    BuildViolationKind::ChipIllegalForGame => "illegal".to_string(),
-                    BuildViolationKind::TooManyCopiesOfChip { used, limit } => {
-                        format!("copies {used}/{limit}")
-                    }
-                    _ => format!("{kind:?}"),
-                };
-                format!("{chips}: {reason}")
-            }
-            BuildViolationFormat::PatchCards { patch_cards, kind } => {
-                let patch_cards = patch_cards
-                    .iter()
-                    .map(|patch_card| {
-                        format!(
-                            "{} {}MB",
-                            patch_card.name.as_deref().unwrap_or("unknown"),
-                            patch_card.mb
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let reason = match kind {
-                    PatchCardViolationKind::TotalMbExceeded { used, limit } => format!("MB {used}/{limit}"),
-                };
-                format!("{patch_cards}: {reason}")
-            }
-        }
-    }
-
-    #[test]
-    fn exact_chip_codes_and_copy_limit_are_rendered() {
-        let violations = vec![
-            BuildViolation::Chip {
-                slot: 0,
-                chip: chip("A"),
-                kind: BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
-            },
-            BuildViolation::Chip {
-                slot: 1,
-                chip: chip("B"),
-                kind: BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
-            },
-        ];
-        let presented = present_build_violations(&violations);
-
-        assert_eq!(
-            build_violation_text(test_formatter, &crate::i18n::FALLBACK_LANG, &presented[0]),
-            "Cannon A, Cannon B: copies 6/5"
-        );
-    }
-
-    #[test]
-    fn raw_slot_violations_are_grouped_only_for_presentation() {
-        let copies = BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 };
-        let violations = vec![
-            BuildViolation::Chip {
-                slot: 0,
-                chip: chip("A"),
-                kind: copies,
-            },
-            BuildViolation::Chip {
-                slot: 1,
-                chip: chip_with_id(2, "A"),
-                kind: copies,
-            },
-            BuildViolation::Chip {
-                slot: 2,
-                chip: chip_with_id(0, "B"),
-                kind: copies,
-            },
-            BuildViolation::Chip {
-                slot: 3,
-                chip: chip("A"),
-                kind: copies,
-            },
-            BuildViolation::Chip {
-                slot: 2,
-                chip: chip_with_id(0, "B"),
-                kind: BuildViolationKind::ChipIllegalForGame,
-            },
-        ];
-
-        assert_eq!(
-            present_build_violations(&violations),
-            vec![
-                PresentedBuildViolation::Chips {
-                    chips: vec![
-                        violation_chip(&violations[2]),
-                        violation_chip(&violations[0]),
-                        violation_chip(&violations[1]),
-                    ],
-                    kind: copies,
-                },
-                PresentedBuildViolation::Chips {
-                    chips: vec![violation_chip(&violations[4])],
-                    kind: BuildViolationKind::ChipIllegalForGame,
-                },
-            ]
-        );
-    }
-
-    #[test]
-    fn patch_card_contributors_are_grouped_and_rendered_with_the_total() {
-        let kind = PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 };
-        let violations = vec![
-            BuildViolation::PatchCard {
-                slot: 0,
-                patch_card: patch_card(2, "Second", 50),
-                kind,
-            },
-            BuildViolation::PatchCard {
-                slot: 1,
-                patch_card: patch_card(1, "First", 40),
-                kind,
-            },
-        ];
-        let presented = present_build_violations(&violations);
-
-        assert_eq!(
-            build_violation_text(test_formatter, &crate::i18n::FALLBACK_LANG, &presented[0]),
-            "First 40MB, Second 50MB: MB 90/80"
-        );
-    }
-
-    #[test]
-    fn incomplete_folder_does_not_require_a_chip_label() {
-        let violation = BuildViolation::FolderNotFull { used: 29, required: 30 };
-        let presented = present_build_violations(std::slice::from_ref(&violation));
-
-        assert_eq!(
-            build_violation_text(test_formatter, &crate::i18n::FALLBACK_LANG, &presented[0]),
-            "folder 29/30"
-        );
     }
 
     #[test]
@@ -1112,27 +827,36 @@ mod build_warning_tests {
             local_loaded: None,
             // `None` is exactly how a blinded opponent is represented.
             opponent_loaded: None,
-            opponent_build_validity: tango_gamesupport::BuildValidity::Invalid(vec![BuildViolation::Chip {
-                slot: 4,
-                chip: BuildChip {
-                    id: 99,
-                    code: "*".to_string(),
-                    name: Some("SecretChip".to_string()),
-                },
-                kind: BuildViolationKind::ChipIllegalForGame,
-            }]),
-            opponent_build_violation_formatter: test_formatter,
+            opponent_build_validity: tango_gamesupport::BuildValidity::Invalid(vec![BuildViolation::new(|lang| {
+                if lang.language.as_str() == "ja" {
+                    "シークレットチップ：使用不可".to_string()
+                } else {
+                    "SecretChip: illegal".to_string()
+                }
+            })]),
             build_warning_dismissed: false,
+            build_warning_violations_expanded: false,
             pane_widths: [320.0, 320.0],
             pane_drag: None,
         });
 
         assert!(build_warning_overlay(&crate::i18n::FALLBACK_LANG, &state).is_some());
         let opponent_violations = state.pvp_panes.as_ref().unwrap().opponent_build_validity.violations();
-        let presented = present_build_violations(opponent_violations);
         assert_eq!(
-            build_violation_text(test_formatter, &crate::i18n::FALLBACK_LANG, &presented[0]),
-            "SecretChip *: illegal"
+            opponent_violations[0].format(&crate::i18n::FALLBACK_LANG),
+            "SecretChip: illegal"
         );
+        assert_eq!(
+            opponent_violations[0].format(&"ja-JP".parse().unwrap()),
+            "シークレットチップ：使用不可"
+        );
+
+        assert!(!state.pvp_panes.as_ref().unwrap().build_warning_violations_expanded);
+        let _ = update(
+            &mut state,
+            Message::ToggleBuildWarningViolations,
+            &crate::i18n::FALLBACK_LANG,
+        );
+        assert!(state.pvp_panes.as_ref().unwrap().build_warning_violations_expanded);
     }
 }

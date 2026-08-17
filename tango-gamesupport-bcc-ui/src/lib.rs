@@ -9,7 +9,7 @@
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view as sv;
 use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common_ui::editor::{BuildViolation, GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::{BuildReport, GameSaveEditor, SaveEditorShell};
 use unic_langid::LanguageIdentifier;
 
 pub mod deck;
@@ -58,9 +58,9 @@ impl GameSaveEditor for Ui {
         }
     }
 
-    /// A program deck may legally have empty slots, so the Battle Network
-    /// folder-full rule does not apply.
-    fn build_violations(&self, _loaded: &OpenSave) -> Vec<BuildViolation> {
-        vec![]
+    /// A program deck may legally have empty slots, but its Navi socket and
+    /// MB budgets still participate in the shared legality report.
+    fn build_report(&self, loaded: &OpenSave) -> BuildReport {
+        deck::build_report(loaded)
     }
 }

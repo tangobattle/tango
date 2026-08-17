@@ -90,12 +90,12 @@ pub struct PvpPanes {
     /// Local validation of the opponent's committed save. This is computed
     /// from the bytes the match actually runs, never trusted from a peer flag.
     pub opponent_build_validity: tango_gamesupport::BuildValidity,
-    /// View-time localizer supplied by the opponent game's opaque save editor.
-    /// Retained even when the loaded save itself is discarded for blindness.
-    pub opponent_build_violation_formatter: tango_gamesupport::BuildViolationFormatter,
     /// A build warning remains visible until explicitly dismissed. Replacing
     /// `PvpPanes` for the next match naturally resets it.
     pub build_warning_dismissed: bool,
+    /// Whether the warning's exact violation list has been explicitly opened.
+    /// Starts collapsed so opponent build details are never shown implicitly.
+    pub build_warning_violations_expanded: bool,
     /// Current width of each setup drawer (`[self, opponent]`), seeded
     /// from `config.pvp_setup_pane_widths` at match start and moved by
     /// dragging a drawer's inner edge. The App mirrors it back into
@@ -1561,7 +1561,6 @@ pub async fn spawn_pvp(
         )
     };
     let opponent_build_validity = remote_loaded.editor.build_validity(&remote_loaded);
-    let opponent_build_violation_formatter = remote_loaded.editor.build_violation_formatter();
     let opponent_loaded = (!pre_match.remote_settings.blind_setup).then_some(remote_loaded);
 
     // Build the local-side LoadedSave so the in-session "my setup"
@@ -1618,8 +1617,8 @@ pub async fn spawn_pvp(
             local_loaded: Some(local_loaded),
             opponent_loaded,
             opponent_build_validity,
-            opponent_build_violation_formatter,
             build_warning_dismissed: false,
+            build_warning_violations_expanded: false,
             // Clamped on the way in: the persisted pair predates the
             // current bounds on an older config, or the window it was
             // sized against is gone.

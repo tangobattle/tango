@@ -315,7 +315,7 @@ pub fn render_navicust_edit<'a>(
         .spacing(8)
         .align_x(Alignment::Center)
         .padding([4, 8]);
-    if let Some(parts) = navicust_installed_parts::<Action>(loaded, v.as_ref()) {
+    if let Some(parts) = navicust_installed_parts::<Action>(lang, loaded, v.as_ref()) {
         grid_inner = grid_inner.push(parts);
     }
 
@@ -335,14 +335,18 @@ pub fn render_navicust_tab<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenS
 
 /// The installed-parts badge strip shown under the grid: two columns
 /// (solid parts | plus parts), each badge colored by its NCP color with a
-/// description tooltip. Reads the live view, so it reflects staged edits.
+/// description tooltip and, when illegal, the same red warning inset used
+/// for chips. Reads the live view, so it reflects staged edits.
 /// `None` when nothing is installed. Shared by the read-only Navi view and
 /// the editor's grid pane.
 fn navicust_installed_parts<M: 'static>(
+    lang: &LanguageIdentifier,
     loaded: &OpenSave,
     v: &dyn crate::dataview::save::NavicustView,
 ) -> Option<Element<'static, M>> {
     let assets = loaded.assets.as_ref();
+    let illegal_slots =
+        crate::dataview::build::navicust_materialization_issues(loaded.save.as_ref(), loaded.assets.as_ref()).0;
     // Same fixed column width the patch-card effect columns use, so the
     // badges — which fill their column — span a definite width rather
     // than collapsing to nothing (a column of only fluid children has no
@@ -363,18 +367,20 @@ fn navicust_installed_parts<M: 'static>(
             iced::Color::from_rgb8(0x88, 0x88, 0x88),
         ));
         let bg = if is_solid { solid_color } else { plus_color };
-        let badge_el = colored_badge_sized(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0], Fill);
-        let badge_el: Element<'static, M> = if let Some(desc) = description {
-            tooltip(
-                badge_el,
-                container(text(desc).size(TEXT_CAPTION)).padding(8).style(tooltip_style),
-                tooltip::Position::FollowCursor,
-            )
-            .gap(8)
-            .into()
-        } else {
-            badge_el
-        };
+        let illegal = illegal_slots.contains(&i);
+        let issue = illegal.then(|| crate::build::navicust_slot_warning(lang));
+        let badge_el = colored_badge_sized_with_danger(
+            part_name,
+            bg,
+            iced::Color::BLACK,
+            TEXT_BODY,
+            [3.0, 8.0],
+            Fill,
+            illegal,
+        );
+        // Use the same danger-red legality inset as chip tooltips. The compact
+        // slot warning deliberately omits the piece name and grid coordinates.
+        let badge_el = folder::detail_popover_with_issue(badge_el, None, description, None, issue);
         any = true;
         if is_solid {
             solid_col = solid_col.push(badge_el);
@@ -495,7 +501,7 @@ fn render_navicust<M: 'static>(
     // the two read as one layout. No Fill anywhere: that would stretch
     // the pane across the tab.
     let mut content = column![grid_el].spacing(8).align_x(Alignment::Center);
-    if let Some(parts) = navicust_installed_parts::<M>(loaded, v) {
+    if let Some(parts) = navicust_installed_parts::<M>(lang, loaded, v) {
         content = content.push(parts);
     }
 

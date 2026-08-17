@@ -13,6 +13,7 @@
 //! looks back inside them.
 
 pub mod auto_battle_data;
+pub mod build;
 pub mod msg;
 pub mod navicust;
 pub mod nds;

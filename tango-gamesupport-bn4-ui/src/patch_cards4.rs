@@ -10,12 +10,14 @@ use std::sync::Arc;
 use iced::widget::{container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use sweeten::widget::{column, pick_list, row};
+use tango_gamesupport_bn4_dataview::build::{PatchCard4Violation, PatchCard4ViolationKind};
 use tango_gamesupport_bn4_dataview::rom::{self as bn4_rom, PatchCard4Effect};
 use tango_gamesupport_bn4_dataview::save as bn4_save;
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view::{
-    edit_toggle_maybe, editor_header, patch_cards, placeholder, Action, State,
+    edit_toggle_maybe, editor_header, folder, patch_cards, placeholder, Action, State,
 };
+use tango_gamesupport_common_ui::editor::{BuildReport, OpaqueBuildViolation};
 use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use tango_gamesupport_common_ui::style::{self, TEXT_BODY, TEXT_CAPTION};
 use tango_gamesupport_common_ui::t;
@@ -48,6 +50,114 @@ fn card_name(info: Option<&bn4_rom::PatchCard4Info>, id: usize) -> String {
     }
 }
 
+fn patch_card4_violations(loaded: &OpenSave) -> Vec<PatchCard4Violation> {
+    let (Some(save), Some(assets)) = (bn4_save(loaded), bn4_assets(loaded)) else {
+        return vec![];
+    };
+    tango_gamesupport_bn4_dataview::build::patch_card4_violations(save, assets)
+}
+
+fn patch_card4_slot_label(slot: usize) -> String {
+    PATCH_CARD4_SLOT_LABELS
+        .get(slot)
+        .map(|label| (*label).to_string())
+        .unwrap_or_else(|| format!("#{}", slot + 1))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PresentedPatchCard4Violation {
+    card: String,
+    actual_slot: String,
+    expected_slot: Option<String>,
+}
+
+fn present_patch_card4_violation(
+    assets: &bn4_rom::Assets,
+    violation: PatchCard4Violation,
+) -> PresentedPatchCard4Violation {
+    let info = assets.patch_card4(violation.id);
+    PresentedPatchCard4Violation {
+        card: card_name(info.as_ref(), violation.id),
+        actual_slot: patch_card4_slot_label(violation.slot),
+        expected_slot: match violation.kind {
+            PatchCard4ViolationKind::WrongSlot { expected_slot } => Some(patch_card4_slot_label(expected_slot)),
+            PatchCard4ViolationKind::NotInCatalog => None,
+        },
+    }
+}
+
+fn patch_card4_issues(
+    lang: &LanguageIdentifier,
+    loaded: &OpenSave,
+) -> std::collections::HashMap<usize, String> {
+    let Some(assets) = bn4_assets(loaded) else {
+        return Default::default();
+    };
+    patch_card4_violations(loaded)
+        .into_iter()
+        .map(|violation| {
+            let slot = violation.slot;
+            let presented = present_patch_card4_violation(assets, violation);
+            let issue = tango_gamesupport_common_ui::build::format_violation(
+                lang,
+                None,
+                patch_card4_violation_reason(lang, &presented),
+            );
+            (slot, issue)
+        })
+        .collect()
+}
+
+fn patch_card4_violation_reason(lang: &LanguageIdentifier, violation: &PresentedPatchCard4Violation) -> String {
+    match &violation.expected_slot {
+        Some(expected_slot) => t!(
+            lang,
+            "build-violation-patch-card4-wrong-slot-reason",
+            actual_slot = violation.actual_slot.clone(),
+            expected_slot = expected_slot.clone()
+        ),
+        None => t!(
+            lang,
+            "build-violation-patch-card4-not-in-catalog-reason",
+            actual_slot = violation.actual_slot.clone()
+        ),
+    }
+}
+
+fn format_patch_card4_violation(lang: &LanguageIdentifier, violation: &PresentedPatchCard4Violation) -> String {
+    tango_gamesupport_common_ui::build::format_violation(
+        lang,
+        Some(&violation.card),
+        patch_card4_violation_reason(lang, violation),
+    )
+}
+
+/// Collapse BN4's private Mod Card violations to the shared tab metadata and
+/// opaque opponent warnings. No BN4 rule enum crosses this boundary.
+pub fn build_report(loaded: &OpenSave) -> BuildReport {
+    let Some(assets) = bn4_assets(loaded) else {
+        return BuildReport::default();
+    };
+    let violations = patch_card4_violations(loaded);
+    if violations.is_empty() {
+        return BuildReport::default();
+    }
+    let warnings = violations
+        .into_iter()
+        .map(|violation| {
+            let presented = present_patch_card4_violation(assets, violation);
+            OpaqueBuildViolation::new(move |lang| format_patch_card4_violation(lang, &presented))
+        })
+        .collect();
+    BuildReport {
+        error_tabs: [tango_gamesupport_common_ui::editor::view::Tab::PatchCards]
+            .into_iter()
+            .collect(),
+        blocks_save: false,
+        warnings,
+    }
+}
+
 /// The read-only Mod Card list: a slot badge + the card's "name — effect"
 /// line, with the bug (if any) in purple beneath.
 pub fn render<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
@@ -55,9 +165,12 @@ pub fn render<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Eleme
         return placeholder(t!(lang, "save-empty"));
     };
     let v = save.view_patch_card4s();
+    let issues = patch_card4_issues(lang, loaded);
 
     let mut list = column![].spacing(3).padding(0);
     for (slot, slot_label) in PATCH_CARD4_SLOT_LABELS.iter().enumerate() {
+        let issue = issues.get(&slot).cloned();
+        let illegal = issue.is_some();
         let badge: Element<'static, M> = container(text(*slot_label).size(TEXT_BODY).font(iced::Font::MONOSPACE))
             .width(Length::Fixed(34.0))
             .align_x(iced::alignment::Horizontal::Center)
@@ -71,7 +184,13 @@ pub fn render<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Eleme
                 let number = text(format!("{:03}", card.id))
                     .size(TEXT_BODY)
                     .font(iced::Font::MONOSPACE)
-                    .style(muted_text_style);
+                    .style(move |theme: &iced::Theme| {
+                        if illegal {
+                            tango_gamesupport_common_ui::widgets::danger_text_style(theme)
+                        } else {
+                            muted_text_style(theme)
+                        }
+                    });
                 let label = patch_cards::patch_card_name(
                     match info.as_ref().map(|i| i.effect) {
                         Some(effect) => format!("{name} — {}", effect_label(effect)),
@@ -107,12 +226,19 @@ pub fn render<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Eleme
             .align_y(Alignment::Center)
             .into(),
         };
-        list = list.push(
+        let row: Element<'static, M> =
             container(cell)
                 .width(Fill)
                 .padding([8, 10])
-                .style(widgets::zebra_row(slot)),
-        );
+                .style(move |theme: &iced::Theme| {
+                    let mut style = widgets::zebra_row(slot)(theme);
+                    if illegal {
+                        style.text_color = Some(theme.palette().danger);
+                    }
+                    style
+                })
+                .into();
+        list = list.push(folder::detail_popover_with_issue(row, None, None, None, issue));
     }
 
     container(list).width(Fill).style(widgets::pane).into()
@@ -127,7 +253,9 @@ fn slot_row<'a>(
     slot: usize,
     installed: Option<tango_gamesupport_common_dataview::save::PatchCard>,
     choices: Vec<PatchCard4Choice>,
+    issue: Option<String>,
 ) -> Element<'a, Action> {
+    let illegal = issue.is_some();
     let badge = container(
         text(PATCH_CARD4_SLOT_LABELS[slot])
             .size(TEXT_BODY)
@@ -145,7 +273,13 @@ fn slot_row<'a>(
     .width(Fill)
     .padding(style::CONTROL_PADDING)
     .text_size(TEXT_BODY)
-    .style(widgets::chunky_pick_list);
+    .style(move |theme: &iced::Theme, status| {
+        let mut style = widgets::chunky_pick_list(theme, status);
+        if illegal {
+            style.text_color = theme.palette().danger;
+        }
+        style
+    });
 
     // The ON toggle shows on every row (so the column stays aligned); an
     // empty slot has nothing to enable, so it renders disabled (greyed,
@@ -179,11 +313,18 @@ fn slot_row<'a>(
             .spacing(0),
         );
     }
-    container(cell)
+    let row = container(cell)
         .width(Fill)
         .padding([8, 10])
-        .style(widgets::zebra_row(slot))
-        .into()
+        .style(move |theme: &iced::Theme| {
+            let mut style = widgets::zebra_row(slot)(theme);
+            if illegal {
+                style.text_color = Some(theme.palette().danger);
+            }
+            style
+        })
+        .into();
+    folder::detail_popover_with_issue(row, None, None, None, issue)
 }
 
 /// The Mod Card editor: the six catalog slots (0A–0F) as a single form.
@@ -201,6 +342,7 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
         return placeholder(t!(lang, "save-empty"));
     };
     let v = save.view_patch_card4s();
+    let issues = patch_card4_issues(lang, loaded);
 
     // Bucket every card id by the slot it belongs to (one pass), so each
     // slot's dropdown lists only its own cards.
@@ -223,7 +365,13 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
         }
         let mut choices = vec![PatchCard4Choice::none(lang)];
         choices.extend(ids.iter().map(|&id| PatchCard4Choice::card(assets, id)));
-        rows = rows.push(slot_row(assets, slot, installed, choices));
+        rows = rows.push(slot_row(
+            assets,
+            slot,
+            installed,
+            choices,
+            issues.get(&slot).cloned(),
+        ));
     }
 
     let count_caption = text(t!(lang, "patch-card-edit-count", count = filled as i64))
@@ -483,4 +631,45 @@ fn bugs_label(bugs: &[bn4_rom::PatchCard4Bug]) -> Option<String> {
             .collect::<Vec<_>>()
             .join(" & "),
     )
+}
+
+#[cfg(test)]
+mod legality_tests {
+    use super::*;
+
+    #[test]
+    fn wrong_slot_warning_localization_remains_dynamic() {
+        let violation = PresentedPatchCard4Violation {
+            card: "Max HP Up".to_string(),
+            actual_slot: "0A".to_string(),
+            expected_slot: Some("0C".to_string()),
+        };
+        let english: LanguageIdentifier = "en-US".parse().unwrap();
+        let english = format_patch_card4_violation(&english, &violation);
+        assert!(english.contains("0A"));
+        assert!(english.contains("0C"));
+
+        for language in [
+            "de-DE", "es-419", "fr-FR", "ja-JP", "nl-NL", "pt-BR", "ru-RU", "vi-VN", "zh-CN", "zh-TW",
+        ] {
+            assert_ne!(
+                format_patch_card4_violation(&language.parse().unwrap(), &violation),
+                english
+            );
+        }
+    }
+
+    #[test]
+    fn missing_catalog_entries_have_their_own_warning() {
+        let violation = PresentedPatchCard4Violation {
+            card: "#0".to_string(),
+            actual_slot: "0B".to_string(),
+            expected_slot: None,
+        };
+        let english: LanguageIdentifier = "en-US".parse().unwrap();
+        let text = format_patch_card4_violation(&english, &violation);
+        assert!(text.contains("#0"));
+        assert!(text.contains("0B"));
+        assert!(text.contains("catalog"));
+    }
 }

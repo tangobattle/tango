@@ -15,7 +15,7 @@ pub fn render_patch_cards56<M: 'static>(lang: &LanguageIdentifier, loaded: &Open
         .filter(|card| card.enabled)
         .map(|card| assets.patch_card56(card.id).map(|c| c.mb() as u32).unwrap_or(0))
         .sum();
-    let over_mb_limit = enabled_mb > MAX_PATCH_CARD56_MB;
+    let overflow_slots = crate::dataview::build::patch_card56_overflow_slots(loaded.save.as_ref(), assets);
 
     let mut list = column![].spacing(3).padding(0);
     for i in 0..v.count() {
@@ -26,7 +26,8 @@ pub fn render_patch_cards56<M: 'static>(lang: &LanguageIdentifier, loaded: &Open
             .and_then(|c| c.name())
             .unwrap_or_else(|| format!("#{}", card.id));
         let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-        let danger = over_mb_limit && card.enabled;
+        let danger = overflow_slots.contains(&i);
+        let issue = danger.then(|| patch_card56_issue(lang, mb, enabled_mb));
         let [name_cell, param_cell, ability_cell] =
             patch_card56_cells::<M>(loaded, &name, mb, card.enabled, danger, card.id);
 
@@ -40,20 +41,26 @@ pub fn render_patch_cards56<M: 'static>(lang: &LanguageIdentifier, loaded: &Open
         ]
         .spacing(8)
         .align_y(Alignment::Start);
-        list = list.push(
+        let row: Element<'static, M> =
             container(row)
                 .padding(style::ROW_PADDING)
                 .style(move |theme: &iced::Theme| {
                     let mut style = crate::widgets::zebra_row(i)(theme);
-                    if over_mb_limit && card.enabled {
+                    if danger {
                         style.text_color = Some(theme.palette().danger);
                     }
                     style
-                }),
-        );
+                })
+                .into();
+        list = list.push(folder::detail_popover_with_issue(row, None, None, None, issue));
     }
 
     container(list).width(Fill).style(crate::widgets::pane).into()
+}
+
+/// The compact warning attached directly to an over-budget card row.
+fn patch_card56_issue(lang: &LanguageIdentifier, mb: u8, used: u32) -> String {
+    crate::build::patch_card_slot_warning(lang, mb, used, MAX_PATCH_CARD56_MB)
 }
 
 /// Every PatchCard56 the ROM defines, as `(id, name, mb)`, in `sort`
@@ -145,10 +152,12 @@ fn patch_card56_cells<'a, M: 'static>(
 /// so the list is simply the set of equipped cards. An over-budget set is an
 /// advisory error and its enabled rows render danger-red.
 fn patch_card56_list_row<'a>(
+    lang: &LanguageIdentifier,
     loaded: &'a OpenSave,
     slot: usize,
     card: crate::dataview::save::PatchCard,
-    over_mb_limit: bool,
+    enabled_mb: u32,
+    danger: bool,
 ) -> Element<'a, Action> {
     let info = loaded.assets.patch_card56(card.id);
     let name = info
@@ -156,7 +165,7 @@ fn patch_card56_list_row<'a>(
         .and_then(|c| c.name())
         .unwrap_or_else(|| format!("#{}", card.id));
     let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-    let danger = over_mb_limit && card.enabled;
+    let issue = danger.then(|| patch_card56_issue(lang, mb, enabled_mb));
     let [name_cell, param_cell, ability_cell] = patch_card56_cells(loaded, &name, mb, card.enabled, danger, card.id);
 
     // Just the ✕ that backs the card out to the library.
@@ -176,7 +185,7 @@ fn patch_card56_list_row<'a>(
     .align_y(Alignment::Start);
     // Left padding trimmed (vs the usual 10) so the drag handle sits flush in
     // the gutter, matching the folder editor's grip.
-    container(row)
+    let row = container(row)
         .padding(iced::Padding {
             top: 6.0,
             right: 10.0,
@@ -185,12 +194,13 @@ fn patch_card56_list_row<'a>(
         })
         .style(move |theme: &iced::Theme| {
             let mut style = crate::widgets::zebra_row(slot)(theme);
-            if over_mb_limit && card.enabled {
+            if danger {
                 style.text_color = Some(theme.palette().danger);
             }
             style
         })
-        .into()
+        .into();
+    folder::detail_popover_with_issue(row, None, None, None, issue)
 }
 
 /// One library card, laid out like a [`render_patch_cards56`] row (index ·
@@ -199,15 +209,18 @@ fn patch_card56_list_row<'a>(
 /// greyed and unclickable. An addition that would exceed the MB budget remains
 /// clickable but renders danger-red, matching advisory folder-limit choices.
 fn patch_card56_library_row<'a>(
+    lang: &LanguageIdentifier,
     loaded: &'a OpenSave,
     id: usize,
     name: String,
     mb: u8,
     row_idx: usize,
     addable: bool,
-    over_mb_limit: bool,
+    enabled_mb_after_add: u32,
 ) -> Element<'a, Action> {
-    let danger = over_mb_limit && addable;
+    let issue = (addable && enabled_mb_after_add > MAX_PATCH_CARD56_MB)
+        .then(|| patch_card56_issue(lang, mb, enabled_mb_after_add));
+    let danger = issue.is_some();
     let [name_cell, param_cell, ability_cell] = patch_card56_cells(loaded, &name, mb, addable, danger, id);
 
     let row = row![name_cell, param_cell, ability_cell]
@@ -217,7 +230,7 @@ fn patch_card56_library_row<'a>(
     // card. `list_item` paints the zebra base + hover highlight, so it
     // doubles as the palette's "click me" affordance.
     let b = button(row).width(Fill).padding(style::ROW_PADDING);
-    let mut b = if over_mb_limit && addable {
+    let mut b = if danger {
         b.style(crate::widgets::danger_text_list_item(row_idx))
     } else {
         b.style(crate::widgets::list_item(false, row_idx))
@@ -225,7 +238,7 @@ fn patch_card56_library_row<'a>(
     if addable {
         b = b.on_press(Action::AddPatchCard56 { id });
     }
-    b.into()
+    folder::detail_popover_with_issue(b.into(), None, None, None, issue)
 }
 
 /// The BN5/BN6 patch-card editor: a two-pane layout (registered list left,
@@ -265,8 +278,17 @@ pub fn render_patch_cards56_edit<'a>(
 
     let mut list_rows: Vec<Element<'a, Action>> = Vec::with_capacity(cards.len());
     let over_mb_limit = enabled_mb > MAX_PATCH_CARD56_MB;
+    let overflow_slots =
+        crate::dataview::build::patch_card56_overflow_slots(loaded.save.as_ref(), loaded.assets.as_ref());
     for (slot, card) in &cards {
-        list_rows.push(patch_card56_list_row(loaded, *slot, card.clone(), over_mb_limit));
+        list_rows.push(patch_card56_list_row(
+            lang,
+            loaded,
+            *slot,
+            card.clone(),
+            enabled_mb,
+            overflow_slots.contains(slot),
+        ));
     }
     // Draggable list: grab a card row and drop it to reorder the registered
     // order (dense list, so any drop is a valid ordered move).
@@ -312,15 +334,16 @@ pub fn render_patch_cards56_edit<'a>(
         // Only the hard list capacity disables adding. Like folder-limit
         // violations, a choice that would exceed the MB budget stays clickable
         // and turns danger-red.
-        let over_mb_limit = enabled_mb + mb as u32 > MAX_PATCH_CARD56_MB;
+        let enabled_mb_after_add = enabled_mb + mb as u32;
         lib_col = lib_col.push(patch_card56_library_row(
+            lang,
             loaded,
             id,
             name,
             mb,
             shown,
             !list_full,
-            over_mb_limit,
+            enabled_mb_after_add,
         ));
         shown += 1;
     }

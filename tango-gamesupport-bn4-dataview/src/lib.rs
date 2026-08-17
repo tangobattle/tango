@@ -1,3 +1,4 @@
+pub mod build;
 pub mod rom;
 pub mod save;
 

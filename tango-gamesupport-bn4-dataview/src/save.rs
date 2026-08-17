@@ -1,8 +1,6 @@
 use crate::rom::PatchCard4Effect;
 use tango_gamesupport_common_dataview::save::{ChipsView as _, NavicustView as _, Save as _};
 
-use crate::NUM_PATCH_CARD4S;
-
 pub const SAVE_SIZE: usize = 0x73d2;
 pub const MASK_OFFSET: usize = 0x1554;
 pub const GAME_NAME_OFFSET: usize = 0x2208;
@@ -13,6 +11,7 @@ pub const EREADER_NAME_OFFSET: usize = 0x1772;
 pub const EREADER_NAME_SIZE: usize = 0x10;
 pub const EREADER_DESCRIPTION_OFFSET: usize = 0x0522;
 pub const EREADER_DESCRIPTION_SIZE: usize = 0x5c;
+pub const PATCH_CARD4_SLOTS: usize = 6;
 
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Variant {
@@ -516,7 +515,7 @@ impl Save {
 
 impl<S: std::ops::Deref<Target = Save>> PatchCard4sView<S> {
     pub fn patch_card(&self, slot: usize) -> Option<tango_gamesupport_common_dataview::save::PatchCard> {
-        if slot > 6 {
+        if slot >= PATCH_CARD4_SLOTS {
             return None;
         }
 
@@ -541,7 +540,7 @@ impl<S: std::ops::DerefMut<Target = Save>> PatchCard4sView<S> {
         slot: usize,
         patch_card: Option<tango_gamesupport_common_dataview::save::PatchCard>,
     ) -> bool {
-        if slot > 6 {
+        if slot >= PATCH_CARD4_SLOTS {
             return false;
         }
 
@@ -692,7 +691,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
 
         {
             let pc = self.save.view_patch_card4s();
-            for slot in 0..NUM_PATCH_CARD4S {
+            for slot in 0..PATCH_CARD4_SLOTS {
                 let Some(card) = pc.patch_card(slot) else { continue };
                 if !card.enabled {
                     continue;

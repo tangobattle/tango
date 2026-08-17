@@ -126,7 +126,7 @@ pub(crate) fn keyboard_shortcut(event: &iced::keyboard::Event, speed: f32) -> Op
                 .unwrap_or(SPEED_STEPS[SPEED_STEPS.len() - 1]),
         )),
         (Code::Space, Modifiers::NONE, false) => Some(Message::TogglePlay),
-        (Code::KeyF, Modifiers::NONE, false) => Some(Message::ToggleSwapPerspective),
+        (Code::Tab, Modifiers::NONE, false) => Some(Message::ToggleSwapPerspective),
         (Code::KeyP, Modifiers::NONE, false) => Some(Message::TogglePip),
         _ => None,
     }
@@ -1255,9 +1255,10 @@ mod tests {
             Some(Message::SetSpeed(2.0))
         ));
         assert!(matches!(
-            keyboard_shortcut(&key_press(Code::KeyF, Modifiers::NONE, false), 1.0),
+            keyboard_shortcut(&key_press(Code::Tab, Modifiers::NONE, false), 1.0),
             Some(Message::ToggleSwapPerspective)
         ));
-        assert!(keyboard_shortcut(&key_press(Code::KeyF, Modifiers::NONE, true), 1.0).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::Tab, Modifiers::NONE, true), 1.0).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::KeyF, Modifiers::NONE, false), 1.0).is_none());
     }
 }

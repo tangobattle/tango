@@ -23,17 +23,45 @@ folder-edit-reg-memory = Reg { $mb }MB
 folder-edit-tag-memory = Tag { $mb }MB
 build-chip-unknown = Chip #{ $id }
 build-patch-card-unknown = Patch Card #{ $id }
-build-violation-chip = { $chips }: { $reason }
-build-violation-patch-cards-exceed-memory = { $patch_cards } use { $used }MB; the limit is { $limit }MB.
-build-violation-folder-not-full = Folder contains { $used } of the required { $required } chips.
+build-navicust-part-unknown = NaviCust part #{ $id }
+build-violation-navicust-materialization = The materialized NaviCust grid does not match its installed pieces.
+build-violation-chip-illegal-for-program-deck = Not a legal program chip for this deck slot.
+build-violation-program-deck-exceeds-memory = The wired deck uses { $used }MB; its capacity is { $limit }MB.
+build-violation-slot-in-chip-exceeds-memory = This SLOT IN chip uses { $used }MB; the limit is { $limit }MB.
+build-violation-program-deck-missing-navi = The program deck has no legal Navi chip.
+build-violation = { $subject }: { $reason }
+build-violation-patch-cards-exceed-memory = Total patch card memory: { $used }MB; the limit is { $limit }MB.
+build-violation-patch-card4-wrong-slot-reason = Installed in Mod Card slot { $actual_slot }; belongs in { $expected_slot }.
+build-violation-patch-card4-not-in-catalog-reason = Mod Card slot { $actual_slot } is not in this game's catalog.
+build-violation-folder-not-full = { $required ->
+    [one] Folder contains { $used } of the required 1 chip.
+   *[other] Folder contains { $used } of the required { $required } chips.
+}
 build-violation-chip-illegal-for-game = Not legal for this game or version.
-build-violation-too-many-copies-of-chip = { $used } copies are installed; the limit is { $limit }.
-build-violation-too-many-navi-chips = The folder contains { $used } Navi chips; the limit is { $limit }.
-build-violation-too-many-mega-chips = The folder contains { $used } Mega chips; the limit is { $limit }.
-build-violation-too-many-giga-chips = The folder contains { $used } Giga chips; the limit is { $limit }.
-build-violation-too-many-dark-chips = The folder contains { $used } Dark chips; the limit is { $limit }.
+build-violation-too-many-copies-of-chip = { $used ->
+    [one] 1 copy is installed; the limit is { $limit }.
+   *[other] { $used } copies are installed; the limit is { $limit }.
+}
+build-violation-too-many-navi-chips = { $used ->
+    [one] The folder contains 1 Navi chip; the limit is { $limit }.
+   *[other] The folder contains { $used } Navi chips; the limit is { $limit }.
+}
+build-violation-too-many-mega-chips = { $used ->
+    [one] The folder contains 1 Mega chip; the limit is { $limit }.
+   *[other] The folder contains { $used } Mega chips; the limit is { $limit }.
+}
+build-violation-too-many-giga-chips = { $used ->
+    [one] The folder contains 1 Giga chip; the limit is { $limit }.
+   *[other] The folder contains { $used } Giga chips; the limit is { $limit }.
+}
+build-violation-too-many-dark-chips = { $used ->
+    [one] The folder contains 1 Dark chip; the limit is { $limit }.
+   *[other] The folder contains { $used } Dark chips; the limit is { $limit }.
+}
 build-violation-regular-chip-exceeds-memory = The Regular chip uses { $used }MB; the limit is { $limit }MB.
 build-violation-tag-chips-exceed-memory = The Tag chips use { $used }MB; the limit is { $limit }MB.
+build-violation-navicust-invalid-shape-reason = Placed on grid with invalid shape.
+build-violation-patch-card-exceeds-memory-with-contribution = This patch card uses { $mb }MB; the total is { $used }MB; the limit is { $limit }MB.
 folder-cannot-add-full = Cannot add: the folder is full.
 save-edit-sort = Sort
 save-edit-clear = Clear all
@@ -101,3 +129,15 @@ bn5ds-team-none = (none)
 bn5ds-chip-attack = Chip
 bn5ds-partycust-add = Add program
 bn5ds-partycust-empty = No programs
+build-violation-partycust-gauge = { $used ->
+    [one] Customizer gauge uses 1 block; the limit is { $limit }.
+   *[other] Customizer gauge uses { $used } blocks; the limit is { $limit }.
+}
+build-violation-partycust-gauge-with-program = { $cost ->
+    [one] This program uses 1 block; the total is { $used }; the limit is { $limit }.
+   *[other] This program uses { $cost } blocks; the total is { $used }; the limit is { $limit }.
+}
+build-violation-partycust-copies = { $used ->
+    [one] 1 copy equipped; the limit is { $limit }.
+   *[other] { $used } copies equipped; the limit is { $limit }.
+}

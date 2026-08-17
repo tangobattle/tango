@@ -350,13 +350,9 @@ const PARTYCUST_LOADOUT_PROGRAMS: usize = 0x02;
 const PARTYCUST_LOADOUT_ATTACK: usize = 0x0c;
 const PARTYCUST_LOADOUT_CHIP_ATTACK: usize = 0x0d;
 
-/// How many copies of one party program a member may equip.
-///
-/// The cart has no such rule of its own — a member's gauge is its only
-/// limit, and a session never spends what the file stocks — so this is
-/// the editor's, the same cap it puts on copies of one NaviCust part
-/// (`MAX_COPIES_PER_PART`, which lives behind the editor model this
-/// crate does not depend on).
+/// The advisory copy limit used when judging a Party Customizer loadout.
+/// Editing may exceed it; the save's fixed loadout length is the structural
+/// limit.
 pub const MAX_COPIES_PER_PARTY_PROGRAM: usize = 9;
 
 /// How many programs one entry can name — as many as the widest gauge
@@ -463,8 +459,8 @@ impl PartycustBonus {
 /// Whatever a slot's programs cost comes off the cart, so the methods
 /// that price them take the cart rather than the view holding one.
 ///
-/// The gauge is the only thing that limits a loadout — see
-/// [`can_add_party_program`](PartyView::can_add_party_program).
+/// The gauge describes whether a loadout is legal, while the fixed loadout
+/// entry describes whether another program can be represented in the save.
 pub struct PartyView<S> {
     save: S,
 }
@@ -538,9 +534,10 @@ impl<S: std::ops::Deref<Target = Save>> PartyView<S> {
             .sum()
     }
 
-    /// Whether one more of `program` would go on slot `slot`: the gauge
-    /// has to have room for it, and the member may not already be
-    /// carrying [`MAX_COPIES_PER_PARTY_PROGRAM`] of it.
+    /// Whether one more of `program` can be represented on slot `slot`.
+    /// Gauge capacity and the advisory per-program copy limit deliberately do
+    /// not gate editing: an over-limit loadout is illegal, but still a valid
+    /// save. The fixed loadout entry length remains structural.
     ///
     /// What the file stocks does not come into it. The counts at
     /// [`ITEM_COUNTS_OFFSET`] are what the player owns, and a
@@ -548,16 +545,9 @@ impl<S: std::ops::Deref<Target = Save>> PartyView<S> {
     /// leaves them untouched, so there is nothing here for a stock
     /// check to conserve.
     pub fn can_add_party_program(&self, slot: usize, assets: &crate::rom::Assets, program: usize) -> bool {
-        if program >= crate::NUM_PARTY_PROGRAMS {
-            return false;
-        }
-        let already = self
-            .programs(slot, assets)
-            .into_iter()
-            .filter(|&index| index == program)
-            .count();
-        already < MAX_COPIES_PER_PARTY_PROGRAM
-            && self.cost(slot, assets) + cost_of(program, assets) <= self.capacity(slot, assets)
+        self.navi(slot).is_some()
+            && program < crate::NUM_PARTY_PROGRAMS
+            && self.programs(slot, assets).len() < MAX_PARTY_PROGRAMS_EQUIPPED
     }
 }
 
@@ -581,7 +571,7 @@ impl<S: std::ops::DerefMut<Target = Save>> PartyView<S> {
 
     /// Dress slot `slot` in exactly `programs`, the way a session that
     /// ended on the panel's `RUN!` leaves it. `false` (no write) for a
-    /// slot with no member, and for a set longer than the widest gauge.
+    /// slot with no member, and for a set longer than the fixed loadout entry.
     pub fn set_party_programs(
         &mut self,
         slot: usize,
@@ -592,8 +582,8 @@ impl<S: std::ops::DerefMut<Target = Save>> PartyView<S> {
     }
 
     /// Put one more of `program` on slot `slot`, at the end of the list
-    /// where the panel puts one. `false` (no write) when
-    /// [`can_add_party_program`](PartyView::can_add_party_program) would refuse it.
+    /// where the panel puts one. Gauge and copy limits are advisory; `false`
+    /// means the program cannot be represented structurally.
     pub fn add_party_program(&mut self, slot: usize, assets: &crate::rom::Assets, program: usize) -> bool {
         if !self.can_add_party_program(slot, assets, program) {
             return false;
@@ -1068,9 +1058,7 @@ impl Save {
     /// programs themselves. An empty set strips the member bare.
     ///
     /// Refuses a slot with no member, and a set longer than an entry
-    /// holds. Whether it fits the member's gauge is
-    /// [`PartyView::can_add_party_program`]'s to say, and what the
-    /// editor asks before calling.
+    /// holds. Gauge capacity is advisory and is not enforced here.
     fn set_party_programs(
         &mut self,
         slot: usize,
@@ -2310,6 +2298,25 @@ mod tests {
         assert!(!save
             .view_party_mut()
             .set_party_programs(0, [0; MAX_PARTY_PROGRAMS_EQUIPPED + 1], &assets));
+    }
+
+    #[test]
+    fn party_program_gauge_and_copy_limits_are_advisory() {
+        let assets = party_program_cart();
+        let mut save = SaveSet::parse(&plausible()).unwrap().current();
+        assert!(save.view_party_mut().set_navi(0, Some(1)));
+        assert_eq!(save.view_party().capacity(0, &assets), 6);
+
+        // Program 11 costs seven blocks, so even its first copy exceeds this
+        // Navi's gauge. Ten copies still fit the save's fixed ten-item entry,
+        // including the tenth copy beyond the advisory nine-copy limit.
+        for _ in 0..MAX_PARTY_PROGRAMS_EQUIPPED {
+            assert!(save.view_party().can_add_party_program(0, &assets, 11));
+            assert!(save.view_party_mut().add_party_program(0, &assets, 11));
+        }
+        assert_eq!(save.view_party().programs(0, &assets).len(), MAX_PARTY_PROGRAMS_EQUIPPED);
+        assert_eq!(save.view_party().cost(0, &assets), 70);
+        assert!(!save.view_party().can_add_party_program(0, &assets, 11));
     }
 
     /// Changing a member takes its programs back off, and packing the

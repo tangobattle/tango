@@ -33,13 +33,14 @@
 use std::sync::Arc;
 
 use sweeten::widget::{column, row};
+use tango_gamesupport_bn5ds_dataview::build::{PartycustViolation, PartycustViolationKind};
 use tango_gamesupport_bn5ds_dataview::rom;
 use tango_gamesupport_bn5ds_dataview::save::{self, Cross, Save, SaveSet};
 use tango_gamesupport_common_dataview::save::Save as _;
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view as sv;
 use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::{BuildReport, GameSaveEditor, OpaqueBuildViolation, SaveEditorShell};
 use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use unic_langid::LanguageIdentifier;
 
@@ -125,12 +126,9 @@ impl GameEdit for SetPartyNavi {
     }
 }
 
-/// Put one more of a party program on a slot's member, exactly as the
-/// PARTY CUSTOMIZER's own panel does: the member's record takes what
-/// everything it equips adds up to, and the slot's entry takes the
-/// programs. The offer is filtered by
-/// [`Partycust::can_add`](save::Partycust::can_add), so nothing here can
-/// outspend the member's gauge or the file's stock.
+/// Put one more party program on a slot's member: the member's record takes
+/// the summed bonuses and the slot entry takes the program list. Gauge and
+/// copy limits are advisory, so only the fixed loadout length gates the offer.
 #[derive(Debug)]
 struct AddPartyProgram {
     slot: usize,
@@ -423,6 +421,115 @@ fn program_name(loaded: &OpenSave, index: usize) -> String {
         .unwrap_or_else(|| format!("#{index}"))
 }
 
+fn partycust_violation_reason(
+    lang: &LanguageIdentifier,
+    program_cost: Option<u8>,
+    kind: PartycustViolationKind,
+) -> String {
+    match (program_cost, kind) {
+        (Some(cost), PartycustViolationKind::GaugeExceeded { used, limit }) => {
+            tango_gamesupport_common_ui::t!(
+                lang,
+                "build-violation-partycust-gauge-with-program",
+                cost = cost as i64,
+                used = used as i64,
+                limit = limit as i64
+            )
+        }
+        (None, PartycustViolationKind::GaugeExceeded { used, limit }) => {
+            tango_gamesupport_common_ui::t!(
+                lang,
+                "build-violation-partycust-gauge",
+                used = used as i64,
+                limit = limit as i64
+            )
+        }
+        (_, PartycustViolationKind::TooManyCopies { used, limit }) => tango_gamesupport_common_ui::t!(
+            lang,
+            "build-violation-partycust-copies",
+            used = used as i64,
+            limit = limit as i64
+        ),
+    }
+}
+
+fn partycust_violation_text(
+    lang: &LanguageIdentifier,
+    navi: &str,
+    program: &str,
+    program_cost: Option<u8>,
+    kind: PartycustViolationKind,
+) -> String {
+    let subject = format!("{navi}, {program}");
+    tango_gamesupport_common_ui::build::format_violation(
+        lang,
+        Some(&subject),
+        partycust_violation_reason(lang, program_cost, kind),
+    )
+}
+
+fn partycust_violations(loaded: &OpenSave) -> Vec<PartycustViolation> {
+    let (Some(save), Some(cart)) = (file_of(loaded), cart_of(loaded)) else {
+        return vec![];
+    };
+    tango_gamesupport_bn5ds_dataview::build::partycust_violations(save, cart)
+}
+
+fn partycust_slot_issues(
+    lang: &LanguageIdentifier,
+    loaded: &OpenSave,
+    slot: usize,
+) -> std::collections::HashMap<usize, String> {
+    let mut issues: std::collections::HashMap<usize, Vec<String>> = Default::default();
+    for violation in partycust_violations(loaded)
+        .into_iter()
+        .filter(|violation| violation.slot == slot)
+    {
+        let program_cost = cart_of(loaded)
+            .and_then(|cart| cart.party_program(violation.program))
+            .map(|program| program.cost());
+        let text = tango_gamesupport_common_ui::build::format_violation(
+            lang,
+            None,
+            partycust_violation_reason(lang, program_cost, violation.kind),
+        );
+        let row = issues.entry(violation.at).or_default();
+        if !row.contains(&text) {
+            row.push(text);
+        }
+    }
+    issues.into_iter().map(|(at, issues)| (at, issues.join("\n"))).collect()
+}
+
+fn partycust_build_report(loaded: &OpenSave) -> BuildReport {
+    let violations = partycust_violations(loaded);
+    if violations.is_empty() {
+        return BuildReport::default();
+    }
+    let warnings = violations
+        .into_iter()
+        .map(|violation| {
+            let navi = file_of(loaded)
+                .and_then(|save| save.view_party().navi(violation.slot))
+                .map(|navi| navi_name(loaded, navi))
+                .unwrap_or_else(|| format!("#{}", violation.slot + 1));
+            let program = program_name(loaded, violation.program);
+            let program_cost = cart_of(loaded)
+                .and_then(|cart| cart.party_program(violation.program))
+                .map(|program| program.cost());
+            OpaqueBuildViolation::new(move |lang| {
+                partycust_violation_text(lang, &navi, &program, program_cost, violation.kind)
+            })
+        })
+        .collect();
+    BuildReport {
+        error_tabs: [Tab::Party].into_iter().collect(),
+        // An overfilled Party Customizer is illegal but structurally valid.
+        blocks_save: false,
+        warnings,
+    }
+}
+
 /// What the customizer's gauge paints a program's blocks: one colour
 /// per family, read off the cart's own kind byte. The four are the
 /// panel's, sampled from it — the cart keeps them in a UI palette
@@ -501,9 +608,8 @@ fn partycust_gauge<'a>(loaded: &'a OpenSave, capacity: u8, equipped: &[usize]) -
 /// Reading, the navi is a name and the programs are a plain list.
 /// Editing, the navi is a dropdown over the file's recruited roster
 /// (the CHANGE button's own offer), each program grows a ✕, and a
-/// dropdown of what the file could still put on sits under them — the
-/// gauge and the stock are already what that dropdown offers, so
-/// nothing it lists can overspend either.
+/// dropdown of what the fixed loadout can still hold sits under them. Programs
+/// remain available when they would exceed the gauge or advisory copy limit.
 ///
 /// Returned as its two halves so each caller can hang them in the
 /// container its side of the editor wants: see [`party_slot_pane`] and
@@ -572,6 +678,7 @@ fn party_slot<'a>(
     let party = save.view_party();
     let equipped = party.programs(slot, cart);
     let (cost, capacity) = (party.cost(slot, cart), party.capacity(slot, cart));
+    let issues = partycust_slot_issues(lang, loaded, slot);
 
     let naming = row![]
         .spacing(8)
@@ -589,11 +696,7 @@ fn party_slot<'a>(
         .push_maybe(navi.map(|navi| navi_stats(lang, loaded, save, navi)))
         .push(iced::widget::Space::new().width(iced::Fill))
         .push(partycust_gauge(loaded, capacity, &equipped))
-        .push(
-            iced::widget::text(format!("{cost} / {capacity}"))
-                .size(tango_gamesupport_common_ui::style::TEXT_CAPTION)
-                .style(tango_gamesupport_common_ui::widgets::muted_text_style),
-        );
+        .push(sv::limit_caption(format!("{cost} / {capacity}"), cost > capacity));
     let header = iced::widget::container(
         row![]
             .spacing(12)
@@ -607,6 +710,8 @@ fn party_slot<'a>(
 
     let mut body = column![].spacing(1).padding(0);
     for (at, &index) in equipped.iter().enumerate() {
+        let issue = issues.get(&at).cloned();
+        let danger = issue.is_some();
         let color = program_color(cart.party_program(index).and_then(|program| program.kind()));
         let mut line = row![
             iced::widget::container(iced::widget::Space::new())
@@ -621,7 +726,7 @@ fn party_slot<'a>(
                 .width(iced::Fill),
             sv::limit_caption(
                 cart.party_program(index).map(|program| program.cost()).unwrap_or(0).to_string(),
-                false,
+                danger,
             ),
         ]
         .spacing(PROGRAM_ROW_SPACING)
@@ -633,7 +738,7 @@ fn party_slot<'a>(
             // Hovering a row gives what the panel's own INFORMATION box
             // says the program does, in the popover a chip's own
             // description gets.
-            sv::folder::chip_popover(
+            sv::folder::chip_popover_with_issue(
                 iced::widget::container(line)
                     .width(iced::Fill)
                     // Pinned so a row is the same height whether or not
@@ -641,11 +746,18 @@ fn party_slot<'a>(
                     .height(iced::Length::Fixed(PROGRAM_ROW_HEIGHT))
                     .align_y(iced::Alignment::Center)
                     .padding(iced::Padding::default().right(12.0))
-                    .style(tango_gamesupport_common_ui::widgets::zebra_row(at))
+                    .style(move |theme: &iced::Theme| {
+                        let mut style = tango_gamesupport_common_ui::widgets::zebra_row(at)(theme);
+                        if danger {
+                            style.text_color = Some(theme.palette().danger);
+                        }
+                        style
+                    })
                     .into(),
                 None,
                 cart.party_program(index).and_then(|program| program.description()),
                 None,
+                issue,
             ),
         );
     }
@@ -1004,6 +1116,87 @@ impl GameSaveEditor for Ui {
         match tab {
             Tab::Navicust => sv::navicust::as_image(loaded),
             _ => None,
+        }
+    }
+
+    fn build_report(&self, loaded: &OpenSave) -> BuildReport {
+        let mut report = tango_gamesupport_common_ui::editor::battle_network_build_report(loaded);
+        report.extend(partycust_build_report(loaded));
+        report
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn partycust_violations_are_localized_in_every_supported_language() {
+        let english: LanguageIdentifier = "en-US".parse().unwrap();
+        assert_eq!(
+            tango_gamesupport_common_ui::build::format_violation(
+                &english,
+                None,
+                partycust_violation_reason(
+                    &english,
+                    Some(3),
+                    PartycustViolationKind::GaugeExceeded { used: 8, limit: 6 },
+                ),
+            ),
+            "This program uses 3 blocks; the total is 8; the limit is 6."
+        );
+        assert_eq!(
+            tango_gamesupport_common_ui::build::format_violation(
+                &english,
+                None,
+                partycust_violation_reason(
+                    &english,
+                    Some(1),
+                    PartycustViolationKind::GaugeExceeded { used: 2, limit: 1 },
+                ),
+            ),
+            "This program uses 1 block; the total is 2; the limit is 1."
+        );
+        let english_gauge = partycust_violation_text(
+            &english,
+            "MegaMan",
+            "P.HP+50",
+            Some(3),
+            PartycustViolationKind::GaugeExceeded { used: 8, limit: 6 },
+        );
+        let english_copies = partycust_violation_text(
+            &english,
+            "MegaMan",
+            "P.HP+50",
+            Some(3),
+            PartycustViolationKind::TooManyCopies { used: 10, limit: 9 },
+        );
+        assert!(english_gauge.starts_with("MegaMan, P.HP+50:"));
+        assert!(!english_gauge.contains("Party 1"));
+        for language in [
+            "de-DE", "es-419", "fr-FR", "ja-JP", "nl-NL", "pt-BR", "ru-RU", "vi-VN", "zh-CN", "zh-TW",
+        ] {
+            let language = language.parse().unwrap();
+            assert_ne!(
+                partycust_violation_text(
+                    &language,
+                    "MegaMan",
+                    "P.HP+50",
+                    Some(3),
+                    PartycustViolationKind::GaugeExceeded { used: 8, limit: 6 },
+                ),
+                english_gauge
+            );
+            assert_ne!(
+                partycust_violation_text(
+                    &language,
+                    "MegaMan",
+                    "P.HP+50",
+                    Some(3),
+                    PartycustViolationKind::TooManyCopies { used: 10, limit: 9 },
+                ),
+                english_copies
+            );
         }
     }
 }

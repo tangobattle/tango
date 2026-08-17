@@ -39,17 +39,45 @@ folder-edit-reg-memory = Reg { $mb }MB
 folder-edit-tag-memory = Tag { $mb }MB
 build-chip-unknown = Puce nº { $id }
 build-patch-card-unknown = Patch Card nº { $id }
-build-violation-chip = { $chips } : { $reason }
-build-violation-patch-cards-exceed-memory = { $patch_cards } utilisent { $used } Mo ; la limite est de { $limit } Mo.
-build-violation-folder-not-full = Le Folder contient { $used } des { $required } puces requises.
+build-navicust-part-unknown = Pièce NaviCust nº { $id }
+build-violation-navicust-materialization = La grille NaviCust matérialisée ne correspond pas aux pièces installées.
+build-violation-chip-illegal-for-program-deck = Cette puce programme n’est pas autorisée dans cet emplacement.
+build-violation-program-deck-exceeds-memory = Le deck câblé utilise { $used }MB ; sa capacité est de { $limit }MB.
+build-violation-slot-in-chip-exceeds-memory = Cette puce SLOT IN utilise { $used }MB ; la limite est de { $limit }MB.
+build-violation-program-deck-missing-navi = Le deck programme ne contient aucune puce Navi valide.
+build-violation = { $subject } : { $reason }
+build-violation-patch-cards-exceed-memory = Mémoire totale des Patch Cards : { $used } Mo ; la limite est de { $limit } Mo.
+build-violation-patch-card4-wrong-slot-reason = Installée dans l’emplacement Mod Card { $actual_slot } ; appartient à { $expected_slot }.
+build-violation-patch-card4-not-in-catalog-reason = L’emplacement Mod Card { $actual_slot } ne figure pas au catalogue de ce jeu.
+build-violation-folder-not-full = { $required ->
+    [one] Le Folder contient { $used } de l’unique puce requise.
+   *[other] Le Folder contient { $used } des { $required } puces requises.
+}
 build-violation-chip-illegal-for-game = Non autorisée dans ce jeu ou cette version.
-build-violation-too-many-copies-of-chip = { $used } exemplaires sont installés ; la limite est de { $limit }.
-build-violation-too-many-navi-chips = Le Folder contient { $used } puces Navi ; la limite est de { $limit }.
-build-violation-too-many-mega-chips = Le Folder contient { $used } puces Mega ; la limite est de { $limit }.
-build-violation-too-many-giga-chips = Le Folder contient { $used } puces Giga ; la limite est de { $limit }.
-build-violation-too-many-dark-chips = Le Folder contient { $used } puces Dark ; la limite est de { $limit }.
+build-violation-too-many-copies-of-chip = { $used ->
+    [one] 1 exemplaire est installé ; la limite est de { $limit }.
+   *[other] { $used } exemplaires sont installés ; la limite est de { $limit }.
+}
+build-violation-too-many-navi-chips = { $used ->
+    [one] Le Folder contient 1 puce Navi ; la limite est de { $limit }.
+   *[other] Le Folder contient { $used } puces Navi ; la limite est de { $limit }.
+}
+build-violation-too-many-mega-chips = { $used ->
+    [one] Le Folder contient 1 puce Mega ; la limite est de { $limit }.
+   *[other] Le Folder contient { $used } puces Mega ; la limite est de { $limit }.
+}
+build-violation-too-many-giga-chips = { $used ->
+    [one] Le Folder contient 1 puce Giga ; la limite est de { $limit }.
+   *[other] Le Folder contient { $used } puces Giga ; la limite est de { $limit }.
+}
+build-violation-too-many-dark-chips = { $used ->
+    [one] Le Folder contient 1 puce Dark ; la limite est de { $limit }.
+   *[other] Le Folder contient { $used } puces Dark ; la limite est de { $limit }.
+}
 build-violation-regular-chip-exceeds-memory = La puce Reg utilise { $used }MB ; la limite est de { $limit }MB.
 build-violation-tag-chips-exceed-memory = Les puces Tag utilisent { $used }MB ; la limite est de { $limit }MB.
+build-violation-navicust-invalid-shape-reason = Placée sur la grille avec une forme invalide.
+build-violation-patch-card-exceeds-memory-with-contribution = Cette Patch Card utilise { $mb } Mo ; le total est de { $used } Mo ; la limite est de { $limit } Mo.
 folder-cannot-add-full = Ajout impossible : le Folder est plein.
 save-edit-sort = Trier
 save-edit-clear = Tout effacer
@@ -95,4 +123,16 @@ bn5ds-team-none = (aucun)
 bn5ds-chip-attack = Chip
 bn5ds-partycust-add = Ajouter un programme
 bn5ds-partycust-empty = Aucun programme
+build-violation-partycust-gauge = { $used ->
+    [one] La jauge du personnalisateur utilise 1 bloc ; la limite est de { $limit }.
+   *[other] La jauge du personnalisateur utilise { $used } blocs ; la limite est de { $limit }.
+}
+build-violation-partycust-gauge-with-program = { $cost ->
+    [one] Ce programme utilise 1 bloc ; le total est de { $used } ; la limite est de { $limit }.
+   *[other] Ce programme utilise { $cost } blocs ; le total est de { $used } ; la limite est de { $limit }.
+}
+build-violation-partycust-copies = { $used ->
+    [one] 1 exemplaire équipé ; la limite est de { $limit }.
+   *[other] { $used } exemplaires équipés ; la limite est de { $limit }.
+}
 navi-edit-select = Navi

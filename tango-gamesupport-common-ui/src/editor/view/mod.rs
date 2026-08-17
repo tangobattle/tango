@@ -712,31 +712,8 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
     }
 }
 
-/// Whether one section owns any current legality violation. The typed report
-/// keeps tab chrome independent of game-specific rendering details.
-fn tab_has_legality_errors(tab: Tab, violations: &[tango_gamesupport::BuildViolation]) -> bool {
-    violations.iter().any(|violation| {
-        matches!(
-            (tab, violation),
-            (
-                Tab::Folder | Tab::ProgramDeck,
-                tango_gamesupport::BuildViolation::FolderNotFull { .. }
-                    | tango_gamesupport::BuildViolation::Chip { .. }
-            ) | (Tab::PatchCards, tango_gamesupport::BuildViolation::PatchCard { .. })
-        )
-    })
-}
-
-/// An undersized Battle Network folder is the one legality error that blocks a
-/// save commit. Other violations stay advisory and can be persisted.
-fn save_blocked_by_incomplete_folder(violations: &[tango_gamesupport::BuildViolation]) -> bool {
-    violations
-        .iter()
-        .any(|violation| matches!(violation, tango_gamesupport::BuildViolation::FolderNotFull { .. }))
-}
-
-fn loaded_save_blocked_by_incomplete_folder(loaded: &OpenSave) -> bool {
-    save_blocked_by_incomplete_folder(&loaded.save_editor.build_violations(loaded))
+fn loaded_save_has_critical_build_issue(loaded: &OpenSave) -> bool {
+    loaded.save_editor.build_report(loaded).blocks_save
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
@@ -767,8 +744,8 @@ pub fn view<'a>(
     use iced::{Alignment, Fill};
 
     let available = available_tabs(loaded, streamer_mode);
-    let build_violations = loaded.save_editor.build_violations(loaded);
-    let can_save = !save_blocked_by_incomplete_folder(&build_violations);
+    let build_report = loaded.save_editor.build_report(loaded);
+    let can_save = !build_report.blocks_save;
 
     let now = iced::time::Instant::now();
     // Body entrance — restarted on sub-tab switches (sliding along the strip's
@@ -922,7 +899,7 @@ pub fn view<'a>(
             label,
             Action::SelectTab(*tab),
             *tab == active,
-            tab_has_legality_errors(*tab, &build_violations),
+            build_report.error_tabs.contains(tab),
         ));
     }
     // Horizontally scrollable strip with a hidden scrollbar, so a long /
@@ -1076,8 +1053,9 @@ pub fn view<'a>(
 /// The global edit mode's Save / Cancel pair, shown at the navi
 /// header's right edge while edit mode is on (or sliding out). One
 /// pair for the whole save: they commit / discard the edits on *all*
-/// tabs at once. An incomplete Battle Network folder disables Save; other
-/// legality errors remain advisory.
+/// tabs at once. Only critical structural errors disable Save (for example an
+/// empty Battle Network folder or BCC deck without a Navi); all other legality
+/// errors remain advisory.
 fn edit_buttons(lang: &LanguageIdentifier, can_save: bool) -> Element<'_, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
@@ -1371,14 +1349,34 @@ pub fn colored_badge_sized<M: 'static>(
     padding: [f32; 2],
     width: Length,
 ) -> Element<'static, M> {
+    colored_badge_sized_with_danger(label, bg, text_color, size, padding, width, false)
+}
+
+/// A colored content badge with an optional theme-aware danger border. Used
+/// for NaviCust pieces whose stored grid materialization is illegal without
+/// discarding the piece's own program color.
+pub fn colored_badge_sized_with_danger<M: 'static>(
+    label: String,
+    bg: iced::Color,
+    text_color: iced::Color,
+    size: f32,
+    padding: [f32; 2],
+    width: Length,
+    danger: bool,
+) -> Element<'static, M> {
     container(text(label).size(size).color(text_color))
         .padding(padding)
         .width(width)
-        .style(move |_theme: &iced::Theme| container::Style {
+        .style(move |theme: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(bg)),
             border: iced::Border {
+                color: if danger {
+                    theme.palette().danger
+                } else {
+                    iced::Color::TRANSPARENT
+                },
+                width: if danger { 2.0 } else { 0.0 },
                 radius: 6.0.into(),
-                ..Default::default()
             },
             ..Default::default()
         })
@@ -1630,7 +1628,7 @@ impl State {
             // Save and Cancel both leave the global edit mode; the host
             // runs the commit/discard side effect (covering every tab).
             // Dropping the whole EditState clears every editor's scratch.
-            Action::SaveEdit if loaded.is_some_and(loaded_save_blocked_by_incomplete_folder) => iced::Task::none(),
+            Action::SaveEdit if loaded.is_some_and(loaded_save_has_critical_build_issue) => iced::Task::none(),
             Action::SaveEdit | Action::CancelEdit => {
                 self.editing = None;
                 // Returning read-only body rises in (mirroring
@@ -1876,7 +1874,7 @@ impl State {
             }
             // One global Save / Cancel for the whole save.
             Action::SaveEdit => loaded
-                .filter(|loaded| !loaded_save_blocked_by_incomplete_folder(loaded))
+                .filter(|loaded| !loaded_save_has_critical_build_issue(loaded))
                 .map(|_| Outcome::Commit),
             Action::CancelEdit => Some(Outcome::Cancel),
             Action::AddChip { chip_id, code } => {
@@ -2090,42 +2088,4 @@ pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts:
 /// or `None` for tabs without an image form.
 pub fn tab_as_image(tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
     loaded.save_editor.tab_as_image(tab, loaded)
-}
-
-#[cfg(test)]
-mod legality_tests {
-    use super::*;
-    use tango_gamesupport::{BuildPatchCard, BuildViolation, PatchCardViolationKind};
-
-    fn patch_card_violation() -> BuildViolation {
-        BuildViolation::PatchCard {
-            slot: 0,
-            patch_card: BuildPatchCard {
-                id: 1,
-                name: Some("Test Card".to_string()),
-                mb: 50,
-            },
-            kind: PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 },
-        }
-    }
-
-    #[test]
-    fn legality_errors_are_attached_to_their_section_tabs() {
-        let folder = BuildViolation::FolderNotFull { used: 29, required: 30 };
-        let patch_card = patch_card_violation();
-        let violations = [folder, patch_card];
-
-        assert!(tab_has_legality_errors(Tab::Folder, &violations));
-        assert!(tab_has_legality_errors(Tab::PatchCards, &violations));
-        assert!(!tab_has_legality_errors(Tab::Navicust, &violations));
-    }
-
-    #[test]
-    fn only_an_incomplete_folder_blocks_saving() {
-        assert!(!save_blocked_by_incomplete_folder(&[patch_card_violation()]));
-        assert!(save_blocked_by_incomplete_folder(&[BuildViolation::FolderNotFull {
-            used: 29,
-            required: 30,
-        },]));
-    }
 }

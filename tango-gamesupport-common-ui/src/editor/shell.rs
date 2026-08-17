@@ -168,15 +168,11 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
     }
 
     fn build_validity(&self, data: &LoadedSave) -> tango_gamesupport::BuildValidity {
-        let violations = self.0.build_violations(open_save(data));
-        if violations.is_empty() {
+        let report = self.0.build_report(open_save(data));
+        if report.warnings.is_empty() {
             tango_gamesupport::BuildValidity::Valid
         } else {
-            tango_gamesupport::BuildValidity::Invalid(violations)
+            tango_gamesupport::BuildValidity::Invalid(report.warnings)
         }
-    }
-
-    fn build_violation_formatter(&self) -> tango_gamesupport::BuildViolationFormatter {
-        crate::build::format
     }
 }

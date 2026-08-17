@@ -4,7 +4,7 @@
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view as sv;
 use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common_ui::editor::{GameSaveEditor, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::{BuildReport, GameSaveEditor, SaveEditorShell};
 use unic_langid::LanguageIdentifier;
 
 mod patch_cards4;
@@ -90,5 +90,11 @@ impl GameSaveEditor for Ui {
             Tab::Navicust => sv::navicust::as_image(loaded),
             _ => None,
         }
+    }
+
+    fn build_report(&self, loaded: &OpenSave) -> BuildReport {
+        let mut report = tango_gamesupport_common_ui::editor::battle_network_build_report(loaded);
+        report.extend(patch_cards4::build_report(loaded));
+        report
     }
 }

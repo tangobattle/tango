@@ -39,17 +39,45 @@ folder-edit-reg-memory = Reg { $mb }MB
 folder-edit-tag-memory = Tag { $mb }MB
 build-chip-unknown = Chip n.º { $id }
 build-patch-card-unknown = Tarjeta de parche n.º { $id }
-build-violation-chip = { $chips }: { $reason }
-build-violation-patch-cards-exceed-memory = { $patch_cards } usan { $used }MB; el límite es { $limit }MB.
-build-violation-folder-not-full = El Folder contiene { $used } de los { $required } chips requeridos.
+build-navicust-part-unknown = Pieza de NaviCust n.º { $id }
+build-violation-navicust-materialization = La cuadrícula materializada de NaviCust no coincide con las piezas instaladas.
+build-violation-chip-illegal-for-program-deck = No es un chip de programa válido para esta ranura.
+build-violation-program-deck-exceeds-memory = El deck conectado usa { $used }MB; su capacidad es de { $limit }MB.
+build-violation-slot-in-chip-exceeds-memory = Este chip SLOT IN usa { $used }MB; el límite es de { $limit }MB.
+build-violation-program-deck-missing-navi = El deck de programa no tiene un chip Navi válido.
+build-violation = { $subject }: { $reason }
+build-violation-patch-cards-exceed-memory = Memoria total de Patch Cards: { $used }MB; el límite es { $limit }MB.
+build-violation-patch-card4-wrong-slot-reason = Instalada en la ranura Mod Card { $actual_slot }; pertenece a { $expected_slot }.
+build-violation-patch-card4-not-in-catalog-reason = La ranura Mod Card { $actual_slot } no está en el catálogo de este juego.
+build-violation-folder-not-full = { $required ->
+    [one] El Folder contiene { $used } del único chip requerido.
+   *[other] El Folder contiene { $used } de los { $required } chips requeridos.
+}
 build-violation-chip-illegal-for-game = No es válido en este juego o versión.
-build-violation-too-many-copies-of-chip = Hay { $used } copias instaladas; el límite es { $limit }.
-build-violation-too-many-navi-chips = El Folder contiene { $used } chips Navi; el límite es { $limit }.
-build-violation-too-many-mega-chips = El Folder contiene { $used } chips Mega; el límite es { $limit }.
-build-violation-too-many-giga-chips = El Folder contiene { $used } chips Giga; el límite es { $limit }.
-build-violation-too-many-dark-chips = El Folder contiene { $used } chips Dark; el límite es { $limit }.
+build-violation-too-many-copies-of-chip = { $used ->
+    [one] Hay 1 copia instalada; el límite es { $limit }.
+   *[other] Hay { $used } copias instaladas; el límite es { $limit }.
+}
+build-violation-too-many-navi-chips = { $used ->
+    [one] El Folder contiene 1 chip Navi; el límite es { $limit }.
+   *[other] El Folder contiene { $used } chips Navi; el límite es { $limit }.
+}
+build-violation-too-many-mega-chips = { $used ->
+    [one] El Folder contiene 1 chip Mega; el límite es { $limit }.
+   *[other] El Folder contiene { $used } chips Mega; el límite es { $limit }.
+}
+build-violation-too-many-giga-chips = { $used ->
+    [one] El Folder contiene 1 chip Giga; el límite es { $limit }.
+   *[other] El Folder contiene { $used } chips Giga; el límite es { $limit }.
+}
+build-violation-too-many-dark-chips = { $used ->
+    [one] El Folder contiene 1 chip Dark; el límite es { $limit }.
+   *[other] El Folder contiene { $used } chips Dark; el límite es { $limit }.
+}
 build-violation-regular-chip-exceeds-memory = El chip Reg usa { $used }MB; el límite es { $limit }MB.
 build-violation-tag-chips-exceed-memory = Los chips Tag usan { $used }MB; el límite es { $limit }MB.
+build-violation-navicust-invalid-shape-reason = Colocada en la cuadrícula con una forma no válida.
+build-violation-patch-card-exceeds-memory-with-contribution = Esta Patch Card usa { $mb }MB; el total es { $used }MB; el límite es { $limit }MB.
 folder-cannot-add-full = No se puede añadir: el Folder está lleno.
 save-edit-sort = Ordenar
 save-edit-clear = Borrar todo
@@ -95,4 +123,16 @@ bn5ds-team-none = (ninguno)
 bn5ds-chip-attack = Chip
 bn5ds-partycust-add = Añadir programa
 bn5ds-partycust-empty = Sin programas
+build-violation-partycust-gauge = { $used ->
+    [one] El medidor del personalizador usa 1 bloque; el límite es { $limit }.
+   *[other] El medidor del personalizador usa { $used } bloques; el límite es { $limit }.
+}
+build-violation-partycust-gauge-with-program = { $cost ->
+    [one] Este programa usa 1 bloque; el total es { $used }; el límite es { $limit }.
+   *[other] Este programa usa { $cost } bloques; el total es { $used }; el límite es { $limit }.
+}
+build-violation-partycust-copies = { $used ->
+    [one] 1 copia equipada; el límite es { $limit }.
+   *[other] { $used } copias equipadas; el límite es { $limit }.
+}
 navi-edit-select = Navi

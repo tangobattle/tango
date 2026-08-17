@@ -8,6 +8,7 @@
 //! assets (stats, names, descriptions, icons) and its NaviCust program
 //! table are mapped far enough to label and lay out both.
 
+pub mod build;
 pub mod rom;
 pub mod save;
 

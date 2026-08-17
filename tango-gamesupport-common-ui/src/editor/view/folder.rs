@@ -19,7 +19,7 @@ pub fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave, g
         .view_navi()
         .map(|nv| nv.folder_limits(assets))
         .unwrap_or_default();
-    let usage = FolderUsage::scan(loaded, folder_idx);
+    let usage = FolderUsage::scan(loaded.save.as_ref(), loaded.assets.as_ref(), folder_idx);
     let selections = FolderSelections {
         regular: regular_idx,
         tags: tag_idxs,
@@ -93,7 +93,14 @@ pub fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave, g
         let code = chip.as_ref().map(|c| c.code.to_string());
         let mut issues = vec![];
         for slot in &g.slots {
-            for issue in usage.issues_for_slot(loaded, folder_idx, *slot, &limits, selections) {
+            for issue in usage.issues_for_slot(
+                loaded.save.as_ref(),
+                loaded.assets.as_ref(),
+                folder_idx,
+                *slot,
+                &limits,
+                selections,
+            ) {
                 if !issues.contains(&issue) {
                     issues.push(issue);
                 }
@@ -157,7 +164,7 @@ pub fn render_folder_edit<'a>(
         .view_navi()
         .map(|nv| nv.folder_limits(assets))
         .unwrap_or_default();
-    let usage = FolderUsage::scan(loaded, folder_idx);
+    let usage = FolderUsage::scan(loaded.save.as_ref(), loaded.assets.as_ref(), folder_idx);
     // If exactly one Tag chip is picked, a second can only join if the
     // pair's combined MB fits Tag memory; capture the partner's MB so each
     // slot can test its own addition.
@@ -214,7 +221,14 @@ pub fn render_folder_edit<'a>(
         // legal when it was built. Mark every equivalent chip that
         // contributes to the violation; no arbitrary copy becomes "the" bad
         // one merely because the folder was reordered.
-        let issues = usage.issues_for_slot(loaded, folder_idx, slot, &limits, selections);
+        let issues = usage.issues_for_slot(
+            loaded.save.as_ref(),
+            loaded.assets.as_ref(),
+            folder_idx,
+            slot,
+            &limits,
+            selections,
+        );
         folder_rows.push(folder_slot_row(
             lang,
             loaded,
@@ -330,7 +344,7 @@ pub fn render_folder_edit<'a>(
         let issues = if full {
             vec![]
         } else {
-            usage.chip_issues(loaded, id, &limits, 1)
+            usage.chip_issues(loaded.assets.as_ref(), id, &limits, 1)
         };
         lib_list = lib_list.push(library_entry_row(
             lang,
@@ -544,7 +558,7 @@ fn render_build_violation_reasons(lang: &LanguageIdentifier, issues: &[BuildViol
         issues
             .iter()
             .copied()
-            .map(|issue| crate::build::violation_reason(lang, issue))
+            .map(|issue| crate::build::slot_violation_reason(lang, issue))
             .collect::<Vec<_>>()
             .join("\n")
     })
@@ -620,8 +634,8 @@ fn sorted_library_entries(
 // The folder's class/copy tallies and structured advisory answers live with
 // the model, in `tango_gamesupport::model::rules`. Re-exported here because
 // this is where the panes that render them look.
+pub use crate::build::BuildViolationKind;
 pub use crate::model::rules::{FolderSelections, FolderUsage};
-pub use tango_gamesupport::BuildViolationKind;
 
 #[derive(Default)]
 pub struct GroupedChip {
@@ -853,6 +867,19 @@ pub fn chip_popover_with_issue<'a, M: 'a>(
     accent: Option<iced::Color>,
     issue: Option<String>,
 ) -> Element<'a, M> {
+    detail_popover_with_issue(inner, image_handle, description, accent, issue)
+}
+
+/// Shared artwork/description popover with the save editor's standard red
+/// legality inset. Chips, patch cards, NaviCust parts, and BCC deck cards all
+/// use this so every red subject explains itself the same way on hover.
+pub fn detail_popover_with_issue<'a, M: 'a>(
+    inner: Element<'a, M>,
+    image_handle: Option<(u32, u32, iced_image::Handle)>,
+    description: Option<String>,
+    accent: Option<iced::Color>,
+    issue: Option<String>,
+) -> Element<'a, M> {
     if description.is_none() && image_handle.is_none() && issue.is_none() {
         return inner;
     }
@@ -980,7 +1007,7 @@ pub fn with_chip_tooltip_issue<'a>(
     } else {
         loaded.chip_images.get(id).cloned().flatten()
     };
-    chip_popover_with_issue(inner, image_handle, description, accent, issue)
+    detail_popover_with_issue(inner, image_handle, description, accent, issue)
 }
 
 /// Element-icon / ATK / MB stat cells shared by both editor panes,

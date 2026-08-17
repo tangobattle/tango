@@ -20,8 +20,41 @@ use crate::editor::view::{RenderOpts, State, Tab};
 use iced::Element;
 use unic_langid::LanguageIdentifier;
 
+pub use crate::build::BuildViolationKind;
 pub use crate::editor::view::Action;
-pub use tango_gamesupport::BuildViolation;
+pub use tango_gamesupport::BuildViolation as OpaqueBuildViolation;
+
+/// The only shared shape of build legality inside the save UI. Individual
+/// games own their concrete violations; the shell needs only section chrome,
+/// whether committing is blocked, and already-opaque opponent warnings.
+#[derive(Default)]
+pub struct BuildReport {
+    pub error_tabs: std::collections::HashSet<Tab>,
+    pub blocks_save: bool,
+    pub warnings: Vec<tango_gamesupport::BuildViolation>,
+}
+
+impl BuildReport {
+    /// Merge a game-specific report into the shared Battle Network report
+    /// without exposing either side's concrete violation vocabulary.
+    pub fn extend(&mut self, other: Self) {
+        self.error_tabs.extend(other.error_tabs);
+        self.blocks_save |= other.blocks_save;
+        self.warnings.extend(other.warnings);
+    }
+}
+
+/// The headless Battle Network checks common to the BN save editors, collapsed
+/// to the shared UI boundary. Games with additional rule families extend this
+/// report from their own UI crate.
+pub fn battle_network_build_report(loaded: &OpenSave) -> BuildReport {
+    let save = loaded.save.as_ref();
+    let assets = loaded.assets.as_ref();
+    let mut violations = crate::dataview::build::folder_violations(save, assets);
+    violations.extend(crate::dataview::build::patch_card56_violations(save, assets));
+    violations.extend(crate::dataview::build::navicust_violations(save, assets));
+    crate::build::report(violations)
+}
 
 pub trait GameSaveEditor: Send + Sync {
     /// The section tabs this game's save editor offers, in display
@@ -132,13 +165,10 @@ pub trait GameSaveEditor: Send + Sync {
         None
     }
 
-    /// Structured source of truth for the PvP advisory and per-tab legality
-    /// indicators. Most legality errors remain saveable; an incomplete Battle
-    /// Network folder is the one hard save blocker enforced by the shared view.
-    fn build_violations(&self, loaded: &OpenSave) -> Vec<BuildViolation> {
-        let mut violations = crate::model::rules::folder_violations(loaded);
-        violations.extend(crate::model::rules::patch_card56_violations(loaded));
-        violations
+    /// Game-owned legality collapsed to shared UI metadata and opaque warning
+    /// messages. Concrete rule variants never cross this interface.
+    fn build_report(&self, loaded: &OpenSave) -> BuildReport {
+        battle_network_build_report(loaded)
     }
 }
 

@@ -35,11 +35,13 @@ use std::cmp::Ordering;
 use iced::widget::canvas::{self, Canvas};
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{mouse, Alignment, Element, Fill, Length, Point, Rectangle, Renderer, Size, Theme};
+use tango_gamesupport_bcc_dataview::build::{DeckViolation, DeckViolationKind};
 use tango_gamesupport_bcc_dataview::save::{DECK_SLOTS, NAVI_CHIP_IDS, NAVI_SLOT, PROGRAM_CHIP_IDS};
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view::{
     editor_header, editor_pane, editor_panes, folder, library_header, placeholder, Action, LibrarySort, State,
 };
+use tango_gamesupport_common_ui::editor::{BuildReport, OpaqueBuildViolation};
 use tango_gamesupport_common_ui::style::{self, TEXT_BODY, TEXT_CAPTION};
 use tango_gamesupport_common_ui::t;
 use tango_gamesupport_common_ui::widgets::{self, muted_color, muted_text_style};
@@ -296,6 +298,226 @@ fn slot_in_over(chips: &[Option<ChipEntry>], cap: u32) -> bool {
     chips[R_SLOT..].iter().flatten().any(|(_, _, mb)| *mb as u32 > cap)
 }
 
+fn current_deck_violations(loaded: &OpenSave) -> Vec<DeckViolation> {
+    let Some(save) = loaded
+        .save
+        .as_any()
+        .downcast_ref::<tango_gamesupport_bcc_dataview::save::Save>()
+    else {
+        return vec![];
+    };
+    let Some(assets) = bcc_assets(loaded) else {
+        return vec![];
+    };
+    tango_gamesupport_bcc_dataview::build::violations(save, assets)
+}
+
+fn candidate_issue(
+    lang: &LanguageIdentifier,
+    loaded: &OpenSave,
+    slot: usize,
+    id: usize,
+) -> Option<String> {
+    let Some(save) = loaded
+        .save
+        .as_any()
+        .downcast_ref::<tango_gamesupport_bcc_dataview::save::Save>()
+    else {
+        return None;
+    };
+    let Some(assets) = bcc_assets(loaded) else {
+        return None;
+    };
+    let kinds = tango_gamesupport_bcc_dataview::build::candidate_violations(save, assets, slot, id);
+    (!kinds.is_empty()).then(|| {
+        kinds
+            .into_iter()
+            .map(|kind| {
+                tango_gamesupport_common_ui::build::format_violation(
+                    lang,
+                    None,
+                    deck_violation_reason(lang, kind),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
+}
+
+fn deck_slot_issues(
+    lang: &LanguageIdentifier,
+    loaded: &OpenSave,
+) -> std::collections::HashMap<usize, String> {
+    let mut issues: std::collections::HashMap<usize, Vec<String>> = Default::default();
+    for violation in current_deck_violations(loaded) {
+        let (slot, issue) = match violation {
+            DeckViolation::MissingNavi => (
+                NAVI_SLOT,
+                tango_gamesupport_common_ui::build::format_violation(
+                    lang,
+                    None,
+                    t!(lang, "build-violation-program-deck-missing-navi"),
+                ),
+            ),
+            DeckViolation::Chip { slot, kind, .. } => (
+                slot,
+                tango_gamesupport_common_ui::build::format_violation(
+                    lang,
+                    None,
+                    deck_violation_reason(lang, kind),
+                ),
+            ),
+        };
+        let slot_issues = issues.entry(slot).or_default();
+        if !slot_issues.contains(&issue) {
+            slot_issues.push(issue);
+        }
+    }
+    issues
+        .into_iter()
+        .map(|(slot, issues)| (slot, issues.join("\n")))
+        .collect()
+}
+
+fn deck_violation_reason(lang: &LanguageIdentifier, kind: DeckViolationKind) -> String {
+    match kind {
+        DeckViolationKind::ChipIllegalForProgramDeck => {
+            t!(lang, "build-violation-chip-illegal-for-program-deck")
+        }
+        DeckViolationKind::ProgramDeckExceedsMemory { used, limit } => t!(
+            lang,
+            "build-violation-program-deck-exceeds-memory",
+            used = used as i64,
+            limit = limit as i64
+        ),
+        DeckViolationKind::SlotInChipExceedsMemory { used, limit } => t!(
+            lang,
+            "build-violation-slot-in-chip-exceeds-memory",
+            used = used as i64,
+            limit = limit as i64
+        ),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DeckChip {
+    id: usize,
+    name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PresentedDeckViolation {
+    MissingNavi,
+    Chips {
+        chips: Vec<DeckChip>,
+        kind: DeckViolationKind,
+    },
+}
+
+fn present_deck_violations(
+    violations: Vec<DeckViolation>,
+    mut chip_name: impl FnMut(usize) -> Option<String>,
+) -> Vec<PresentedDeckViolation> {
+    let mut presented = vec![];
+    if violations
+        .iter()
+        .any(|violation| matches!(violation, DeckViolation::MissingNavi))
+    {
+        presented.push(PresentedDeckViolation::MissingNavi);
+    }
+
+    let mut chips: Vec<(usize, usize, DeckViolationKind)> = violations
+        .into_iter()
+        .filter_map(|violation| match violation {
+            DeckViolation::Chip { slot, id, kind } => Some((slot, id, kind)),
+            DeckViolation::MissingNavi => None,
+        })
+        .collect();
+    chips.sort_by_key(|(slot, id, _)| (*id, *slot));
+    for (_, id, kind) in chips {
+        let group_idx = presented
+            .iter()
+            .position(|group| {
+                matches!(
+                    group,
+                    PresentedDeckViolation::Chips {
+                        kind: grouped_kind,
+                        ..
+                    } if grouped_kind == &kind
+                )
+            })
+            .unwrap_or_else(|| {
+                presented.push(PresentedDeckViolation::Chips { chips: vec![], kind });
+                presented.len() - 1
+            });
+        let PresentedDeckViolation::Chips { chips, .. } = &mut presented[group_idx] else {
+            unreachable!("deck-chip violation group has a chip presentation")
+        };
+        let chip = DeckChip {
+            id,
+            name: chip_name(id),
+        };
+        if !chips.contains(&chip) {
+            chips.push(chip);
+        }
+    }
+    presented
+}
+
+fn format_deck_violation(lang: &LanguageIdentifier, violation: &PresentedDeckViolation) -> String {
+    match violation {
+        PresentedDeckViolation::MissingNavi => tango_gamesupport_common_ui::build::format_violation(
+            lang,
+            None,
+            t!(lang, "build-violation-program-deck-missing-navi"),
+        ),
+        PresentedDeckViolation::Chips { chips, kind } => {
+            let chips = chips
+                .iter()
+                .map(|chip| {
+                    chip.name
+                        .clone()
+                        .unwrap_or_else(|| t!(lang, "build-chip-unknown", id = chip.id as i64))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let reason = deck_violation_reason(lang, *kind);
+            tango_gamesupport_common_ui::build::format_violation(lang, Some(&chips), reason)
+        }
+    }
+}
+
+/// BCC owns its complete legality vocabulary. Only the affected shared tab and
+/// opaque, language-aware warning closures leave this module.
+fn deck_violations_block_save(violations: &[DeckViolation]) -> bool {
+    violations
+        .iter()
+        .any(|violation| matches!(violation, DeckViolation::MissingNavi))
+}
+
+pub fn build_report(loaded: &OpenSave) -> BuildReport {
+    let violations = current_deck_violations(loaded);
+    if violations.is_empty() {
+        return BuildReport::default();
+    }
+    let blocks_save = deck_violations_block_save(&violations);
+    let warnings = present_deck_violations(violations, |id| {
+        bcc_assets(loaded)
+            .and_then(|assets| assets.chip_info(id))
+            .and_then(|info| info.name())
+    })
+    .into_iter()
+    .map(|violation| OpaqueBuildViolation::new(move |lang| format_deck_violation(lang, &violation)))
+    .collect();
+    BuildReport {
+        error_tabs: [tango_gamesupport_common_ui::editor::view::Tab::ProgramDeck]
+            .into_iter()
+            .collect(),
+        blocks_save,
+        warnings,
+    }
+}
+
 /// One card on the board — the same shape everywhere, so a card reads
 /// the same whether it's a wired slot, a trigger slot or the navi:
 /// chip icon, name, MB. `on_press` makes it a button (the editor's
@@ -307,20 +529,43 @@ fn slot_card<'a>(
     chip: &Option<ChipEntry>,
     on_press: Option<Action>,
     selected: bool,
+    issue: Option<String>,
 ) -> Element<'a, Action> {
+    let illegal = issue.is_some();
     let body = row![].spacing(8).align_y(Alignment::Center);
     let body: Element<'a, Action> = match chip {
         Some((id, name, mb)) => {
             let name_col = column![
-                text(name.clone()).size(TEXT_BODY).wrapping(text::Wrapping::None),
-                text(format!("{mb}MB")).size(10).style(muted_text_style),
+                text(name.clone())
+                    .size(TEXT_BODY)
+                    .wrapping(text::Wrapping::None)
+                    .style(move |theme: &iced::Theme| iced::widget::text::Style {
+                        color: illegal.then(|| theme.palette().danger),
+                    }),
+                text(format!("{mb}MB")).size(10).style(move |theme: &iced::Theme| {
+                    if illegal {
+                        iced::widget::text::Style {
+                            color: Some(theme.palette().danger),
+                        }
+                    } else {
+                        muted_text_style(theme)
+                    }
+                }),
             ]
             .spacing(1);
             body.push(folder::chip_icon(loaded, Some(*id))).push(name_col).into()
         }
         None => body
             .push(Space::new().width(Length::Fixed(28.0)).height(Length::Fixed(28.0)))
-            .push(text("—").size(TEXT_BODY).style(muted_text_style))
+            .push(text("—").size(TEXT_BODY).style(move |theme: &iced::Theme| {
+                if illegal {
+                    iced::widget::text::Style {
+                        color: Some(theme.palette().danger),
+                    }
+                } else {
+                    muted_text_style(theme)
+                }
+            }))
             .into(),
     };
 
@@ -335,7 +580,9 @@ fn slot_card<'a>(
             })),
             border: iced::Border {
                 width: 1.0,
-                color: if selected {
+                color: if illegal {
+                    theme.palette().danger
+                } else if selected {
                     theme.palette().primary
                 } else {
                     ep.background.strong.color
@@ -367,7 +614,11 @@ fn slot_card<'a>(
             .style(move |theme: &iced::Theme, status| {
                 let mut s = iced::widget::button::Style {
                     background: plate(theme).background,
-                    text_color: theme.palette().text,
+                    text_color: if illegal {
+                        theme.palette().danger
+                    } else {
+                        theme.palette().text
+                    },
                     border: plate(theme).border,
                     ..Default::default()
                 };
@@ -389,8 +640,8 @@ fn slot_card<'a>(
     // Hover detail: the chip's artwork + description, same popover the
     // folder rows use.
     match chip {
-        Some((id, _, _)) => folder::with_chip_tooltip(loaded, Some(*id), None, card),
-        None => card,
+        Some((id, _, _)) => folder::with_chip_tooltip_issue(loaded, Some(*id), None, issue, card),
+        None => folder::detail_popover_with_issue(card, None, None, None, issue),
     }
 }
 
@@ -405,6 +656,7 @@ fn board<'a>(
     navi: Option<ChipEntry>,
     interactive: bool,
     selected: Option<usize>,
+    issues: std::collections::HashMap<usize, String>,
 ) -> Element<'a, Action> {
     let natural = Geometry::new(1.0);
     let height = natural.size.height;
@@ -418,7 +670,14 @@ fn board<'a>(
                     // Reselecting the picked card clears the selection.
                     Action::SelectDeckSlot(if selected == Some(i) { None } else { Some(i) })
                 });
-                slot_card(loaded, card_w, chip, on_press, selected == Some(i))
+                slot_card(
+                    loaded,
+                    card_w,
+                    chip,
+                    on_press,
+                    selected == Some(i),
+                    issues.get(&i).cloned(),
+                )
             };
 
             // The traces underneath, every card on top.
@@ -426,8 +685,8 @@ fn board<'a>(
                 .width(Length::Fixed(geo.size.width))
                 .height(Length::Fixed(geo.size.height))
                 .into()];
-            for i in 0..DECK_SLOTS {
-                layers.push(at(geo.slots[i], card(i, &chips[i])));
+            for (i, chip) in chips.iter().enumerate().take(DECK_SLOTS) {
+                layers.push(at(geo.slots[i], card(i, chip)));
             }
             layers.push(at(geo.navi, card(NAVI_SLOT, &navi)));
 
@@ -543,7 +802,8 @@ pub fn render<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave) -> Element
     }
     let chips = deck_chips(loaded);
     let navi = navi_chip(loaded);
-    container(board(loaded, chips, navi, false, None))
+    let issues = deck_slot_issues(lang, loaded);
+    container(board(loaded, chips, navi, false, None, issues))
         .width(Fill)
         .style(widgets::pane)
         .into()
@@ -569,24 +829,6 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
     let navi_targeted = selected == Some(NAVI_SLOT);
     let first_empty = chips.iter().position(|c| c.is_none());
 
-    // What a chip aimed at `slot` may cost: the remaining capacity for
-    // a wired slot, the remaining slot-in budget for R/L (each net of
-    // whatever the slot already holds), no MB constraint for the navi.
-    let mb_budget = |slot: usize| -> Option<u32> {
-        let current = |s: usize| chips[s].as_ref().map(|(_, _, mb)| *mb as u32).unwrap_or(0);
-        if slot == NAVI_SLOT {
-            None
-        } else if slot == R_SLOT || slot == L_SLOT {
-            // A per-slot ceiling, not a pool: what the other trigger
-            // slot holds doesn't matter.
-            limits.map(|l| l.slot_in)
-        } else {
-            limits
-                .and_then(|l| l.capacity)
-                .map(|cap| cap.saturating_sub(wired_mb(&chips) - current(slot)))
-        }
-    };
-
     // ----- Left pane: the board -----
     let header = editor_header(
         lang,
@@ -596,28 +838,38 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
     );
     let left = editor_pane(
         header,
-        column![board(loaded, chips.clone(), navi, true, selected)].spacing(8),
+        column![board(
+            loaded,
+            chips.clone(),
+            navi,
+            true,
+            selected,
+            deck_slot_issues(lang, loaded)
+        )]
+        .spacing(8),
     );
 
     // ----- Right pane: the chip library -----
     let filter = edit.library_filter.to_lowercase();
     let mut lib_list = column![].spacing(3).padding(0);
     let mut shown = 0usize;
-    for (id, name, mb) in sorted_library_entries(loaded, navi_targeted, state.library_sort) {
+    for (id, name, _) in sorted_library_entries(loaded, navi_targeted, state.library_sort) {
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
         // The slot this row would fill: the picked one, else the first
         // empty one. A full deck with nothing picked disables the
-        // library — as does a chip too big for the target's MB budget.
+        // library. Legality is advisory: over-budget program chips and
+        // Navi choices that would reduce capacity too far stay clickable
+        // and turn red.
         let target = selected.or(first_empty);
-        let fits = target.is_some_and(|slot| mb_budget(slot).is_none_or(|budget| mb as u32 <= budget));
-        let on_add = target.filter(|_| fits).map(|slot| Action::SetDeckChip {
+        let issue = target.and_then(|slot| candidate_issue(lang, loaded, slot, id));
+        let on_add = target.map(|slot| Action::SetDeckChip {
             slot,
             chip_id: id,
             code: tango_gamesupport_common_dataview::save::ChipCode::Star,
         });
-        lib_list = lib_list.push(library_row(loaded, id, name, shown, on_add));
+        lib_list = lib_list.push(library_row(loaded, id, name, shown, on_add, issue));
         shown += 1;
     }
     let lib_header = library_header(
@@ -703,15 +955,18 @@ fn sorted_library_entries(loaded: &OpenSave, navi_targeted: bool, sort: LibraryS
 /// are the element indicator then AP / HP / MB (the card screen's
 /// stats — the chips carry no code letters). Same composition as the
 /// shared folder library row — flush stripe gutter over `list_item`'s
-/// zebra base, translucent wash when not installable — so the two
-/// editors read identically.
+/// zebra base, danger text for advisory-invalid choices, and a translucent
+/// wash only when there is no target slot — so the two editors read
+/// identically.
 fn library_row<'a>(
     loaded: &'a OpenSave,
     id: usize,
     name: String,
     row_idx: usize,
     on_add: Option<Action>,
+    issue: Option<String>,
 ) -> Element<'a, Action> {
+    let illegal = issue.is_some();
     let info = bcc_assets(loaded).and_then(|a| a.chip_info(id));
     let (elem, hp, ap, mb) = info
         .map(|i| (i.element(), i.hp(), i.attack_power(), i.mb()))
@@ -759,10 +1014,12 @@ fn library_row<'a>(
         .height(Length::Shrink)
         .align_y(Alignment::Center);
     let addable = on_add.is_some();
-    let mut body = button(content)
-        .width(Fill)
-        .padding(0)
-        .style(widgets::list_item(false, row_idx));
+    let body = button(content).width(Fill).padding(0);
+    let mut body = if illegal && addable {
+        body.style(widgets::danger_text_list_item(row_idx))
+    } else {
+        body.style(widgets::list_item(false, row_idx))
+    };
     if let Some(action) = on_add {
         body = body.on_press(action);
     }
@@ -785,7 +1042,7 @@ fn library_row<'a>(
         ])
         .into()
     };
-    folder::with_chip_tooltip(loaded, Some(id), None, row_el)
+    folder::with_chip_tooltip_issue(loaded, Some(id), None, issue, row_el)
 }
 
 /// The deck as clipboard text: the navi, one line per slot (position,
@@ -812,4 +1069,74 @@ pub fn as_text(loaded: &OpenSave) -> Option<String> {
         out.push_str(&format!("Slot-in\t\t{}MB\n", l.slot_in));
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod legality_tests {
+    use super::*;
+
+    #[test]
+    fn opponent_warnings_group_chips_in_id_order_inside_bcc() {
+        let violations = vec![
+            DeckViolation::Chip {
+                slot: 0,
+                id: 2,
+                kind: DeckViolationKind::ChipIllegalForProgramDeck,
+            },
+            DeckViolation::Chip {
+                slot: 1,
+                id: 1,
+                kind: DeckViolationKind::ChipIllegalForProgramDeck,
+            },
+        ];
+        let presented = present_deck_violations(violations, |id| {
+            Some(if id == 1 { "Cannon" } else { "HiCannon" }.to_string())
+        });
+        let english = "en-US".parse().unwrap();
+
+        assert!(format_deck_violation(&english, &presented[0]).starts_with("Cannon, HiCannon:"));
+    }
+
+    #[test]
+    fn only_a_missing_navi_blocks_saving_the_program_deck() {
+        assert!(deck_violations_block_save(&[DeckViolation::MissingNavi]));
+        assert!(!deck_violations_block_save(&[DeckViolation::Chip {
+            slot: 0,
+            id: 1,
+            kind: DeckViolationKind::ProgramDeckExceedsMemory { used: 90, limit: 80 },
+        }]));
+    }
+
+    #[test]
+    fn bcc_violation_localization_remains_dynamic_and_complete() {
+        let violations = [
+            PresentedDeckViolation::MissingNavi,
+            PresentedDeckViolation::Chips {
+                chips: vec![DeckChip { id: 1, name: None }],
+                kind: DeckViolationKind::ChipIllegalForProgramDeck,
+            },
+            PresentedDeckViolation::Chips {
+                chips: vec![DeckChip { id: 1, name: None }],
+                kind: DeckViolationKind::ProgramDeckExceedsMemory { used: 90, limit: 80 },
+            },
+            PresentedDeckViolation::Chips {
+                chips: vec![DeckChip { id: 1, name: None }],
+                kind: DeckViolationKind::SlotInChipExceedsMemory { used: 45, limit: 40 },
+            },
+        ];
+        let english: LanguageIdentifier = "en-US".parse().unwrap();
+        let english_text: Vec<_> = violations
+            .iter()
+            .map(|violation| format_deck_violation(&english, violation))
+            .collect();
+
+        for language in [
+            "de-DE", "es-419", "fr-FR", "ja-JP", "nl-NL", "pt-BR", "ru-RU", "vi-VN", "zh-CN", "zh-TW",
+        ] {
+            let language = language.parse().unwrap();
+            for (violation, english) in violations.iter().zip(&english_text) {
+                assert_ne!(format_deck_violation(&language, violation), *english);
+            }
+        }
+    }
 }
