@@ -10,6 +10,12 @@ pub fn render_patch_cards56<M: 'static>(lang: &LanguageIdentifier, loaded: &Open
         return placeholder(t!(lang, "save-empty"));
     };
     let assets = loaded.assets.as_ref();
+    let enabled_mb: u32 = (0..v.count())
+        .filter_map(|i| v.patch_card(i))
+        .filter(|card| card.enabled)
+        .map(|card| assets.patch_card56(card.id).map(|c| c.mb() as u32).unwrap_or(0))
+        .sum();
+    let over_mb_limit = enabled_mb > MAX_PATCH_CARD56_MB;
 
     let mut list = column![].spacing(3).padding(0);
     for i in 0..v.count() {
@@ -20,7 +26,9 @@ pub fn render_patch_cards56<M: 'static>(lang: &LanguageIdentifier, loaded: &Open
             .and_then(|c| c.name())
             .unwrap_or_else(|| format!("#{}", card.id));
         let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-        let [name_cell, param_cell, ability_cell] = patch_card56_cells::<M>(loaded, &name, mb, card.enabled, card.id);
+        let danger = over_mb_limit && card.enabled;
+        let [name_cell, param_cell, ability_cell] =
+            patch_card56_cells::<M>(loaded, &name, mb, card.enabled, danger, card.id);
 
         let row = row![
             text(format!("{:>2}", i + 1))
@@ -35,7 +43,13 @@ pub fn render_patch_cards56<M: 'static>(lang: &LanguageIdentifier, loaded: &Open
         list = list.push(
             container(row)
                 .padding(style::ROW_PADDING)
-                .style(crate::widgets::zebra_row(i)),
+                .style(move |theme: &iced::Theme| {
+                    let mut style = crate::widgets::zebra_row(i)(theme);
+                    if over_mb_limit && card.enabled {
+                        style.text_color = Some(theme.palette().danger);
+                    }
+                    style
+                }),
         );
     }
 
@@ -66,11 +80,17 @@ fn sorted_patch_card56_library(loaded: &OpenSave, sort: PatchCard56Sort) -> Vec<
 /// iced's strikethrough lives on rich-text spans. `on_link_click(never)`
 /// pins the span's link type; these spans are never links.
 pub fn patch_card_name<'a, M: 'a>(name: String, enabled: bool) -> Element<'a, M> {
+    patch_card_name_maybe_danger(name, enabled, false)
+}
+
+fn patch_card_name_maybe_danger<'a, M: 'a>(name: String, enabled: bool, danger: bool) -> Element<'a, M> {
     let mut el = iced::widget::rich_text([iced::widget::text::Span::new(name).strikethrough(!enabled)])
         .on_link_click(iced::never)
         .size(TEXT_BODY);
     if !enabled {
         el = el.style(muted_text_style);
+    } else if danger {
+        el = el.style(crate::widgets::danger_text_style);
     }
     el.into()
 }
@@ -88,11 +108,19 @@ fn patch_card56_cells<'a, M: 'static>(
     name: &str,
     mb: u8,
     enabled: bool,
+    danger: bool,
     id: usize,
 ) -> [Element<'a, M>; 3] {
     let effects = loaded.assets.patch_card56(id).map(|c| c.effects()).unwrap_or_default();
-    let name_text = patch_card_name(name.to_string(), enabled);
-    let name_col = column![name_text, text(format!("{mb}MB")).size(10).style(muted_text_style)].spacing(2);
+    let name_text = patch_card_name_maybe_danger(name.to_string(), enabled, danger);
+    let mb_text = text(format!("{mb}MB")).size(10).style(move |theme: &iced::Theme| {
+        if danger {
+            crate::widgets::danger_text_style(theme)
+        } else {
+            muted_text_style(theme)
+        }
+    });
+    let name_col = column![name_text, mb_text].spacing(2);
     let mut param_col = column![].spacing(2);
     for e in effects.iter().filter(|e| !e.is_ability) {
         param_col = param_col.push(effect_badge::<M>(e, enabled));
@@ -113,12 +141,14 @@ fn patch_card56_cells<'a, M: 'static>(
 
 /// One registered patch card, laid out like a [`render_patch_cards56`] row
 /// (index · name+MB · parameters · abilities) with an ✕ remove button appended.
-/// Every registered card is active — there's no enable/disable toggle — so the
-/// list is simply the set of equipped cards, MB-budgeted via the library.
+/// Every newly registered card is active — there's no enable/disable toggle —
+/// so the list is simply the set of equipped cards. An over-budget set is an
+/// advisory error and its enabled rows render danger-red.
 fn patch_card56_list_row<'a>(
     loaded: &'a OpenSave,
     slot: usize,
     card: crate::dataview::save::PatchCard,
+    over_mb_limit: bool,
 ) -> Element<'a, Action> {
     let info = loaded.assets.patch_card56(card.id);
     let name = info
@@ -126,7 +156,8 @@ fn patch_card56_list_row<'a>(
         .and_then(|c| c.name())
         .unwrap_or_else(|| format!("#{}", card.id));
     let mb = info.as_ref().map(|c| c.mb()).unwrap_or(0);
-    let [name_cell, param_cell, ability_cell] = patch_card56_cells(loaded, &name, mb, card.enabled, card.id);
+    let danger = over_mb_limit && card.enabled;
+    let [name_cell, param_cell, ability_cell] = patch_card56_cells(loaded, &name, mb, card.enabled, danger, card.id);
 
     // Just the ✕ that backs the card out to the library.
     let remove = remove_button(Action::RemovePatchCard56 { slot });
@@ -152,25 +183,32 @@ fn patch_card56_list_row<'a>(
             bottom: 6.0,
             left: 6.0,
         })
-        .style(crate::widgets::zebra_row(slot))
+        .style(move |theme: &iced::Theme| {
+            let mut style = crate::widgets::zebra_row(slot)(theme);
+            if over_mb_limit && card.enabled {
+                style.text_color = Some(theme.palette().danger);
+            }
+            style
+        })
         .into()
 }
 
 /// One library card, laid out like a [`render_patch_cards56`] row (index ·
 /// name+MB · parameters · abilities). The whole row is a click-to-add button (the
-/// palette affordance) that registers the card. When it can't be added — the
-/// list is full, or adding it would blow the MB budget — the row renders greyed
-/// and unclickable (`selectable` is false), so the MB limit is enforced by
-/// disabling the selection rather than an after-the-fact toggle.
+/// palette affordance) that registers the card. A full list renders the row
+/// greyed and unclickable. An addition that would exceed the MB budget remains
+/// clickable but renders danger-red, matching advisory folder-limit choices.
 fn patch_card56_library_row<'a>(
     loaded: &'a OpenSave,
     id: usize,
     name: String,
     mb: u8,
     row_idx: usize,
-    selectable: bool,
+    addable: bool,
+    over_mb_limit: bool,
 ) -> Element<'a, Action> {
-    let [name_cell, param_cell, ability_cell] = patch_card56_cells(loaded, &name, mb, selectable, id);
+    let danger = over_mb_limit && addable;
+    let [name_cell, param_cell, ability_cell] = patch_card56_cells(loaded, &name, mb, addable, danger, id);
 
     let row = row![name_cell, param_cell, ability_cell]
         .spacing(8)
@@ -178,11 +216,13 @@ fn patch_card56_library_row<'a>(
     // The entire row is the add control: clicking anywhere registers the
     // card. `list_item` paints the zebra base + hover highlight, so it
     // doubles as the palette's "click me" affordance.
-    let mut b = button(row)
-        .width(Fill)
-        .padding(style::ROW_PADDING)
-        .style(crate::widgets::list_item(false, row_idx));
-    if selectable {
+    let b = button(row).width(Fill).padding(style::ROW_PADDING);
+    let mut b = if over_mb_limit && addable {
+        b.style(crate::widgets::danger_text_list_item(row_idx))
+    } else {
+        b.style(crate::widgets::list_item(false, row_idx))
+    };
+    if addable {
         b = b.on_press(Action::AddPatchCard56 { id });
     }
     b.into()
@@ -224,8 +264,9 @@ pub fn render_patch_cards56_edit<'a>(
         .sum();
 
     let mut list_rows: Vec<Element<'a, Action>> = Vec::with_capacity(cards.len());
+    let over_mb_limit = enabled_mb > MAX_PATCH_CARD56_MB;
     for (slot, card) in &cards {
-        list_rows.push(patch_card56_list_row(loaded, *slot, card.clone()));
+        list_rows.push(patch_card56_list_row(loaded, *slot, card.clone(), over_mb_limit));
     }
     // Draggable list: grab a card row and drop it to reorder the registered
     // order (dense list, so any drop is a valid ordered move).
@@ -234,8 +275,8 @@ pub fn render_patch_cards56_edit<'a>(
         .spacing(3)
         .style(reorder_drag_style)
         .on_drag(Action::ReorderPatchCard56s);
-    // MB total turns red if it somehow exceeds the limit (e.g. a save
-    // imported over-budget); the editor itself never lets it go over.
+    // The MB budget is advisory: its total and contributing enabled card rows
+    // turn red when exceeded, but cards remain addable.
     let mb_text = limit_caption(
         t!(
             lang,
@@ -243,7 +284,7 @@ pub fn render_patch_cards56_edit<'a>(
             mb = enabled_mb as i64,
             limit = MAX_PATCH_CARD56_MB
         ),
-        enabled_mb > MAX_PATCH_CARD56_MB,
+        over_mb_limit,
     );
     let count_caption = text(t!(lang, "patch-card-edit-count", count = count as i64))
         .size(TEXT_CAPTION)
@@ -268,10 +309,19 @@ pub fn render_patch_cards56_edit<'a>(
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
-        // Selectable only if there's room and it fits the MB budget — that's how
-        // the limit is enforced now (no post-add enable/disable toggle).
-        let selectable = !list_full && enabled_mb + mb as u32 <= MAX_PATCH_CARD56_MB;
-        lib_col = lib_col.push(patch_card56_library_row(loaded, id, name, mb, shown, selectable));
+        // Only the hard list capacity disables adding. Like folder-limit
+        // violations, a choice that would exceed the MB budget stays clickable
+        // and turns danger-red.
+        let over_mb_limit = enabled_mb + mb as u32 > MAX_PATCH_CARD56_MB;
+        lib_col = lib_col.push(patch_card56_library_row(
+            loaded,
+            id,
+            name,
+            mb,
+            shown,
+            !list_full,
+            over_mb_limit,
+        ));
         shown += 1;
     }
     let lib_header = library_header(
@@ -287,10 +337,8 @@ pub fn render_patch_cards56_edit<'a>(
     editor_panes(list_pane, editor_pane(lib_header, lib_col))
 }
 
-/// Total MB an enabled patch-card set may use in BN5/BN6. Enabling a card
-/// past this is blocked, and a freshly added card lands disabled if it
-/// Total MB budget across enabled PatchCard56s. Enforced in the apply
-/// path too, so it lives with the model.
+/// Advisory total MB budget across enabled PatchCard56s. Over-budget sets and
+/// would-be additions render danger-red but are allowed.
 pub use crate::model::rules::MAX_PATCH_CARD56_MB;
 
 /// Localized label for a [`PatchCard56Sort`] picker entry (see

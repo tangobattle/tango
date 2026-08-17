@@ -6,7 +6,10 @@
 use super::*;
 use crate::session::pvp::PvpSession;
 use crate::session::Message as SessionMessage;
-use tango_gamesupport::{BuildChip, BuildViolation, BuildViolationFormat, BuildViolationFormatter, BuildViolationKind};
+use tango_gamesupport::{
+    BuildChip, BuildPatchCard, BuildViolation, BuildViolationFormat, BuildViolationFormatter, BuildViolationKind,
+    PatchCardViolationKind,
+};
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::{column, row};
 
@@ -375,6 +378,10 @@ enum PresentedBuildViolation<'a> {
         chips: Vec<&'a BuildChip>,
         kind: BuildViolationKind,
     },
+    PatchCards {
+        patch_cards: Vec<&'a BuildPatchCard>,
+        kind: PatchCardViolationKind,
+    },
 }
 
 fn present_build_violations(violations: &[BuildViolation]) -> Vec<PresentedBuildViolation<'_>> {
@@ -413,11 +420,41 @@ fn present_build_violations(violations: &[BuildViolation]) -> Vec<PresentedBuild
                     chips.push(chip);
                 }
             }
+            BuildViolation::PatchCard { patch_card, kind, .. } => {
+                let group_idx = presented
+                    .iter()
+                    .position(|group| {
+                        matches!(
+                            group,
+                            PresentedBuildViolation::PatchCards {
+                                kind: grouped_kind,
+                                ..
+                            } if grouped_kind == kind
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        presented.push(PresentedBuildViolation::PatchCards {
+                            patch_cards: vec![],
+                            kind: *kind,
+                        });
+                        presented.len() - 1
+                    });
+                let PresentedBuildViolation::PatchCards { patch_cards, .. } = &mut presented[group_idx] else {
+                    unreachable!("patch-card violation group has a patch-card presentation")
+                };
+                if !patch_cards.contains(&patch_card) {
+                    patch_cards.push(patch_card);
+                }
+            }
         }
     }
     for group in &mut presented {
-        if let PresentedBuildViolation::Chips { chips, .. } = group {
-            chips.sort_by_key(|chip| chip.id);
+        match group {
+            PresentedBuildViolation::Chips { chips, .. } => chips.sort_by_key(|chip| chip.id),
+            PresentedBuildViolation::PatchCards { patch_cards, .. } => {
+                patch_cards.sort_by_key(|patch_card| patch_card.id)
+            }
+            PresentedBuildViolation::FolderNotFull { .. } => {}
         }
     }
     presented
@@ -440,6 +477,13 @@ fn build_violation_text(
             lang,
             BuildViolationFormat::Chips {
                 chips,
+                kind: *kind,
+            },
+        ),
+        PresentedBuildViolation::PatchCards { patch_cards, kind } => formatter(
+            lang,
+            BuildViolationFormat::PatchCards {
+                patch_cards,
                 kind: *kind,
             },
         ),
@@ -894,6 +938,14 @@ mod build_warning_tests {
         }
     }
 
+    fn patch_card(id: usize, name: &str, mb: u8) -> BuildPatchCard {
+        BuildPatchCard {
+            id,
+            name: Some(name.to_string()),
+            mb,
+        }
+    }
+
     fn violation_chip(violation: &BuildViolation) -> &BuildChip {
         let BuildViolation::Chip { chip, .. } = violation else {
             panic!("expected chip violation")
@@ -926,6 +978,23 @@ mod build_warning_tests {
                     _ => format!("{kind:?}"),
                 };
                 format!("{chips}: {reason}")
+            }
+            BuildViolationFormat::PatchCards { patch_cards, kind } => {
+                let patch_cards = patch_cards
+                    .iter()
+                    .map(|patch_card| {
+                        format!(
+                            "{} {}MB",
+                            patch_card.name.as_deref().unwrap_or("unknown"),
+                            patch_card.mb
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let reason = match kind {
+                    PatchCardViolationKind::TotalMbExceeded { used, limit } => format!("MB {used}/{limit}"),
+                };
+                format!("{patch_cards}: {reason}")
             }
         }
     }
@@ -999,6 +1068,29 @@ mod build_warning_tests {
                     kind: BuildViolationKind::ChipIllegalForGame,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn patch_card_contributors_are_grouped_and_rendered_with_the_total() {
+        let kind = PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 };
+        let violations = vec![
+            BuildViolation::PatchCard {
+                slot: 0,
+                patch_card: patch_card(2, "Second", 50),
+                kind,
+            },
+            BuildViolation::PatchCard {
+                slot: 1,
+                patch_card: patch_card(1, "First", 40),
+                kind,
+            },
+        ];
+        let presented = present_build_violations(&violations);
+
+        assert_eq!(
+            build_violation_text(test_formatter, &crate::i18n::FALLBACK_LANG, &presented[0]),
+            "First 40MB, Second 50MB: MB 90/80"
         );
     }
 

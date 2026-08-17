@@ -2,7 +2,7 @@
 //! save editor and the host application's PvP warning use these functions so a
 //! rule has one sentence in one Fluent bundle.
 
-use tango_gamesupport::{BuildChip, BuildViolationFormat, BuildViolationKind};
+use tango_gamesupport::{BuildChip, BuildPatchCard, BuildViolationFormat, BuildViolationKind, PatchCardViolationKind};
 
 use crate::i18n::t;
 
@@ -76,6 +76,35 @@ pub fn chip_violation(
     t!(lang, "build-violation-chip", chips = chips, reason = reason)
 }
 
+pub fn patch_card_label(lang: &unic_langid::LanguageIdentifier, patch_card: &BuildPatchCard) -> String {
+    let name = patch_card
+        .name
+        .clone()
+        .unwrap_or_else(|| t!(lang, "build-patch-card-unknown", id = patch_card.id as i64));
+    format!("{name} ({}MB)", patch_card.mb)
+}
+
+pub fn patch_card_violation(
+    lang: &unic_langid::LanguageIdentifier,
+    patch_cards: &[&BuildPatchCard],
+    kind: PatchCardViolationKind,
+) -> String {
+    let patch_cards = patch_cards
+        .iter()
+        .map(|patch_card| patch_card_label(lang, patch_card))
+        .collect::<Vec<_>>()
+        .join(", ");
+    match kind {
+        PatchCardViolationKind::TotalMbExceeded { used, limit } => t!(
+            lang,
+            "build-violation-patch-cards-exceed-memory",
+            patch_cards = patch_cards,
+            used = used as i64,
+            limit = limit as i64
+        ),
+    }
+}
+
 pub fn folder_not_full(lang: &unic_langid::LanguageIdentifier, used: usize, required: usize) -> String {
     t!(
         lang,
@@ -89,6 +118,7 @@ pub fn format(lang: &unic_langid::LanguageIdentifier, violation: BuildViolationF
     match violation {
         BuildViolationFormat::FolderNotFull { used, required } => folder_not_full(lang, used, required),
         BuildViolationFormat::Chips { chips, kind } => chip_violation(lang, chips, kind),
+        BuildViolationFormat::PatchCards { patch_cards, kind } => patch_card_violation(lang, patch_cards, kind),
     }
 }
 
@@ -111,6 +141,16 @@ mod tests {
             BuildViolationKind::TagChipsExceedMemory { used: 65, limit: 60 },
         ];
         let english_reasons = kinds.map(|kind| violation_reason(&english, kind));
+        let patch_card = BuildPatchCard {
+            id: 1,
+            name: None,
+            mb: 40,
+        };
+        let english_patch_card = patch_card_violation(
+            &english,
+            &[&patch_card],
+            PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 },
+        );
 
         for language in [
             "de-DE", "es-419", "fr-FR", "ja-JP", "nl-NL", "pt-BR", "ru-RU", "vi-VN", "zh-CN", "zh-TW",
@@ -120,6 +160,14 @@ mod tests {
             for (kind, english_reason) in kinds.iter().copied().zip(&english_reasons) {
                 assert_ne!(violation_reason(&language, kind), *english_reason);
             }
+            assert_ne!(
+                patch_card_violation(
+                    &language,
+                    &[&patch_card],
+                    PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 },
+                ),
+                english_patch_card
+            );
         }
     }
 

@@ -13,8 +13,34 @@ use lucide_icons::Icon;
 /// Cover/Navi/Folder/Patch Cards/Auto Battle Data strip, etc).
 /// Body-text size, modest padding — meant to sit inside a pane
 /// without competing with the global top nav.
-pub fn tab_button<'a, M: Clone + 'a>(icon: Icon, label: String, msg: M, active: bool) -> Element<'a, M> {
-    pill_tab(icon, Some(label), msg, active, false)
+pub fn tab_button<'a, M: Clone + 'a>(
+    icon: Icon,
+    label: String,
+    msg: M,
+    active: bool,
+    has_legality_error: bool,
+) -> Element<'a, M> {
+    use iced::widget::{button, row, text};
+    use iced::Alignment;
+
+    let mut content = row![icon.widget().size(crate::style::TEXT_BODY), text(label)]
+        .spacing(8)
+        .align_y(Alignment::Center);
+    if has_legality_error {
+        content = content.push(
+            Icon::AlertCircle
+                .widget()
+                .size(crate::style::TEXT_BODY)
+                .style(|theme: &Theme| iced::widget::text::Style {
+                    color: Some(theme.palette().danger),
+                }),
+        );
+    }
+    button(content)
+        .padding([6.0, 14.0])
+        .style(pill_tab_style(active))
+        .on_press(msg)
+        .into()
 }
 
 /// Zebra row style for data tables. Odd rows get a faint text-

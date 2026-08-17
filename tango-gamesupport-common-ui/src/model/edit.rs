@@ -472,22 +472,14 @@ pub fn apply_patch_card56_edit(save: &mut SaveModel, edit: PatchCard56Edit) {
     // You can register at most one of each card the ROM defines, so the
     // game's own card count is the list cap.
     let max = assets.num_patch_card56s();
-    // Total MB of the currently-enabled cards, used to keep the enabled set
-    // within the in-game budget (see `MAX_PATCH_CARD56_MB`).
-    let card_mb = |id: usize| assets.patch_card56(id).map(|c| c.mb() as u32).unwrap_or(0);
-    let enabled_mb = |list: &[PatchCard]| -> u32 { list.iter().filter(|c| c.enabled).map(|c| card_mb(c.id)).sum() };
-
     let mut new_cards = cards.clone();
     match edit {
         PatchCard56Edit::AddCard { id } => {
-            // No-op if the list is full, the card is already registered, or it
-            // wouldn't fit the MB budget. Every registered card is active (no
-            // on/off state), so the library disables non-fitting cards and this
-            // is just a guard. Appended, enabled, at the end of the list.
-            if new_cards.len() >= max
-                || new_cards.iter().any(|c| c.id == id)
-                || enabled_mb(&new_cards) + card_mb(id) > crate::model::rules::MAX_PATCH_CARD56_MB
-            {
+            // No-op if the list is full or the card is already registered.
+            // The MB budget is advisory, matching folder-construction limits:
+            // the UI highlights over-budget choices instead of rejecting them.
+            // Appended, enabled, at the end of the list.
+            if new_cards.len() >= max || new_cards.iter().any(|c| c.id == id) {
                 return;
             }
             new_cards.push(PatchCard { id, enabled: true });

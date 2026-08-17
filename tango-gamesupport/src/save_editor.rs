@@ -40,9 +40,19 @@ pub struct BuildChip {
     pub name: Option<String>,
 }
 
+/// One enabled BN5/BN6 Patch Card implicated in a PvP build violation. The
+/// display name is resolved while patched ROM assets are available; `id` is a
+/// stable fallback and `mb` preserves the exact cost shown by the save editor.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildPatchCard {
+    pub id: usize,
+    pub name: Option<String>,
+    pub mb: u8,
+}
+
 /// The legality rule violated by one chip slot. This enum is intentionally
-/// chip-specific: future NaviCust, Patch Card, or other subject types get
-/// their own kind enums rather than being attached to [`BuildViolation::Chip`].
+/// chip-specific: NaviCust and other subject types get their own kind enums
+/// rather than being attached to [`BuildViolation::Chip`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildViolationKind {
     ChipIllegalForGame,
@@ -53,6 +63,12 @@ pub enum BuildViolationKind {
     TooManyDarkChips { used: usize, limit: usize },
     RegularChipExceedsMemory { used: u32, limit: u32 },
     TagChipsExceedMemory { used: u32, limit: u32 },
+}
+
+/// The legality rule violated by an enabled BN5/BN6 Patch Card.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchCardViolationKind {
+    TotalMbExceeded { used: u32, limit: u32 },
 }
 
 /// One raw legality problem in a PvP build. Subject-specific violations are
@@ -70,6 +86,11 @@ pub enum BuildViolation {
         chip: BuildChip,
         kind: BuildViolationKind,
     },
+    PatchCard {
+        slot: usize,
+        patch_card: BuildPatchCard,
+        kind: PatchCardViolationKind,
+    },
 }
 
 /// Structured, still-unlocalized input for a view-time violation formatter.
@@ -82,6 +103,10 @@ pub enum BuildViolationFormat<'a> {
     Chips {
         chips: &'a [&'a BuildChip],
         kind: BuildViolationKind,
+    },
+    PatchCards {
+        patch_cards: &'a [&'a BuildPatchCard],
+        kind: PatchCardViolationKind,
     },
 }
 

@@ -132,11 +132,13 @@ pub trait GameSaveEditor: Send + Sync {
         None
     }
 
-    /// Structured source of truth for the PvP advisory. Build legality does
-    /// not gate saving: players may persist an illegal build and are warned if
-    /// they bring it into a match.
+    /// Structured source of truth for the PvP advisory and per-tab legality
+    /// indicators. Most legality errors remain saveable; an incomplete Battle
+    /// Network folder is the one hard save blocker enforced by the shared view.
     fn build_violations(&self, loaded: &OpenSave) -> Vec<BuildViolation> {
-        crate::model::rules::folder_violations(loaded)
+        let mut violations = crate::model::rules::folder_violations(loaded);
+        violations.extend(crate::model::rules::patch_card56_violations(loaded));
+        violations
     }
 }
 

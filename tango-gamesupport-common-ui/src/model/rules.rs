@@ -13,7 +13,7 @@ use tango_gamesupport::BuildViolationKind;
 /// grid.
 pub const MAX_COPIES_PER_PART: usize = 9;
 
-/// Total MB budget across enabled PatchCard56s.
+/// Advisory total MB budget across enabled PatchCard56s.
 pub const MAX_PATCH_CARD56_MB: u32 = 80;
 
 /// Slot selections whose legality depends on memory rather than chip class or
@@ -244,6 +244,60 @@ pub fn folder_violations(save: &SaveModel) -> Vec<tango_gamesupport::BuildViolat
     }
 
     violations
+}
+
+/// Total MB used by enabled BN5/BN6 Patch Cards, or `None` when this save has
+/// no Patch Card view.
+pub fn patch_card56_total_mb(save: &SaveModel) -> Option<u32> {
+    let view = save.save.view_patch_card56s()?;
+    Some(
+        (0..view.count())
+            .filter_map(|slot| view.patch_card(slot))
+            .filter(|card| card.enabled)
+            .map(|card| {
+                save.assets
+                    .patch_card56(card.id)
+                    .map(|info| info.mb() as u32)
+                    .unwrap_or(0)
+            })
+            .sum(),
+    )
+}
+
+/// Every enabled Patch Card contributing to an over-budget BN5/BN6 set. A
+/// total-MB violation is attached to each source slot, just as folder
+/// violations remain attached to their chip slots; presentation layers may
+/// group the contributors into one explanation.
+pub fn patch_card56_violations(save: &SaveModel) -> Vec<tango_gamesupport::BuildViolation> {
+    use tango_gamesupport::{BuildPatchCard, BuildViolation, PatchCardViolationKind};
+
+    let Some(view) = save.save.view_patch_card56s() else {
+        return vec![];
+    };
+    let used = patch_card56_total_mb(save).unwrap_or(0);
+    if used <= MAX_PATCH_CARD56_MB {
+        return vec![];
+    }
+    let kind = PatchCardViolationKind::TotalMbExceeded {
+        used,
+        limit: MAX_PATCH_CARD56_MB,
+    };
+    (0..view.count())
+        .filter_map(|slot| view.patch_card(slot).map(|card| (slot, card)))
+        .filter(|(_, card)| card.enabled)
+        .map(|(slot, card)| {
+            let info = save.assets.patch_card56(card.id);
+            BuildViolation::PatchCard {
+                slot,
+                patch_card: BuildPatchCard {
+                    id: card.id,
+                    name: info.as_ref().and_then(|info| info.name()),
+                    mb: info.as_ref().map(|info| info.mb()).unwrap_or(0),
+                },
+                kind,
+            }
+        })
+        .collect()
 }
 
 /// New index of an element originally at `i` after an ordered move that takes

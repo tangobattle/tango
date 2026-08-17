@@ -122,9 +122,9 @@ pub type BoxedAssets = Box<dyn AssetsData>;
 pub mod save_editor;
 #[cfg(feature = "ui")]
 pub use save_editor::{
-    AppliedPatch, BuildChip, BuildValidity, BuildViolation, BuildViolationFormat, BuildViolationFormatter,
-    BuildViolationKind, ChipDisplay, LoadedSave, LoadedSavePayload, SaveEditor, SaveEditorEvent, SaveEditorMessage,
-    SaveEditorState,
+    AppliedPatch, BuildChip, BuildPatchCard, BuildValidity, BuildViolation, BuildViolationFormat,
+    BuildViolationFormatter, BuildViolationKind, ChipDisplay, LoadedSave, LoadedSavePayload, PatchCardViolationKind,
+    SaveEditor, SaveEditorEvent, SaveEditorMessage, SaveEditorState,
 };
 
 /// One ROM revision Tango supports, with all of its per-game info.

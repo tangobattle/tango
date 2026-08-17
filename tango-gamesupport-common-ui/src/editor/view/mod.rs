@@ -712,6 +712,33 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
     }
 }
 
+/// Whether one section owns any current legality violation. The typed report
+/// keeps tab chrome independent of game-specific rendering details.
+fn tab_has_legality_errors(tab: Tab, violations: &[tango_gamesupport::BuildViolation]) -> bool {
+    violations.iter().any(|violation| {
+        matches!(
+            (tab, violation),
+            (
+                Tab::Folder | Tab::ProgramDeck,
+                tango_gamesupport::BuildViolation::FolderNotFull { .. }
+                    | tango_gamesupport::BuildViolation::Chip { .. }
+            ) | (Tab::PatchCards, tango_gamesupport::BuildViolation::PatchCard { .. })
+        )
+    })
+}
+
+/// An undersized Battle Network folder is the one legality error that blocks a
+/// save commit. Other violations stay advisory and can be persisted.
+fn save_blocked_by_incomplete_folder(violations: &[tango_gamesupport::BuildViolation]) -> bool {
+    violations
+        .iter()
+        .any(|violation| matches!(violation, tango_gamesupport::BuildViolation::FolderNotFull { .. }))
+}
+
+fn loaded_save_blocked_by_incomplete_folder(loaded: &OpenSave) -> bool {
+    save_blocked_by_incomplete_folder(&loaded.save_editor.build_violations(loaded))
+}
+
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
 /// per-tab extras (folder group toggle, copy buttons), and the body.
 /// Embedders just call this and `.map(Message::SaveViewAction)`.
@@ -740,6 +767,8 @@ pub fn view<'a>(
     use iced::{Alignment, Fill};
 
     let available = available_tabs(loaded, streamer_mode);
+    let build_violations = loaded.save_editor.build_violations(loaded);
+    let can_save = !save_blocked_by_incomplete_folder(&build_violations);
 
     let now = iced::time::Instant::now();
     // Body entrance — restarted on sub-tab switches (sliding along the strip's
@@ -780,7 +809,7 @@ pub fn view<'a>(
     let mut actions = row![].spacing(6).align_y(Alignment::Center);
     if render_edit_buttons {
         if inline_actions {
-            actions = actions.push(edit_buttons(lang));
+            actions = actions.push(edit_buttons(lang, can_save));
         }
     } else {
         if inline_actions && save_editable {
@@ -893,6 +922,7 @@ pub fn view<'a>(
             label,
             Action::SelectTab(*tab),
             *tab == active,
+            tab_has_legality_errors(*tab, &build_violations),
         ));
     }
     // Horizontally scrollable strip with a hidden scrollbar, so a long /
@@ -1046,8 +1076,9 @@ pub fn view<'a>(
 /// The global edit mode's Save / Cancel pair, shown at the navi
 /// header's right edge while edit mode is on (or sliding out). One
 /// pair for the whole save: they commit / discard the edits on *all*
-/// tabs at once. Legality warnings are advisory and do not disable Save.
-fn edit_buttons(lang: &LanguageIdentifier) -> Element<'_, Action> {
+/// tabs at once. An incomplete Battle Network folder disables Save; other
+/// legality errors remain advisory.
+fn edit_buttons(lang: &LanguageIdentifier, can_save: bool) -> Element<'_, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
     row![
@@ -1058,10 +1089,10 @@ fn edit_buttons(lang: &LanguageIdentifier) -> Element<'_, Action> {
             [4.0, 10.0],
             widgets::neutral,
         ),
-        widgets::labeled_icon_button(
+        widgets::labeled_icon_button_maybe(
             Icon::Check,
             t!(lang, "save-edit-save"),
-            Action::SaveEdit,
+            can_save.then_some(Action::SaveEdit),
             [4.0, 10.0],
             widgets::primary_button,
         ),
@@ -1236,8 +1267,7 @@ pub fn reorder_drag_style(theme: &iced::Theme) -> sweeten::widget::column::Style
 /// and the patch-card ON column: tinted in `on_color` when active, neutral
 /// (greyed) when not. A `None` message renders it disabled (greyed,
 /// unclickable) — for the folder REG/TAG toggles when the chip's MB won't
-/// fit Regular/Tag memory, or the patch-card toggle when enabling would
-/// blow the MB budget.
+/// fit Regular/Tag memory.
 pub fn edit_toggle_maybe<'a>(
     label: &'static str,
     on: bool,
@@ -1600,6 +1630,7 @@ impl State {
             // Save and Cancel both leave the global edit mode; the host
             // runs the commit/discard side effect (covering every tab).
             // Dropping the whole EditState clears every editor's scratch.
+            Action::SaveEdit if loaded.is_some_and(loaded_save_blocked_by_incomplete_folder) => iced::Task::none(),
             Action::SaveEdit | Action::CancelEdit => {
                 self.editing = None;
                 // Returning read-only body rises in (mirroring
@@ -1844,7 +1875,9 @@ impl State {
                 None
             }
             // One global Save / Cancel for the whole save.
-            Action::SaveEdit => Some(Outcome::Commit),
+            Action::SaveEdit => loaded
+                .filter(|loaded| !loaded_save_blocked_by_incomplete_folder(loaded))
+                .map(|_| Outcome::Commit),
             Action::CancelEdit => Some(Outcome::Cancel),
             Action::AddChip { chip_id, code } => {
                 // New chips are inserted at the top, sliding the existing
@@ -2057,4 +2090,42 @@ pub fn tab_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts:
 /// or `None` for tabs without an image form.
 pub fn tab_as_image(tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
     loaded.save_editor.tab_as_image(tab, loaded)
+}
+
+#[cfg(test)]
+mod legality_tests {
+    use super::*;
+    use tango_gamesupport::{BuildPatchCard, BuildViolation, PatchCardViolationKind};
+
+    fn patch_card_violation() -> BuildViolation {
+        BuildViolation::PatchCard {
+            slot: 0,
+            patch_card: BuildPatchCard {
+                id: 1,
+                name: Some("Test Card".to_string()),
+                mb: 50,
+            },
+            kind: PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 },
+        }
+    }
+
+    #[test]
+    fn legality_errors_are_attached_to_their_section_tabs() {
+        let folder = BuildViolation::FolderNotFull { used: 29, required: 30 };
+        let patch_card = patch_card_violation();
+        let violations = [folder, patch_card];
+
+        assert!(tab_has_legality_errors(Tab::Folder, &violations));
+        assert!(tab_has_legality_errors(Tab::PatchCards, &violations));
+        assert!(!tab_has_legality_errors(Tab::Navicust, &violations));
+    }
+
+    #[test]
+    fn only_an_incomplete_folder_blocks_saving() {
+        assert!(!save_blocked_by_incomplete_folder(&[patch_card_violation()]));
+        assert!(save_blocked_by_incomplete_folder(&[BuildViolation::FolderNotFull {
+            used: 29,
+            required: 30,
+        },]));
+    }
 }
