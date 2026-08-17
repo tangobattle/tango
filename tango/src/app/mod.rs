@@ -912,6 +912,22 @@ pub enum Tab {
     Settings,
 }
 
+impl Tab {
+    /// What should happen after this tab's click-triggered disk scan.
+    /// Play is the explicit "reload my setup" gesture: unlike the other
+    /// scanner-backed tabs, it must discard the same-key loaded bundle so
+    /// staged save edits and already-decoded ROM/patch assets are rebuilt
+    /// from the newly scanned disk state.
+    fn rescan_followup(self) -> Option<RescanFollowup> {
+        match self {
+            Self::Play => Some(RescanFollowup::ForceRebuildLoaded),
+            Self::Replays => Some(RescanFollowup::RefreshAndReplayStats),
+            Self::Patches => Some(RescanFollowup::Refresh),
+            Self::Settings => None,
+        }
+    }
+}
+
 /// Top-level Message. Tab-specific messages live in each tab module
 /// and are wrapped here; the dispatch in `App::update` routes them to
 /// per-tab `update_*` methods below.
@@ -1019,8 +1035,9 @@ pub enum RescanFollowup {
     RefreshAndPickFirstSave,
     /// Drop `self.loaded` first so `refresh_loaded` rebuilds it
     /// from scratch (bypassing the same-key dedupe). Used after a
-    /// single-player session writes back to its SRAM — the save
-    /// path didn't change but the bytes did.
+    /// single-player session writes back to its SRAM, and when Play
+    /// is clicked to explicitly reload the selected save, ROM and
+    /// patch from the freshly scanned disk state.
     ForceRebuildLoaded,
 }
 
@@ -1151,16 +1168,15 @@ impl App {
                 // the tab you are already on is what a user reaches for
                 // when they have just dropped a file in, and it is the
                 // only gesture left that means "look again".
+                // Play additionally throws away the loaded bundle after
+                // the scan, even when the selected paths did not change:
+                // the click is an explicit reload from disk, including
+                // discarding staged edits and rebuilding ROM/patch assets.
                 // Settings doesn't read the scanners, so skip it there.
-                if t != Tab::Settings && !self.is_rescanning() {
-                    // Entering Replays also warms the stats cache, so
-                    // newly-recorded replays get their stats line
-                    // without a manual nudge.
-                    return self.rescan_off_thread(if t == Tab::Replays {
-                        RescanFollowup::RefreshAndReplayStats
-                    } else {
-                        RescanFollowup::Refresh
-                    });
+                if !self.is_rescanning() {
+                    if let Some(followup) = t.rescan_followup() {
+                        return self.rescan_off_thread(followup);
+                    }
                 }
                 iced::Task::none()
             }
@@ -1741,5 +1757,20 @@ impl App {
             }
             netplay::Phase::Idle | netplay::Phase::Failed { .. } => discord::make_base_activity(game_info),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RescanFollowup, Tab};
+
+    #[test]
+    fn clicking_play_forces_the_loaded_selection_to_be_rebuilt() {
+        assert_eq!(
+            Tab::Play.rescan_followup(),
+            Some(RescanFollowup::ForceRebuildLoaded)
+        );
+        assert_eq!(Tab::Patches.rescan_followup(), Some(RescanFollowup::Refresh));
+        assert_eq!(Tab::Settings.rescan_followup(), None);
     }
 }
