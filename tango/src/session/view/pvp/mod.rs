@@ -6,7 +6,7 @@
 use super::*;
 use crate::session::pvp::PvpSession;
 use crate::session::Message as SessionMessage;
-use tango_gamesupport::BuildViolation;
+use tango_gamesupport::OpaqueBuildWarnings;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::{column, row};
 
@@ -283,10 +283,7 @@ fn build_warning_overlay(lang: &LanguageIdentifier, state: &State) -> Option<Ele
     if panes.build_warning_dismissed {
         return None;
     }
-    let opponent_violations = panes.opponent_build_validity.violations();
-    if opponent_violations.is_empty() {
-        return None;
-    }
+    let warnings = panes.opponent_build_warnings.as_ref()?;
 
     let warning_text_style = |theme: &iced::Theme| iced::widget::text::Style {
         color: Some(theme.palette().warning),
@@ -326,7 +323,7 @@ fn build_warning_overlay(lang: &LanguageIdentifier, state: &State) -> Option<Ele
     .spacing(10)
     .width(Fill);
     if expanded {
-        let violations = build_warning_violations(opponent_violations, lang);
+        let violations = build_warning_violations(warnings, lang);
         body = body.push(
             iced::widget::scrollable(violations)
                 .style(widgets::chunky_scrollable)
@@ -355,13 +352,16 @@ fn build_warning_overlay(lang: &LanguageIdentifier, state: &State) -> Option<Ele
     )
 }
 
-fn build_warning_violations(violations: &[BuildViolation], lang: &LanguageIdentifier) -> Element<'static, Message> {
+fn build_warning_violations(
+    warnings: &OpaqueBuildWarnings,
+    lang: &LanguageIdentifier,
+) -> Element<'static, Message> {
     let mut rows = column![].spacing(4);
-    for violation in violations {
+    for violation in warnings.format(lang) {
         rows = rows.push(
             row![
                 text("•").size(TEXT_CAPTION),
-                text(violation.format(lang)).size(TEXT_CAPTION).width(Fill),
+                text(violation).size(TEXT_CAPTION).width(Fill),
             ]
             .spacing(7)
             .align_y(Alignment::Start),
@@ -806,6 +806,19 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) -
 mod build_warning_tests {
     use super::*;
 
+    #[derive(Debug)]
+    struct TestBuildWarnings;
+
+    impl tango_gamesupport::BuildWarnings for TestBuildWarnings {
+        fn format(&self, lang: &LanguageIdentifier) -> Vec<String> {
+            vec![if lang.language.as_str() == "ja" {
+                "シークレットチップ：使用不可".to_string()
+            } else {
+                "SecretChip: illegal".to_string()
+            }]
+        }
+    }
+
     #[test]
     fn warning_chrome_is_translated_in_every_supported_language() {
         let english = [
@@ -827,13 +840,7 @@ mod build_warning_tests {
             local_loaded: None,
             // `None` is exactly how a blinded opponent is represented.
             opponent_loaded: None,
-            opponent_build_validity: tango_gamesupport::BuildValidity::Invalid(vec![BuildViolation::new(|lang| {
-                if lang.language.as_str() == "ja" {
-                    "シークレットチップ：使用不可".to_string()
-                } else {
-                    "SecretChip: illegal".to_string()
-                }
-            })]),
+            opponent_build_warnings: Some(std::sync::Arc::new(TestBuildWarnings)),
             build_warning_dismissed: false,
             build_warning_violations_expanded: false,
             pane_widths: [320.0, 320.0],
@@ -841,14 +848,27 @@ mod build_warning_tests {
         });
 
         assert!(build_warning_overlay(&crate::i18n::FALLBACK_LANG, &state).is_some());
-        let opponent_violations = state.pvp_panes.as_ref().unwrap().opponent_build_validity.violations();
         assert_eq!(
-            opponent_violations[0].format(&crate::i18n::FALLBACK_LANG),
-            "SecretChip: illegal"
+            state
+                .pvp_panes
+                .as_ref()
+                .unwrap()
+                .opponent_build_warnings
+                .as_ref()
+                .unwrap()
+                .format(&crate::i18n::FALLBACK_LANG),
+            ["SecretChip: illegal"]
         );
         assert_eq!(
-            opponent_violations[0].format(&"ja-JP".parse().unwrap()),
-            "シークレットチップ：使用不可"
+            state
+                .pvp_panes
+                .as_ref()
+                .unwrap()
+                .opponent_build_warnings
+                .as_ref()
+                .unwrap()
+                .format(&"ja-JP".parse().unwrap()),
+            ["シークレットチップ：使用不可"]
         );
 
         assert!(!state.pvp_panes.as_ref().unwrap().build_warning_violations_expanded);

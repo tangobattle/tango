@@ -56,6 +56,15 @@ pub fn unwrap_save(save: tango_gamesupport::BoxedSave) -> Box<dyn save::Save + S
         .0
 }
 
+/// Borrow the parsed save inside the public envelope without consuming it.
+pub fn save_ref(save: &dyn tango_gamesupport::SaveData) -> &(dyn save::Save + Send + Sync + 'static) {
+    (save as &dyn std::any::Any)
+        .downcast_ref::<SaveHandle>()
+        .expect("BoxedSave must hold this crate's SaveHandle")
+        .0
+        .as_ref()
+}
+
 /// The concrete type behind every `tango_gamesupport::BoxedAssets`.
 pub struct AssetsHandle(pub Box<dyn rom::Assets + Send + Sync>);
 
@@ -70,6 +79,15 @@ pub fn unwrap_assets(assets: tango_gamesupport::BoxedAssets) -> Box<dyn rom::Ass
         .downcast::<AssetsHandle>()
         .expect("BoxedAssets must hold this crate's AssetsHandle")
         .0
+}
+
+/// Borrow the parsed assets inside the public envelope without consuming it.
+pub fn assets_ref(assets: &dyn tango_gamesupport::AssetsData) -> &(dyn rom::Assets + Send + Sync + 'static) {
+    (assets as &dyn std::any::Any)
+        .downcast_ref::<AssetsHandle>()
+        .expect("BoxedAssets must hold this crate's AssetsHandle")
+        .0
+        .as_ref()
 }
 
 // `?` in the game crates' parse fns lands dataview parse errors in the

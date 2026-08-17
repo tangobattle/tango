@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-pub use tango_gamesupport::{AppliedPatch, LoadedSave};
+pub use tango_gamesupport::{AppliedPatch, LoadedSave, PreparedSave};
 
 /// Build from a *raw* (unpatched) ROM, applying the selected patch
 /// first, then bake the frontend art for it. On apply failure we fall
@@ -63,7 +63,19 @@ pub fn from_patched_rom(
     save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
 ) -> LoadedSave {
-    game.family.save_editor.load(game, rom, save_path, save, applied_patch)
+    prepare_from_patched_rom(game, rom, save_path, save, applied_patch).load()
+}
+
+/// Prepare the parsed save and effective patched-ROM assets for callers that
+/// need to inspect the model before moving it into the editor.
+pub fn prepare_from_patched_rom(
+    game: crate::library::rom::GameRef,
+    rom: Vec<u8>,
+    save_path: std::path::PathBuf,
+    save: tango_gamesupport::BoxedSave,
+    applied_patch: Option<AppliedPatch>,
+) -> PreparedSave {
+    tango_gamesupport_common_ui::model::prepare(game, rom, save_path, save, applied_patch)
 }
 
 /// Build a [`LoadedSave`] for the local side of a replay — used by the

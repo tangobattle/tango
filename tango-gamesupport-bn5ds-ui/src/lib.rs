@@ -40,7 +40,9 @@ use tango_gamesupport_common_dataview::save::Save as _;
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view as sv;
 use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common_ui::editor::{BuildReport, GameSaveEditor, OpaqueBuildViolation, SaveEditorShell};
+use tango_gamesupport_common_ui::editor::{
+    BuildReport, GameSaveEditor, OpaqueBuildWarnings, SaveEditorShell,
+};
 use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use unic_langid::LanguageIdentifier;
 
@@ -48,6 +50,15 @@ pub struct Ui;
 
 /// The instance tango's per-family registry hands out.
 pub static SAVE_EDITOR: SaveEditorShell<Ui> = SaveEditorShell(Ui);
+
+fn warning_providers(
+    save: &tango_gamesupport_common_ui::editor::Save,
+    assets: &tango_gamesupport_common_ui::editor::Assets,
+) -> Vec<OpaqueBuildWarnings> {
+    let mut warnings = tango_gamesupport_common_ui::build::warnings(save, assets);
+    warnings.extend(partycust_warnings(save, assets));
+    warnings
+}
 
 /// This save's file, when the loaded save is one of ours.
 fn file_of(loaded: &OpenSave) -> Option<&Save> {
@@ -468,6 +479,87 @@ fn partycust_violation_text(
     )
 }
 
+#[derive(Debug)]
+struct PartycustWarnings {
+    violations: Vec<PartycustViolation>,
+    navis: std::collections::HashMap<usize, String>,
+    programs: std::collections::HashMap<usize, String>,
+    program_costs: std::collections::HashMap<usize, u8>,
+}
+
+impl PartycustWarnings {
+    fn new(
+        violations: Vec<PartycustViolation>,
+        save: &tango_gamesupport_common_ui::editor::Save,
+        assets: &tango_gamesupport_common_ui::editor::Assets,
+    ) -> Self {
+        let file = save.as_any().downcast_ref::<Save>();
+        let cart = assets.underlying_any().downcast_ref::<rom::Assets>();
+        let mut navis = std::collections::HashMap::new();
+        let mut programs = std::collections::HashMap::new();
+        let mut program_costs = std::collections::HashMap::new();
+        for violation in &violations {
+            navis.entry(violation.slot).or_insert_with(|| {
+                file
+                    .and_then(|save| save.view_party().navi(violation.slot))
+                    .map(|navi| {
+                        assets
+                            .navi(navi)
+                            .and_then(|navi| navi.name())
+                            .unwrap_or_else(|| format!("#{navi}"))
+                    })
+                    .unwrap_or_else(|| format!("#{}", violation.slot + 1))
+            });
+            programs
+                .entry(violation.program)
+                .or_insert_with(|| {
+                    cart.and_then(|cart| cart.party_program(violation.program))
+                        .and_then(|program| program.name())
+                        .unwrap_or_else(|| format!("#{}", violation.program))
+                });
+            if let Some(cost) = cart
+                .and_then(|cart| cart.party_program(violation.program))
+                .map(|program| program.cost())
+            {
+                program_costs.entry(violation.program).or_insert(cost);
+            }
+        }
+        Self {
+            violations,
+            navis,
+            programs,
+            program_costs,
+        }
+    }
+}
+
+impl tango_gamesupport_common_ui::editor::BuildWarnings for PartycustWarnings {
+    fn format(&self, lang: &LanguageIdentifier) -> Vec<String> {
+        self.violations
+            .iter()
+            .map(|violation| {
+                let navi = self
+                    .navis
+                    .get(&violation.slot)
+                    .cloned()
+                    .unwrap_or_else(|| format!("#{}", violation.slot + 1));
+                let program = self
+                    .programs
+                    .get(&violation.program)
+                    .cloned()
+                    .unwrap_or_else(|| format!("#{}", violation.program));
+                partycust_violation_text(
+                    lang,
+                    &navi,
+                    &program,
+                    self.program_costs.get(&violation.program).copied(),
+                    violation.kind,
+                )
+            })
+            .collect()
+    }
+}
+
 fn partycust_violations(loaded: &OpenSave) -> Vec<PartycustViolation> {
     let (Some(save), Some(cart)) = (file_of(loaded), cart_of(loaded)) else {
         return vec![];
@@ -506,27 +598,28 @@ fn partycust_build_report(loaded: &OpenSave) -> BuildReport {
     if violations.is_empty() {
         return BuildReport::default();
     }
-    let warnings = violations
-        .into_iter()
-        .map(|violation| {
-            let navi = file_of(loaded)
-                .and_then(|save| save.view_party().navi(violation.slot))
-                .map(|navi| navi_name(loaded, navi))
-                .unwrap_or_else(|| format!("#{}", violation.slot + 1));
-            let program = program_name(loaded, violation.program);
-            let program_cost = cart_of(loaded)
-                .and_then(|cart| cart.party_program(violation.program))
-                .map(|program| program.cost());
-            OpaqueBuildViolation::new(move |lang| {
-                partycust_violation_text(lang, &navi, &program, program_cost, violation.kind)
-            })
-        })
-        .collect();
     BuildReport {
         error_tabs: [Tab::Party].into_iter().collect(),
         // An overfilled Party Customizer is illegal but structurally valid.
         blocks_save: false,
-        warnings,
+    }
+}
+
+fn partycust_warnings(
+    save: &tango_gamesupport_common_ui::editor::Save,
+    assets: &tango_gamesupport_common_ui::editor::Assets,
+) -> Vec<OpaqueBuildWarnings> {
+    let (Some(file), Some(cart)) = (
+        save.as_any().downcast_ref::<Save>(),
+        assets.underlying_any().downcast_ref::<rom::Assets>(),
+    ) else {
+        return vec![];
+    };
+    let violations = tango_gamesupport_bn5ds_dataview::build::partycust_violations(file, cart);
+    if violations.is_empty() {
+        vec![]
+    } else {
+        vec![std::sync::Arc::new(PartycustWarnings::new(violations, save, assets)) as OpaqueBuildWarnings]
     }
 }
 
@@ -994,6 +1087,14 @@ fn cross_picker<'a>(
 }
 
 impl GameSaveEditor for Ui {
+    fn validate_save(
+        &self,
+        save: &tango_gamesupport_common_ui::editor::Save,
+        assets: &tango_gamesupport_common_ui::editor::Assets,
+    ) -> Vec<OpaqueBuildWarnings> {
+        warning_providers(save, assets)
+    }
+
     /// BN5's tabs, minus the patch cards this cart has none of. The
     /// NaviCust drops out for a file being played as a team navi, the
     /// way the GBA game's does for a link navi.
@@ -1120,7 +1221,10 @@ impl GameSaveEditor for Ui {
     }
 
     fn build_report(&self, loaded: &OpenSave) -> BuildReport {
-        let mut report = tango_gamesupport_common_ui::editor::battle_network_build_report(loaded);
+        let save = loaded.save.as_ref();
+        let assets = loaded.assets.as_ref();
+        let violations = tango_gamesupport_common_ui::dataview::build::violations(save, assets);
+        let mut report = tango_gamesupport_common_ui::build::report(&violations);
         report.extend(partycust_build_report(loaded));
         report
     }

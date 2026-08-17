@@ -1,33 +1,10 @@
-//! Headless build-legality model shared by the Battle Network games.
-//! Frontends may format and decorate these violations, but the rules and
-//! subject attribution live beside the save/ROM dataviews they validate.
+//! Headless build-legality rules shared by the Battle Network games.
+//! The violations contain only domain data; frontends adapt them separately.
 
 use crate::{rom, save};
 
 pub const MAX_COPIES_PER_PART: usize = 9;
 pub const MAX_PATCH_CARD56_MB: u32 = 80;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuildChip {
-    pub id: usize,
-    pub code: String,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuildPatchCard {
-    pub id: usize,
-    pub name: Option<String>,
-    pub mb: u8,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuildNavicustPart {
-    pub id: usize,
-    pub name: Option<String>,
-    pub col: u8,
-    pub row: u8,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildViolationKind {
@@ -51,6 +28,9 @@ pub enum NavicustViolationKind {
     MaterializationMismatch,
 }
 
+/// One headless legality finding. Subjects retain their save/ROM facts, but no
+/// display names. Name snapshots, grouping, localization, and editor placement
+/// belong to the consuming UI adapter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BuildViolation {
     FolderNotFull {
@@ -59,17 +39,21 @@ pub enum BuildViolation {
     },
     Chip {
         slot: usize,
-        chip: BuildChip,
+        id: usize,
+        code: save::ChipCode,
         kind: BuildViolationKind,
     },
     PatchCard {
         slot: usize,
-        patch_card: BuildPatchCard,
+        id: usize,
+        mb: u8,
         kind: PatchCardViolationKind,
     },
     NavicustPart {
         slot: usize,
-        part: BuildNavicustPart,
+        id: usize,
+        col: u8,
+        row: u8,
         kind: NavicustViolationKind,
     },
     NavicustMaterializationMismatch,
@@ -260,15 +244,11 @@ pub fn folder_violations(save: &dyn save::Save, assets: &dyn rom::Assets) -> Vec
         let Some(chip) = view.chip(folder_idx, slot) else {
             continue;
         };
-        let display = BuildChip {
-            id: chip.id,
-            code: chip.code.to_string(),
-            name: assets.chip(chip.id).and_then(|info| info.name()),
-        };
         for kind in usage.issues_for_slot(save, assets, folder_idx, slot, &limits, selections) {
             violations.push(BuildViolation::Chip {
                 slot,
-                chip: display.clone(),
+                id: chip.id,
+                code: chip.code,
                 kind,
             });
         }
@@ -334,18 +314,12 @@ pub fn patch_card56_violations(save: &dyn save::Save, assets: &dyn rom::Assets) 
     };
     patch_card56_overflow_slots(save, assets)
         .into_iter()
-        .filter_map(|slot| view.patch_card(slot).map(|card| (slot, card)))
-        .map(|(slot, card)| {
-            let info = assets.patch_card56(card.id);
-            BuildViolation::PatchCard {
-                slot,
-                patch_card: BuildPatchCard {
-                    id: card.id,
-                    name: info.as_ref().and_then(|info| info.name()),
-                    mb: info.as_ref().map(|info| info.mb()).unwrap_or(0),
-                },
-                kind,
-            }
+        .filter_map(|slot| view.patch_card(slot).map(|card| (slot, card.id)))
+        .map(|(slot, id)| BuildViolation::PatchCard {
+            slot,
+            id,
+            mb: assets.patch_card56(id).map_or(0, |info| info.mb()),
+            kind,
         })
         .collect()
 }
@@ -404,16 +378,22 @@ pub fn navicust_violations(save: &dyn save::Save, assets: &dyn rom::Assets) -> V
             let part = view.navicust_part(slot)?;
             Some(BuildViolation::NavicustPart {
                 slot,
-                part: BuildNavicustPart {
-                    id: part.id,
-                    name: assets.navicust_part(part.id).and_then(|info| info.name()),
-                    col: part.col,
-                    row: part.row,
-                },
+                id: part.id,
+                col: part.col,
+                row: part.row,
                 kind: NavicustViolationKind::MaterializationMismatch,
             })
         })
         .collect()
+}
+
+/// Run every shared Battle Network legality check against one exact save and
+/// its effective (already patch-overridden) ROM dataview.
+pub fn violations(save: &dyn save::Save, assets: &dyn rom::Assets) -> Vec<BuildViolation> {
+    let mut violations = folder_violations(save, assets);
+    violations.extend(patch_card56_violations(save, assets));
+    violations.extend(navicust_violations(save, assets));
+    violations
 }
 
 #[cfg(test)]

@@ -31,6 +31,7 @@
 //! the columns below hold slot indexes.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use iced::widget::canvas::{self, Canvas};
 use iced::widget::{button, column, container, row, text, Space};
@@ -41,7 +42,8 @@ use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view::{
     editor_header, editor_pane, editor_panes, folder, library_header, placeholder, Action, LibrarySort, State,
 };
-use tango_gamesupport_common_ui::editor::{BuildReport, OpaqueBuildViolation};
+use tango_gamesupport_common_ui::editor::BuildReport;
+use tango_gamesupport_common_ui::editor::OpaqueBuildWarnings;
 use tango_gamesupport_common_ui::style::{self, TEXT_BODY, TEXT_CAPTION};
 use tango_gamesupport_common_ui::t;
 use tango_gamesupport_common_ui::widgets::{self, muted_color, muted_text_style};
@@ -399,96 +401,100 @@ fn deck_violation_reason(lang: &LanguageIdentifier, kind: DeckViolationKind) -> 
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct DeckChip {
-    id: usize,
-    name: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PresentedDeckViolation {
-    MissingNavi,
-    Chips {
-        chips: Vec<DeckChip>,
-        kind: DeckViolationKind,
-    },
-}
-
-fn present_deck_violations(
+#[derive(Debug)]
+struct DeckWarnings {
     violations: Vec<DeckViolation>,
-    mut chip_name: impl FnMut(usize) -> Option<String>,
-) -> Vec<PresentedDeckViolation> {
-    let mut presented = vec![];
-    if violations
-        .iter()
-        .any(|violation| matches!(violation, DeckViolation::MissingNavi))
-    {
-        presented.push(PresentedDeckViolation::MissingNavi);
-    }
+    chip_names: HashMap<usize, String>,
+}
 
-    let mut chips: Vec<(usize, usize, DeckViolationKind)> = violations
-        .into_iter()
-        .filter_map(|violation| match violation {
-            DeckViolation::Chip { slot, id, kind } => Some((slot, id, kind)),
-            DeckViolation::MissingNavi => None,
-        })
-        .collect();
-    chips.sort_by_key(|(slot, id, _)| (*id, *slot));
-    for (_, id, kind) in chips {
-        let group_idx = presented
+impl DeckWarnings {
+    fn new(
+        violations: Vec<DeckViolation>,
+        assets: &tango_gamesupport_common_ui::editor::Assets,
+    ) -> Self {
+        let assets = assets
+            .underlying_any()
+            .downcast_ref::<tango_gamesupport_bcc_dataview::rom::Assets>();
+        let chip_names = violations
             .iter()
-            .position(|group| {
-                matches!(
-                    group,
-                    PresentedDeckViolation::Chips {
-                        kind: grouped_kind,
-                        ..
-                    } if grouped_kind == &kind
-                )
+            .filter_map(|violation| match violation {
+                DeckViolation::Chip { id, .. } => Some(*id),
+                DeckViolation::MissingNavi => None,
             })
-            .unwrap_or_else(|| {
-                presented.push(PresentedDeckViolation::Chips { chips: vec![], kind });
-                presented.len() - 1
-            });
-        let PresentedDeckViolation::Chips { chips, .. } = &mut presented[group_idx] else {
-            unreachable!("deck-chip violation group has a chip presentation")
-        };
-        let chip = DeckChip {
-            id,
-            name: chip_name(id),
-        };
-        if !chips.contains(&chip) {
-            chips.push(chip);
+            .filter_map(|id| {
+                assets
+                    .and_then(|assets| assets.chip_info(id))
+                    .and_then(|info| info.name())
+                    .map(|name| (id, name))
+            })
+            .collect();
+        Self {
+            violations,
+            chip_names,
         }
     }
-    presented
 }
 
-fn format_deck_violation(lang: &LanguageIdentifier, violation: &PresentedDeckViolation) -> String {
-    match violation {
-        PresentedDeckViolation::MissingNavi => tango_gamesupport_common_ui::build::format_violation(
-            lang,
-            None,
-            t!(lang, "build-violation-program-deck-missing-navi"),
-        ),
-        PresentedDeckViolation::Chips { chips, kind } => {
-            let chips = chips
-                .iter()
-                .map(|chip| {
-                    chip.name
-                        .clone()
-                        .unwrap_or_else(|| t!(lang, "build-chip-unknown", id = chip.id as i64))
+impl tango_gamesupport_common_ui::editor::BuildWarnings for DeckWarnings {
+    fn format(&self, lang: &LanguageIdentifier) -> Vec<String> {
+        let mut warnings = vec![];
+        if self
+            .violations
+            .iter()
+            .any(|violation| matches!(violation, DeckViolation::MissingNavi))
+        {
+            warnings.push(tango_gamesupport_common_ui::build::format_violation(
+                lang,
+                None,
+                t!(lang, "build-violation-program-deck-missing-navi"),
+            ));
+        }
+
+        let mut chips = self
+            .violations
+            .iter()
+            .filter_map(|violation| match violation {
+                DeckViolation::Chip { slot, id, kind } => Some((*slot, *id, *kind)),
+                DeckViolation::MissingNavi => None,
+            })
+            .collect::<Vec<_>>();
+        chips.sort_by_key(|(slot, id, _)| (*id, *slot));
+
+        let mut groups: Vec<(DeckViolationKind, Vec<usize>)> = vec![];
+        for (_, id, kind) in chips {
+            let group = match groups.iter_mut().find(|(grouped_kind, _)| *grouped_kind == kind) {
+                Some((_, chips)) => chips,
+                None => {
+                    groups.push((kind, vec![]));
+                    &mut groups.last_mut().expect("just inserted deck-warning group").1
+                }
+            };
+            if !group.contains(&id) {
+                group.push(id);
+            }
+        }
+        warnings.extend(groups.into_iter().map(|(kind, chips)| {
+            let subject = chips
+                .into_iter()
+                .map(|id| {
+                    self.chip_names
+                        .get(&id)
+                        .cloned()
+                        .unwrap_or_else(|| t!(lang, "build-chip-unknown", id = id as i64))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            let reason = deck_violation_reason(lang, *kind);
-            tango_gamesupport_common_ui::build::format_violation(lang, Some(&chips), reason)
-        }
+            tango_gamesupport_common_ui::build::format_violation(
+                lang,
+                Some(&subject),
+                deck_violation_reason(lang, kind),
+            )
+        }));
+        warnings
     }
 }
 
-/// BCC owns its complete legality vocabulary. Only the affected shared tab and
-/// opaque, language-aware warning closures leave this module.
+/// Whether BCC's private deck findings make the save structurally unusable.
 fn deck_violations_block_save(violations: &[DeckViolation]) -> bool {
     violations
         .iter()
@@ -501,20 +507,35 @@ pub fn build_report(loaded: &OpenSave) -> BuildReport {
         return BuildReport::default();
     }
     let blocks_save = deck_violations_block_save(&violations);
-    let warnings = present_deck_violations(violations, |id| {
-        bcc_assets(loaded)
-            .and_then(|assets| assets.chip_info(id))
-            .and_then(|info| info.name())
-    })
-    .into_iter()
-    .map(|violation| OpaqueBuildViolation::new(move |lang| format_deck_violation(lang, &violation)))
-    .collect();
     BuildReport {
         error_tabs: [tango_gamesupport_common_ui::editor::view::Tab::ProgramDeck]
             .into_iter()
             .collect(),
         blocks_save,
-        warnings,
+    }
+}
+
+pub fn warnings(
+    save: &tango_gamesupport_common_ui::editor::Save,
+    assets: &tango_gamesupport_common_ui::editor::Assets,
+) -> Vec<OpaqueBuildWarnings> {
+    let Some(save) = save
+        .as_any()
+        .downcast_ref::<tango_gamesupport_bcc_dataview::save::Save>()
+    else {
+        return vec![];
+    };
+    let Some(bcc_assets) = assets
+        .underlying_any()
+        .downcast_ref::<tango_gamesupport_bcc_dataview::rom::Assets>()
+    else {
+        return vec![];
+    };
+    let violations = tango_gamesupport_bcc_dataview::build::violations(save, bcc_assets);
+    if violations.is_empty() {
+        vec![]
+    } else {
+        vec![std::sync::Arc::new(DeckWarnings::new(violations, assets)) as OpaqueBuildWarnings]
     }
 }
 
@@ -1074,6 +1095,7 @@ pub fn as_text(loaded: &OpenSave) -> Option<String> {
 #[cfg(test)]
 mod legality_tests {
     use super::*;
+    use tango_gamesupport_common_ui::editor::BuildWarnings as _;
 
     #[test]
     fn opponent_warnings_group_chips_in_id_order_inside_bcc() {
@@ -1089,12 +1111,15 @@ mod legality_tests {
                 kind: DeckViolationKind::ChipIllegalForProgramDeck,
             },
         ];
-        let presented = present_deck_violations(violations, |id| {
-            Some(if id == 1 { "Cannon" } else { "HiCannon" }.to_string())
-        });
+        let warnings = DeckWarnings {
+            violations,
+            chip_names: [(1, "Cannon".to_string()), (2, "HiCannon".to_string())]
+                .into_iter()
+                .collect(),
+        };
         let english = "en-US".parse().unwrap();
 
-        assert!(format_deck_violation(&english, &presented[0]).starts_with("Cannon, HiCannon:"));
+        assert!(warnings.format(&english)[0].starts_with("Cannon, HiCannon:"));
     }
 
     #[test]
@@ -1109,33 +1134,36 @@ mod legality_tests {
 
     #[test]
     fn bcc_violation_localization_remains_dynamic_and_complete() {
-        let violations = [
-            PresentedDeckViolation::MissingNavi,
-            PresentedDeckViolation::Chips {
-                chips: vec![DeckChip { id: 1, name: None }],
+        let warnings = DeckWarnings {
+            violations: vec![
+                DeckViolation::MissingNavi,
+                DeckViolation::Chip {
+                    slot: 0,
+                    id: 1,
                 kind: DeckViolationKind::ChipIllegalForProgramDeck,
-            },
-            PresentedDeckViolation::Chips {
-                chips: vec![DeckChip { id: 1, name: None }],
+                },
+                DeckViolation::Chip {
+                    slot: 1,
+                    id: 1,
                 kind: DeckViolationKind::ProgramDeckExceedsMemory { used: 90, limit: 80 },
-            },
-            PresentedDeckViolation::Chips {
-                chips: vec![DeckChip { id: 1, name: None }],
+                },
+                DeckViolation::Chip {
+                    slot: 2,
+                    id: 1,
                 kind: DeckViolationKind::SlotInChipExceedsMemory { used: 45, limit: 40 },
-            },
-        ];
+                },
+            ],
+            chip_names: HashMap::new(),
+        };
         let english: LanguageIdentifier = "en-US".parse().unwrap();
-        let english_text: Vec<_> = violations
-            .iter()
-            .map(|violation| format_deck_violation(&english, violation))
-            .collect();
+        let english_text = warnings.format(&english);
 
         for language in [
             "de-DE", "es-419", "fr-FR", "ja-JP", "nl-NL", "pt-BR", "ru-RU", "vi-VN", "zh-CN", "zh-TW",
         ] {
             let language = language.parse().unwrap();
-            for (violation, english) in violations.iter().zip(&english_text) {
-                assert_ne!(format_deck_violation(&language, violation), *english);
+            for (localized, english) in warnings.format(&language).into_iter().zip(&english_text) {
+                assert_ne!(localized, *english);
             }
         }
     }

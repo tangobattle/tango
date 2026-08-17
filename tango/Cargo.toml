@@ -106,6 +106,7 @@ unic-langid = { version = "0.9", features = ["likelysubtags"] }
 # private gamesupport UI layer — arrives with the game crates below,
 # and the app never names it.
 tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
+tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui" }
 tango-ui = { path = "../tango-ui" }
 tango-gamesupport-bcc = { path = "../tango-gamesupport-bcc", optional = true }
 tango-gamesupport-bn1 = { path = "../tango-gamesupport-bn1", optional = true }

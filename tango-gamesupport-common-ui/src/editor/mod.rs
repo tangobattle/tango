@@ -22,41 +22,41 @@ use unic_langid::LanguageIdentifier;
 
 pub use crate::build::BuildViolationKind;
 pub use crate::editor::view::Action;
-pub use tango_gamesupport::BuildViolation as OpaqueBuildViolation;
+pub use tango_gamesupport::{BuildWarnings, OpaqueBuildWarnings};
 
-/// The only shared shape of build legality inside the save UI. Individual
-/// games own their concrete violations; the shell needs only section chrome,
-/// whether committing is blocked, and already-opaque opponent warnings.
+pub type Save = dyn crate::dataview::save::Save + Send + Sync;
+pub type Assets = dyn crate::dataview::rom::Assets + Send + Sync;
+
+/// Build-legality state used only by the loaded editor: section chrome and
+/// whether committing is blocked. Prepared-save validation is handled by
+/// [`GameSaveEditor::validate_save`] before editor state is constructed.
 #[derive(Default)]
 pub struct BuildReport {
     pub error_tabs: std::collections::HashSet<Tab>,
     pub blocks_save: bool,
-    pub warnings: Vec<tango_gamesupport::BuildViolation>,
 }
 
 impl BuildReport {
-    /// Merge a game-specific report into the shared Battle Network report
-    /// without exposing either side's concrete violation vocabulary.
+    /// Merge game-specific editor metadata without exposing either side's
+    /// concrete violation vocabulary.
     pub fn extend(&mut self, other: Self) {
         self.error_tabs.extend(other.error_tabs);
         self.blocks_save |= other.blocks_save;
-        self.warnings.extend(other.warnings);
     }
 }
 
-/// The headless Battle Network checks common to the BN save editors, collapsed
-/// to the shared UI boundary. Games with additional rule families extend this
-/// report from their own UI crate.
-pub fn battle_network_build_report(loaded: &OpenSave) -> BuildReport {
-    let save = loaded.save.as_ref();
-    let assets = loaded.assets.as_ref();
-    let mut violations = crate::dataview::build::folder_violations(save, assets);
-    violations.extend(crate::dataview::build::patch_card56_violations(save, assets));
-    violations.extend(crate::dataview::build::navicust_violations(save, assets));
-    crate::build::report(violations)
-}
-
 pub trait GameSaveEditor: Send + Sync {
+    /// Validate a prepared save without involving loaded editor state. Games
+    /// with additional rule sets override this; the shared BN rules are the
+    /// default.
+    fn validate_save(
+        &self,
+        save: &Save,
+        assets: &Assets,
+    ) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
+        crate::build::warnings(save, assets)
+    }
+
     /// The section tabs this game's save editor offers, in display
     /// order. The shell prepends [`Tab::Cover`] itself in streamer mode.
     /// Called per frame — must stay cheap. Capability that genuinely
@@ -168,7 +168,10 @@ pub trait GameSaveEditor: Send + Sync {
     /// Game-owned legality collapsed to shared UI metadata and opaque warning
     /// messages. Concrete rule variants never cross this interface.
     fn build_report(&self, loaded: &OpenSave) -> BuildReport {
-        battle_network_build_report(loaded)
+        let save = loaded.save.as_ref();
+        let assets = loaded.assets.as_ref();
+        let violations = crate::dataview::build::violations(save, assets);
+        crate::build::report(&violations)
     }
 }
 

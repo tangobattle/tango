@@ -122,8 +122,8 @@ pub type BoxedAssets = Box<dyn AssetsData>;
 pub mod save_editor;
 #[cfg(feature = "ui")]
 pub use save_editor::{
-    AppliedPatch, BuildValidity, BuildViolation, ChipDisplay, LoadedSave, LoadedSavePayload, SaveEditor,
-    SaveEditorEvent, SaveEditorMessage, SaveEditorState,
+    AppliedPatch, BuildWarnings, ChipDisplay, LoadedSave, LoadedSavePayload, OpaqueBuildWarnings,
+    PreparedSave, SaveEditor, SaveEditorEvent, SaveEditorMessage, SaveEditorState,
 };
 
 /// One ROM revision Tango supports, with all of its per-game info.
@@ -164,7 +164,6 @@ pub struct Game {
     /// per-game default character set; pass `None` for the default.
     /// `None` when this game has no save/ROM model.
     pub load_rom_assets_fn: Option<fn(rom: &[u8], wram: &[u8], charset: Option<&[&str]>) -> BoxedAssets>,
-
     /// How this game starts a match, plays on its own, and replays a
     /// recording — all on whatever emulator it runs, which nothing
     /// outside the game's own crate ever learns. Also how this build

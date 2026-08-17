@@ -12,6 +12,16 @@
 
 use unic_langid::LanguageIdentifier;
 
+/// A complete opponent-facing warning report. Implementations retain their
+/// game-specific findings and display snapshot; the host only asks for the
+/// localized rows when it renders the advisory.
+pub trait BuildWarnings: std::fmt::Debug + Send + Sync {
+    fn format(&self, lang: &LanguageIdentifier) -> Vec<String>;
+}
+
+/// Type-erased warning report retained by the game-agnostic host.
+pub type OpaqueBuildWarnings = std::sync::Arc<dyn BuildWarnings>;
+
 /// A patch applied on top of a ROM, as the save UI needs to know it:
 /// its identity plus the exact ROM's object from `[rom_overrides]`
 /// (charset, display-name, and chip-legality overrides).
@@ -28,55 +38,6 @@ pub struct AppliedPatch {
 pub struct ChipDisplay {
     pub name: Option<String>,
     pub icon: Option<iced::widget::image::Handle>,
-}
-
-/// One opponent-facing legality message. Its game-specific data and grouping
-/// stay behind this closure; the host only asks it to format in the current
-/// language. Owning the closure also lets a blinded opponent's loaded save be
-/// discarded without losing the warning or freezing its localization.
-#[derive(Clone)]
-pub struct BuildViolation {
-    formatter: std::sync::Arc<dyn Fn(&LanguageIdentifier) -> String + Send + Sync>,
-}
-
-impl BuildViolation {
-    pub fn new(formatter: impl Fn(&LanguageIdentifier) -> String + Send + Sync + 'static) -> Self {
-        Self {
-            formatter: std::sync::Arc::new(formatter),
-        }
-    }
-
-    pub fn format(&self, lang: &LanguageIdentifier) -> String {
-        (self.formatter)(lang)
-    }
-}
-
-impl std::fmt::Debug for BuildViolation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BuildViolation").finish_non_exhaustive()
-    }
-}
-
-/// Legality of the exact save committed to a PvP match. There is deliberately
-/// no "unknown" state: failure to parse or load a committed save is a session
-/// construction error, while every successfully loaded save is checked.
-#[derive(Debug, Clone)]
-pub enum BuildValidity {
-    Valid,
-    Invalid(Vec<BuildViolation>),
-}
-
-impl BuildValidity {
-    pub fn is_valid(&self) -> bool {
-        matches!(self, Self::Valid)
-    }
-
-    pub fn violations(&self) -> &[BuildViolation] {
-        match self {
-            Self::Valid => &[],
-            Self::Invalid(violations) => violations,
-        }
-    }
 }
 
 /// A message minted inside the save-editor view. Implemented (and
@@ -99,6 +60,16 @@ pub trait SaveEditorState: std::any::Any + Send + Sync {}
 /// behind [`LoadedSave::payload`]. Opaque by design; only that layer
 /// implements and reads it.
 pub trait LoadedSavePayload: std::any::Any + Send + Sync {}
+
+/// A parsed save plus the effective assets derived from its ROM and patch,
+/// prepared before either validation or presentation is involved.
+pub struct PreparedSave {
+    pub game: crate::GameRef,
+    pub save_path: std::path::PathBuf,
+    pub patch: Option<AppliedPatch>,
+    pub save: crate::BoxedSave,
+    pub assets: crate::BoxedAssets,
+}
 
 /// A loaded save, ready to render: the game-agnostic facts the app
 /// needs for launching and committing (game, path, patch), the UI to
@@ -130,6 +101,15 @@ pub struct LoadedSave {
     pub payload: Box<dyn LoadedSavePayload>,
 }
 
+impl PreparedSave {
+    /// Let the family's editor consume the prepared data and add presentation
+    /// state and baked art.
+    pub fn load(self) -> LoadedSave {
+        let editor = self.game.family.save_editor;
+        editor.load(self)
+    }
+}
+
 /// What the app must act on after an [`SaveEditor::update`] — deliberately
 /// app-semantic only (clipboard, launches, disk writes); staged edits
 /// are applied to the data internally and never surface.
@@ -150,20 +130,16 @@ pub enum SaveEditorEvent {
     Cancel,
 }
 
-/// A game's save editor, as [`crate::Game::save_editor`] carries it. The
-/// contract is exactly "load, render, update": everything else about
-/// the editor is the private layer's business.
+/// A family's save editor, as [`crate::Family::save_editor`] carries it. It
+/// validates and loads prepared saves, then renders and updates the resulting
+/// editor data; every concrete model and presentation shape stays private.
 pub trait SaveEditor: Send + Sync {
-    /// Bundle a parsed save (+ its already-patched ROM) into renderable
-    /// data.
-    fn load(
-        &'static self,
-        game: crate::GameRef,
-        patched_rom: Vec<u8>,
-        save_path: std::path::PathBuf,
-        save: crate::BoxedSave,
-        patch: Option<AppliedPatch>,
-    ) -> LoadedSave;
+    /// Validate an already-prepared save without constructing editor state or
+    /// presentation assets.
+    fn validate_save(&self, prepared: &PreparedSave) -> Option<crate::OpaqueBuildWarnings>;
+
+    /// Decorate an already-prepared save model with renderable state and art.
+    fn load(&'static self, prepared: PreparedSave) -> LoadedSave;
 
     /// Render the save view. `play_button`: `None` hides the Play
     /// button, `Some(enabled)` renders it. `editable` gates the whole
@@ -197,11 +173,6 @@ pub trait SaveEditor: Send + Sync {
     /// Serialize the current in-memory save (staged edits included) —
     /// what a netplay commitment or session launch runs on.
     fn sram(&self, data: &LoadedSave) -> Vec<u8>;
-
-    /// Validate the exact in-memory build represented by `data`, returning
-    /// opaque, dynamically localized violations suitable for an in-match
-    /// advisory warning.
-    fn build_validity(&self, data: &LoadedSave) -> BuildValidity;
 
     /// Carry where the view was looking — the open tab, the sort
     /// preferences — from a state built for this same save onto a

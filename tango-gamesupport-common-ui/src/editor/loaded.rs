@@ -44,6 +44,21 @@ pub struct OpenSave {
     pub logos: Vec<(u32, u32, iced_image::Handle)>,
 }
 
+/// Reopen the private model/art bundle carried by the public loaded-save
+/// envelope. Only the editor consumes it; save validation happens against the
+/// prepared save before this bundle exists.
+pub(crate) fn open(data: &tango_gamesupport::LoadedSave) -> &OpenSave {
+    (&*data.payload as &dyn std::any::Any)
+        .downcast_ref::<OpenSave>()
+        .expect("LoadedSave payload must be this crate's OpenSave")
+}
+
+pub(crate) fn open_mut(payload: &mut dyn tango_gamesupport::LoadedSavePayload) -> &mut OpenSave {
+    (payload as &mut dyn std::any::Any)
+        .downcast_mut::<OpenSave>()
+        .expect("LoadedSave payload must be this crate's OpenSave")
+}
+
 impl std::ops::Deref for OpenSave {
     type Target = crate::model::SaveModel;
     fn deref(&self) -> &Self::Target {

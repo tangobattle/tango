@@ -97,20 +97,16 @@ pub fn refresh_editability(save: &mut SaveModel) {
     save.editability = probe_editability(&mut *save.save);
 }
 
-/// Build a [`SaveModel`] from a ROM that's *already* had its patch
-/// applied, plus the [`AppliedPatch`] that produced it (`None` for a raw
-/// ROM). Never touches the BPS patch — the caller holds the patched
-/// image; this just probes editability and derives the (override-
-/// layered) assets.
-pub fn from_patched_rom(
+/// Prepare the save/ROM pair before validation and presentation. The ROM is
+/// already patched; this derives and layers its effective assets.
+pub fn prepare(
     game: GameRef,
     rom: Vec<u8>,
     save_path: std::path::PathBuf,
-    mut save: Box<dyn crate::dataview::save::Save + Send + Sync>,
+    save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
-) -> SaveModel {
-    let editability = probe_editability(&mut *save);
-
+) -> tango_gamesupport::PreparedSave {
+    let save = crate::dataview::unwrap_save(save);
     let wram = save.as_raw_wram().into_owned();
     let charset_owned: Option<Vec<&str>> = applied_patch
         .as_ref()
@@ -127,14 +123,28 @@ pub fn from_patched_rom(
         .as_ref()
         .map(|p| p.rom_overrides.clone())
         .unwrap_or_default();
-    let assets: Box<dyn crate::dataview::rom::Assets + Send + Sync> = Box::new(OverridenAssets::new(inner, overrides));
+    let assets: Box<dyn crate::dataview::rom::Assets + Send + Sync> =
+        Box::new(OverridenAssets::new(inner, overrides));
 
-    SaveModel {
+    tango_gamesupport::PreparedSave {
         game,
         save_path,
+        patch: applied_patch,
+        save: crate::dataview::wrap_save(save),
+        assets: crate::dataview::wrap_assets(assets),
+    }
+}
+
+/// Convert the concrete prepared envelope into the editor's mutable model.
+pub(crate) fn from_prepared(prepared: tango_gamesupport::PreparedSave) -> SaveModel {
+    let mut save = crate::dataview::unwrap_save(prepared.save);
+    let editability = probe_editability(&mut *save);
+    SaveModel {
+        game: prepared.game,
+        save_path: prepared.save_path,
         save,
         editability,
-        patch: applied_patch,
-        assets,
+        patch: prepared.patch,
+        assets: crate::dataview::unwrap_assets(prepared.assets),
     }
 }

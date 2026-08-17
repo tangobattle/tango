@@ -5,7 +5,7 @@
 //! upcast helpers that reopen them — the only downcasts anywhere), and
 //! the free functions the app drives game-independent state with.
 
-use crate::editor::loaded::OpenSave;
+use crate::editor::loaded::{self, OpenSave};
 use crate::editor::view::{Action, Outcome, State};
 use crate::editor::GameSaveEditor;
 use tango_gamesupport::LoadedSave;
@@ -35,19 +35,6 @@ impl tango_gamesupport::SaveEditorMessage for Action {}
 impl tango_gamesupport::SaveEditorState for State {}
 impl tango_gamesupport::LoadedSavePayload for OpenSave {}
 
-/// The private loaded bundle inside a [`LoadedSave`] payload.
-pub(crate) fn open_save(data: &LoadedSave) -> &OpenSave {
-    (&*data.payload as &dyn std::any::Any)
-        .downcast_ref::<OpenSave>()
-        .expect("LoadedSave payload must be this crate's OpenSave")
-}
-
-pub(crate) fn open_save_mut(payload: &mut dyn tango_gamesupport::LoadedSavePayload) -> &mut OpenSave {
-    (payload as &mut dyn std::any::Any)
-        .downcast_mut::<OpenSave>()
-        .expect("LoadedSave payload must be this crate's OpenSave")
-}
-
 fn view_state(state: &dyn tango_gamesupport::SaveEditorState) -> &State {
     (state as &dyn std::any::Any)
         .downcast_ref::<State>()
@@ -64,17 +51,39 @@ fn wrap(action: Action) -> std::sync::Arc<dyn tango_gamesupport::SaveEditorMessa
     std::sync::Arc::new(action)
 }
 
+#[derive(Debug)]
+struct Warnings(Vec<tango_gamesupport::OpaqueBuildWarnings>);
+
+impl tango_gamesupport::BuildWarnings for Warnings {
+    fn format(&self, lang: &LanguageIdentifier) -> Vec<String> {
+        self.0
+            .iter()
+            .flat_map(|warnings| warnings.format(lang))
+            .collect()
+    }
+}
+
 impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorShell<G> {
+    fn validate_save(
+        &self,
+        prepared: &tango_gamesupport::PreparedSave,
+    ) -> Option<tango_gamesupport::OpaqueBuildWarnings> {
+        let save = crate::dataview::save_ref(prepared.save.as_ref());
+        let assets = crate::dataview::assets_ref(prepared.assets.as_ref());
+        let warnings = self.0.validate_save(save, assets);
+        (!warnings.is_empty()).then(|| {
+            std::sync::Arc::new(Warnings(warnings)) as tango_gamesupport::OpaqueBuildWarnings
+        })
+    }
+
     fn load(
         &'static self,
-        game: tango_gamesupport::GameRef,
-        patched_rom: Vec<u8>,
-        save_path: std::path::PathBuf,
-        save: tango_gamesupport::BoxedSave,
-        patch: Option<tango_gamesupport::AppliedPatch>,
+        prepared: tango_gamesupport::PreparedSave,
     ) -> LoadedSave {
-        let save = crate::dataview::unwrap_save(save);
-        let model = crate::model::from_patched_rom(game, patched_rom, save_path.clone(), save, patch.clone());
+        let model = crate::model::from_prepared(prepared);
+        let game = model.game;
+        let save_path = model.save_path.clone();
+        let patch = model.patch.clone();
         let open = crate::editor::loaded::from_model(model, &self.0);
         LoadedSave {
             editor: self,
@@ -98,7 +107,7 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
     ) -> iced::Element<'a, std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>> {
         crate::editor::view::view(
             lang,
-            open_save(data),
+            loaded::open(data),
             view_state(&*data.state),
             streamer_mode,
             play_button,
@@ -125,7 +134,7 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         // Disjoint fields of the same save: the view state folds the
         // action, the bundle behind the payload backs it.
         let state = view_state_mut(&mut *data.state);
-        let open = open_save_mut(&mut *data.payload);
+        let open = loaded::open_mut(&mut *data.payload);
 
         let (task, outcome) = state.apply(lang, action, Some(&*open));
         let outcome = match outcome {
@@ -179,16 +188,7 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
     /// Save, but starting a match must still produce valid SRAM without
     /// committing those edits to disk.
     fn sram(&self, data: &LoadedSave) -> Vec<u8> {
-        session_sram(open_save(data).save.as_ref())
-    }
-
-    fn build_validity(&self, data: &LoadedSave) -> tango_gamesupport::BuildValidity {
-        let report = self.0.build_report(open_save(data));
-        if report.warnings.is_empty() {
-            tango_gamesupport::BuildValidity::Valid
-        } else {
-            tango_gamesupport::BuildValidity::Invalid(report.warnings)
-        }
+        session_sram(loaded::open(data).save.as_ref())
     }
 }
 

@@ -16,7 +16,24 @@ pub struct Ui;
 /// The instance tango's per-family registry hands out.
 pub static SAVE_EDITOR: SaveEditorShell<Ui> = SaveEditorShell(Ui);
 
+fn warning_providers(
+    save: &tango_gamesupport_common_ui::editor::Save,
+    assets: &tango_gamesupport_common_ui::editor::Assets,
+) -> Vec<tango_gamesupport_common_ui::editor::OpaqueBuildWarnings> {
+    let mut warnings = tango_gamesupport_common_ui::build::warnings(save, assets);
+    warnings.extend(patch_cards4::warnings(save, assets));
+    warnings
+}
+
 impl GameSaveEditor for Ui {
+    fn validate_save(
+        &self,
+        save: &tango_gamesupport_common_ui::editor::Save,
+        assets: &tango_gamesupport_common_ui::editor::Assets,
+    ) -> Vec<tango_gamesupport_common_ui::editor::OpaqueBuildWarnings> {
+        warning_providers(save, assets)
+    }
+
     fn tabs(&self, loaded: &OpenSave) -> Vec<Tab> {
         let save = loaded.save.as_ref();
         let mut tabs = vec![];
@@ -93,7 +110,10 @@ impl GameSaveEditor for Ui {
     }
 
     fn build_report(&self, loaded: &OpenSave) -> BuildReport {
-        let mut report = tango_gamesupport_common_ui::editor::battle_network_build_report(loaded);
+        let save = loaded.save.as_ref();
+        let assets = loaded.assets.as_ref();
+        let violations = tango_gamesupport_common_ui::dataview::build::violations(save, assets);
+        let mut report = tango_gamesupport_common_ui::build::report(&violations);
         report.extend(patch_cards4::build_report(loaded));
         report
     }

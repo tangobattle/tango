@@ -17,10 +17,11 @@ use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view::{
     edit_toggle_maybe, editor_header, folder, patch_cards, placeholder, Action, State,
 };
-use tango_gamesupport_common_ui::editor::{BuildReport, OpaqueBuildViolation};
+use tango_gamesupport_common_ui::editor::BuildReport;
 use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use tango_gamesupport_common_ui::style::{self, TEXT_BODY, TEXT_CAPTION};
 use tango_gamesupport_common_ui::t;
+use tango_gamesupport_common_ui::editor::OpaqueBuildWarnings;
 use tango_gamesupport_common_ui::widgets::{self, muted_text_style};
 use unic_langid::LanguageIdentifier;
 
@@ -64,97 +65,123 @@ fn patch_card4_slot_label(slot: usize) -> String {
         .unwrap_or_else(|| format!("#{}", slot + 1))
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct PresentedPatchCard4Violation {
-    card: String,
-    actual_slot: String,
-    expected_slot: Option<String>,
-}
-
-fn present_patch_card4_violation(
-    assets: &bn4_rom::Assets,
-    violation: PatchCard4Violation,
-) -> PresentedPatchCard4Violation {
-    let info = assets.patch_card4(violation.id);
-    PresentedPatchCard4Violation {
-        card: card_name(info.as_ref(), violation.id),
-        actual_slot: patch_card4_slot_label(violation.slot),
-        expected_slot: match violation.kind {
-            PatchCard4ViolationKind::WrongSlot { expected_slot } => Some(patch_card4_slot_label(expected_slot)),
-            PatchCard4ViolationKind::NotInCatalog => None,
-        },
-    }
-}
-
 fn patch_card4_issues(
     lang: &LanguageIdentifier,
     loaded: &OpenSave,
 ) -> std::collections::HashMap<usize, String> {
-    let Some(assets) = bn4_assets(loaded) else {
+    if bn4_assets(loaded).is_none() {
         return Default::default();
-    };
+    }
     patch_card4_violations(loaded)
         .into_iter()
         .map(|violation| {
             let slot = violation.slot;
-            let presented = present_patch_card4_violation(assets, violation);
             let issue = tango_gamesupport_common_ui::build::format_violation(
                 lang,
                 None,
-                patch_card4_violation_reason(lang, &presented),
+                patch_card4_violation_reason(lang, &violation),
             );
             (slot, issue)
         })
         .collect()
 }
 
-fn patch_card4_violation_reason(lang: &LanguageIdentifier, violation: &PresentedPatchCard4Violation) -> String {
-    match &violation.expected_slot {
-        Some(expected_slot) => t!(
+fn patch_card4_violation_reason(lang: &LanguageIdentifier, violation: &PatchCard4Violation) -> String {
+    let actual_slot = patch_card4_slot_label(violation.slot);
+    match violation.kind {
+        PatchCard4ViolationKind::WrongSlot { expected_slot } => t!(
             lang,
             "build-violation-patch-card4-wrong-slot-reason",
-            actual_slot = violation.actual_slot.clone(),
-            expected_slot = expected_slot.clone()
+            actual_slot = actual_slot,
+            expected_slot = patch_card4_slot_label(expected_slot)
         ),
-        None => t!(
+        PatchCard4ViolationKind::NotInCatalog => t!(
             lang,
             "build-violation-patch-card4-not-in-catalog-reason",
-            actual_slot = violation.actual_slot.clone()
+            actual_slot = actual_slot
         ),
     }
 }
 
-fn format_patch_card4_violation(lang: &LanguageIdentifier, violation: &PresentedPatchCard4Violation) -> String {
+fn format_patch_card4_violation(
+    lang: &LanguageIdentifier,
+    card: &str,
+    violation: &PatchCard4Violation,
+) -> String {
     tango_gamesupport_common_ui::build::format_violation(
         lang,
-        Some(&violation.card),
+        Some(card),
         patch_card4_violation_reason(lang, violation),
     )
 }
 
-/// Collapse BN4's private Mod Card violations to the shared tab metadata and
-/// opaque opponent warnings. No BN4 rule enum crosses this boundary.
+#[derive(Debug)]
+struct PatchCardWarnings {
+    violations: Vec<PatchCard4Violation>,
+    card_names: std::collections::HashMap<usize, String>,
+}
+
+impl PatchCardWarnings {
+    fn new(violations: Vec<PatchCard4Violation>, assets: &bn4_rom::Assets) -> Self {
+        let card_names = violations
+            .iter()
+            .map(|violation| {
+                let info = assets.patch_card4(violation.id);
+                (violation.id, card_name(info.as_ref(), violation.id))
+            })
+            .collect();
+        Self {
+            violations,
+            card_names,
+        }
+    }
+}
+
+impl tango_gamesupport_common_ui::editor::BuildWarnings for PatchCardWarnings {
+    fn format(&self, lang: &LanguageIdentifier) -> Vec<String> {
+        self.violations
+            .iter()
+            .map(|violation| {
+                let card = self
+                    .card_names
+                    .get(&violation.id)
+                    .cloned()
+                    .unwrap_or_else(|| format!("#{}", violation.id));
+                format_patch_card4_violation(lang, &card, violation)
+            })
+            .collect()
+    }
+}
+
+/// Collapse BN4's private Mod Card violations to save-editor metadata.
 pub fn build_report(loaded: &OpenSave) -> BuildReport {
-    let Some(assets) = bn4_assets(loaded) else {
-        return BuildReport::default();
-    };
     let violations = patch_card4_violations(loaded);
     if violations.is_empty() {
         return BuildReport::default();
     }
-    let warnings = violations
-        .into_iter()
-        .map(|violation| {
-            let presented = present_patch_card4_violation(assets, violation);
-            OpaqueBuildViolation::new(move |lang| format_patch_card4_violation(lang, &presented))
-        })
-        .collect();
     BuildReport {
         error_tabs: [tango_gamesupport_common_ui::editor::view::Tab::PatchCards]
             .into_iter()
             .collect(),
         blocks_save: false,
-        warnings,
+    }
+}
+
+pub fn warnings(
+    save: &tango_gamesupport_common_ui::editor::Save,
+    assets: &tango_gamesupport_common_ui::editor::Assets,
+) -> Vec<OpaqueBuildWarnings> {
+    let Some(save) = save.as_any().downcast_ref::<bn4_save::Save>() else {
+        return vec![];
+    };
+    let Some(assets) = assets.underlying_any().downcast_ref::<bn4_rom::Assets>() else {
+        return vec![];
+    };
+    let violations = tango_gamesupport_bn4_dataview::build::patch_card4_violations(save, assets);
+    if violations.is_empty() {
+        vec![]
+    } else {
+        vec![Arc::new(PatchCardWarnings::new(violations, assets)) as OpaqueBuildWarnings]
     }
 }
 
@@ -636,16 +663,21 @@ fn bugs_label(bugs: &[bn4_rom::PatchCard4Bug]) -> Option<String> {
 #[cfg(test)]
 mod legality_tests {
     use super::*;
+    use tango_gamesupport_common_ui::editor::BuildWarnings as _;
 
     #[test]
     fn wrong_slot_warning_localization_remains_dynamic() {
-        let violation = PresentedPatchCard4Violation {
-            card: "Max HP Up".to_string(),
-            actual_slot: "0A".to_string(),
-            expected_slot: Some("0C".to_string()),
+        let warnings = PatchCardWarnings {
+            violations: vec![PatchCard4Violation {
+                slot: 0,
+                id: 7,
+                enabled: true,
+                kind: PatchCard4ViolationKind::WrongSlot { expected_slot: 2 },
+            }],
+            card_names: [(7, "Max HP Up".to_string())].into_iter().collect(),
         };
         let english: LanguageIdentifier = "en-US".parse().unwrap();
-        let english = format_patch_card4_violation(&english, &violation);
+        let english = warnings.format(&english).remove(0);
         assert!(english.contains("0A"));
         assert!(english.contains("0C"));
 
@@ -653,7 +685,7 @@ mod legality_tests {
             "de-DE", "es-419", "fr-FR", "ja-JP", "nl-NL", "pt-BR", "ru-RU", "vi-VN", "zh-CN", "zh-TW",
         ] {
             assert_ne!(
-                format_patch_card4_violation(&language.parse().unwrap(), &violation),
+                warnings.format(&language.parse().unwrap()).remove(0),
                 english
             );
         }
@@ -661,13 +693,17 @@ mod legality_tests {
 
     #[test]
     fn missing_catalog_entries_have_their_own_warning() {
-        let violation = PresentedPatchCard4Violation {
-            card: "#0".to_string(),
-            actual_slot: "0B".to_string(),
-            expected_slot: None,
+        let warnings = PatchCardWarnings {
+            violations: vec![PatchCard4Violation {
+                slot: 1,
+                id: 0,
+                enabled: true,
+                kind: PatchCard4ViolationKind::NotInCatalog,
+            }],
+            card_names: Default::default(),
         };
         let english: LanguageIdentifier = "en-US".parse().unwrap();
-        let text = format_patch_card4_violation(&english, &violation);
+        let text = warnings.format(&english).remove(0);
         assert!(text.contains("#0"));
         assert!(text.contains("0B"));
         assert!(text.contains("catalog"));

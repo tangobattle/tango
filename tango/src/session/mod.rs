@@ -87,9 +87,10 @@ pub struct PvpPanes {
     pub local_loaded: Option<selection::LoadedSave>,
     /// Opponent's loaded selection, unless they blinded their setup.
     pub opponent_loaded: Option<selection::LoadedSave>,
-    /// Local validation of the opponent's committed save. This is computed
-    /// from the bytes the match actually runs, never trusted from a peer flag.
-    pub opponent_build_validity: tango_gamesupport::BuildValidity,
+    /// Local validation warnings for the opponent's committed save. `None`
+    /// means legal. This opaque report is computed from the bytes the match
+    /// actually runs, never trusted from a peer flag.
+    pub opponent_build_warnings: Option<tango_gamesupport::OpaqueBuildWarnings>,
     /// A build warning remains visible until explicitly dismissed. Replacing
     /// `PvpPanes` for the next match naturally resets it.
     pub build_warning_dismissed: bool,
@@ -1536,13 +1537,13 @@ pub async fn spawn_pvp(
     // save the match will run. A valid blinded setup is still discarded from
     // the drawer below; an invalid one keeps only the structured violations
     // needed by the advisory warning.
-    let remote_loaded = {
+    let remote_prepared = {
         let remote_save = remote_game
             .parse_save(&pre_match.remote_save_data)
             .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
         // `remote_rom_bytes` is already the patched image we run in the
         // session, so resolve the matching `rom_overrides` + charset and
-        // hand both straight to `from_patched_rom` — no second BPS apply.
+        // hand both straight to preparation — no second BPS apply.
         let applied_patch = remote_gi.patch.as_ref().and_then(|p| {
             let patches = scanners.patches.read();
             let version_meta = patches.version(&p.name, &p.version)?;
@@ -1552,7 +1553,7 @@ pub async fn spawn_pvp(
                 rom_overrides: version_meta.rom_overrides_for(remote_game),
             })
         });
-        crate::selection::from_patched_rom(
+        crate::selection::prepare_from_patched_rom(
             remote_game,
             remote_rom_bytes.clone(),
             std::path::PathBuf::new(),
@@ -1560,7 +1561,8 @@ pub async fn spawn_pvp(
             applied_patch,
         )
     };
-    let opponent_build_validity = remote_loaded.editor.build_validity(&remote_loaded);
+    let opponent_build_warnings = remote_game.family.save_editor.validate_save(&remote_prepared);
+    let remote_loaded = remote_prepared.load();
     let opponent_loaded = (!pre_match.remote_settings.blind_setup).then_some(remote_loaded);
 
     // Build the local-side LoadedSave so the in-session "my setup"
@@ -1616,7 +1618,7 @@ pub async fn spawn_pvp(
         PvpPanes {
             local_loaded: Some(local_loaded),
             opponent_loaded,
-            opponent_build_validity,
+            opponent_build_warnings,
             build_warning_dismissed: false,
             build_warning_violations_expanded: false,
             // Clamped on the way in: the persisted pair predates the

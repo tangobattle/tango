@@ -1,43 +1,59 @@
-//! Game-support-owned build legality. Raw subject types, game-specific rules,
-//! grouping, ordering, and localization all stop here; the host application
-//! receives only [`tango_gamesupport::BuildViolation`]'s opaque formatter.
+//! UI adaptation for headless build violations. Names, grouping, editor
+//! placement, save policy, and localization stop here; the host receives only
+//! opaque [`tango_gamesupport::BuildWarnings`] providers.
 
-pub use crate::dataview::build::{
-    BuildChip, BuildNavicustPart, BuildPatchCard, BuildViolation, BuildViolationKind, NavicustViolationKind,
-    PatchCardViolationKind,
-};
+pub use crate::dataview::build::{BuildViolationKind, NavicustViolationKind, PatchCardViolationKind};
+use crate::dataview::build::BuildViolation as RawBuildViolation;
 use crate::i18n::t;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PresentedBuildViolation {
-    FolderNotFull {
-        used: usize,
-        required: usize,
-    },
-    Chips {
-        chips: Vec<BuildChip>,
-        kind: BuildViolationKind,
-    },
-    PatchCards {
-        patch_cards: Vec<BuildPatchCard>,
-        kind: PatchCardViolationKind,
-    },
-    NavicustParts {
-        parts: Vec<BuildNavicustPart>,
-        kind: NavicustViolationKind,
-    },
-    NavicustMaterializationMismatch,
+#[derive(Debug, Default)]
+struct Names {
+    chips: std::collections::HashMap<usize, String>,
+    patch_cards: std::collections::HashMap<usize, String>,
+    navicust_parts: std::collections::HashMap<usize, String>,
 }
 
-pub fn chip_label(lang: &unic_langid::LanguageIdentifier, chip: &BuildChip) -> String {
-    let name = chip
-        .name
-        .clone()
-        .unwrap_or_else(|| t!(lang, "build-chip-unknown", id = chip.id as i64));
-    if chip.code.is_empty() {
+impl Names {
+    fn from_violations(violations: &[RawBuildViolation], assets: &dyn crate::dataview::rom::Assets) -> Self {
+        let mut names = Self::default();
+        for violation in violations {
+            match violation {
+                RawBuildViolation::Chip { id, .. } => {
+                    if let Some(name) = assets.chip(*id).and_then(|info| info.name()) {
+                        names.chips.entry(*id).or_insert(name);
+                    }
+                }
+                RawBuildViolation::PatchCard { id, .. } => {
+                    if let Some(name) = assets.patch_card56(*id).and_then(|info| info.name()) {
+                        names.patch_cards.entry(*id).or_insert(name);
+                    }
+                }
+                RawBuildViolation::NavicustPart { id, .. } => {
+                    if let Some(name) = assets.navicust_part(*id).and_then(|info| info.name()) {
+                        names.navicust_parts.entry(*id).or_insert(name);
+                    }
+                }
+                RawBuildViolation::FolderNotFull { .. } | RawBuildViolation::NavicustMaterializationMismatch => {}
+            }
+        }
+        names
+    }
+}
+
+#[derive(Debug)]
+struct Warnings {
+    violations: Vec<RawBuildViolation>,
+    names: Names,
+}
+
+fn chip_label(lang: &unic_langid::LanguageIdentifier, id: usize, code: &str, name: Option<&str>) -> String {
+    let name = name
+        .map(str::to_owned)
+        .unwrap_or_else(|| t!(lang, "build-chip-unknown", id = id as i64));
+    if code.is_empty() {
         name
     } else {
-        format!("{name} {}", chip.code)
+        format!("{name} {code}")
     }
 }
 
@@ -134,70 +150,8 @@ pub fn patch_card_slot_warning(
     )
 }
 
-pub fn navicust_part_label(lang: &unic_langid::LanguageIdentifier, part: &BuildNavicustPart) -> String {
-    part.name
-        .clone()
-        .unwrap_or_else(|| t!(lang, "build-navicust-part-unknown", id = part.id as i64))
-}
-
-pub fn navicust_violation(
-    lang: &unic_langid::LanguageIdentifier,
-    parts: &[&BuildNavicustPart],
-    kind: NavicustViolationKind,
-) -> String {
-    let subject = parts
-        .iter()
-        .map(|part| navicust_part_label(lang, part))
-        .collect::<Vec<_>>()
-        .join(", ");
-    match kind {
-        NavicustViolationKind::MaterializationMismatch => {
-            format_violation(lang, Some(&subject), navicust_violation_reason(lang))
-        }
-    }
-}
-
 fn navicust_violation_reason(lang: &unic_langid::LanguageIdentifier) -> String {
     t!(lang, "build-violation-navicust-invalid-shape-reason")
-}
-
-pub fn chip_violation(
-    lang: &unic_langid::LanguageIdentifier,
-    chips: &[&BuildChip],
-    kind: BuildViolationKind,
-) -> String {
-    let chips = chips
-        .iter()
-        .map(|chip| chip_label(lang, chip))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let reason = violation_reason(lang, kind);
-    format_violation(lang, Some(&chips), reason)
-}
-
-pub fn patch_card_label(lang: &unic_langid::LanguageIdentifier, patch_card: &BuildPatchCard) -> String {
-    let name = patch_card
-        .name
-        .clone()
-        .unwrap_or_else(|| t!(lang, "build-patch-card-unknown", id = patch_card.id as i64));
-    format!("{name} ({}MB)", patch_card.mb)
-}
-
-pub fn patch_card_violation(
-    lang: &unic_langid::LanguageIdentifier,
-    patch_cards: &[&BuildPatchCard],
-    kind: PatchCardViolationKind,
-) -> String {
-    let subject = patch_cards
-        .iter()
-        .map(|patch_card| patch_card_label(lang, patch_card))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format_violation(
-        lang,
-        Some(&subject),
-        patch_card_violation_reason(lang, kind, None),
-    )
 }
 
 fn patch_card_violation_reason(
@@ -233,188 +187,229 @@ pub fn folder_not_full(lang: &unic_langid::LanguageIdentifier, used: usize, requ
     )
 }
 
-fn format_presented(lang: &unic_langid::LanguageIdentifier, violation: &PresentedBuildViolation) -> String {
-    match violation {
-        PresentedBuildViolation::FolderNotFull { used, required } => folder_not_full(lang, *used, *required),
-        PresentedBuildViolation::Chips { chips, kind } => {
-            chip_violation(lang, &chips.iter().collect::<Vec<_>>(), *kind)
-        }
-        PresentedBuildViolation::PatchCards { patch_cards, kind } => {
-            patch_card_violation(lang, &patch_cards.iter().collect::<Vec<_>>(), *kind)
-        }
-        PresentedBuildViolation::NavicustParts { parts, kind } => {
-            navicust_violation(lang, &parts.iter().collect::<Vec<_>>(), *kind)
-        }
-        PresentedBuildViolation::NavicustMaterializationMismatch => {
-            t!(lang, "build-violation-navicust-materialization")
-        }
-    }
+fn navicust_part_label(lang: &unic_langid::LanguageIdentifier, id: usize, name: Option<&str>) -> String {
+    name.map(str::to_owned)
+        .unwrap_or_else(|| t!(lang, "build-navicust-part-unknown", id = id as i64))
 }
 
-fn present_build_violations(violations: Vec<BuildViolation>) -> Vec<PresentedBuildViolation> {
-    let mut presented = vec![];
-    let mut chip_violations: Vec<BuildViolation> = violations
-        .iter()
-        .filter(|violation| matches!(violation, BuildViolation::Chip { .. }))
-        .cloned()
-        .collect();
-    chip_violations.sort_by_key(|violation| match violation {
-        BuildViolation::Chip { slot, chip, .. } => (chip.id, *slot),
-        _ => unreachable!("filtered to chip violations"),
-    });
-    let mut chip_violations = chip_violations.into_iter();
-
-    for source_violation in violations {
-        let violation = if matches!(source_violation, BuildViolation::Chip { .. }) {
-            chip_violations.next().expect("one sorted entry per chip violation")
-        } else {
-            source_violation
-        };
-        match violation {
-            BuildViolation::FolderNotFull { used, required } => {
-                presented.push(PresentedBuildViolation::FolderNotFull { used, required });
-            }
-            BuildViolation::Chip { chip, kind, .. } => {
-                let group_idx = presented
-                    .iter()
-                    .position(|group| {
-                        matches!(
-                            group,
-                            PresentedBuildViolation::Chips {
-                                kind: grouped_kind,
-                                ..
-                            } if grouped_kind == &kind
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        presented.push(PresentedBuildViolation::Chips { chips: vec![], kind });
-                        presented.len() - 1
-                    });
-                let PresentedBuildViolation::Chips { chips, .. } = &mut presented[group_idx] else {
-                    unreachable!("chip violation group has a chip presentation")
-                };
-                if !chips.contains(&chip) {
-                    chips.push(chip);
-                }
-            }
-            BuildViolation::PatchCard { patch_card, kind, .. } => {
-                let group_idx = presented
-                    .iter()
-                    .position(|group| {
-                        matches!(
-                            group,
-                            PresentedBuildViolation::PatchCards {
-                                kind: grouped_kind,
-                                ..
-                            } if grouped_kind == &kind
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        presented.push(PresentedBuildViolation::PatchCards {
-                            patch_cards: vec![],
-                            kind,
-                        });
-                        presented.len() - 1
-                    });
-                let PresentedBuildViolation::PatchCards { patch_cards, .. } = &mut presented[group_idx] else {
-                    unreachable!("patch-card violation group has a patch-card presentation")
-                };
-                if !patch_cards.contains(&patch_card) {
-                    patch_cards.push(patch_card);
-                }
-            }
-            BuildViolation::NavicustPart { part, kind, .. } => {
-                let group_idx = presented
-                    .iter()
-                    .position(|group| {
-                        matches!(
-                            group,
-                            PresentedBuildViolation::NavicustParts {
-                                kind: grouped_kind,
-                                ..
-                            } if grouped_kind == &kind
-                        )
-                    })
-                    .unwrap_or_else(|| {
-                        presented.push(PresentedBuildViolation::NavicustParts { parts: vec![], kind });
-                        presented.len() - 1
-                    });
-                let PresentedBuildViolation::NavicustParts { parts, .. } = &mut presented[group_idx] else {
-                    unreachable!("NaviCust violation group has a NaviCust presentation")
-                };
-                if !parts.contains(&part) {
-                    parts.push(part);
-                }
-            }
-            BuildViolation::NavicustMaterializationMismatch => {
-                presented.push(PresentedBuildViolation::NavicustMaterializationMismatch);
-            }
-        }
-    }
-
-    for group in &mut presented {
-        match group {
-            PresentedBuildViolation::Chips { chips, .. } => chips.sort_by_key(|chip| chip.id),
-            PresentedBuildViolation::PatchCards { patch_cards, .. } => {
-                patch_cards.sort_by_key(|patch_card| patch_card.id)
-            }
-            PresentedBuildViolation::NavicustParts { parts, .. } => {
-                parts.sort_by_key(|part| (part.id, part.row, part.col))
-            }
-            PresentedBuildViolation::FolderNotFull { .. }
-            | PresentedBuildViolation::NavicustMaterializationMismatch => {}
-        }
-    }
-    presented
+fn patch_card_label(lang: &unic_langid::LanguageIdentifier, id: usize, mb: u8, name: Option<&str>) -> String {
+    let name = name
+        .map(str::to_owned)
+        .unwrap_or_else(|| t!(lang, "build-patch-card-unknown", id = id as i64));
+    format!("{name} ({mb}MB)")
 }
 
-/// Convert game-support's raw report into the only legality type exposed to
-/// the host. Each closure owns its already-grouped subjects and localizes on
-/// demand, so no game-specific enum or formatter function crosses the seam.
-pub fn opaque_violations(violations: Vec<BuildViolation>) -> Vec<tango_gamesupport::BuildViolation> {
-    present_build_violations(violations)
+fn group_by_kind<'a, K: Copy + PartialEq>(
+    findings: impl IntoIterator<Item = (&'a RawBuildViolation, K)>,
+) -> Vec<(K, Vec<&'a RawBuildViolation>)> {
+    let mut groups: Vec<(K, Vec<&RawBuildViolation>)> = vec![];
+    for (finding, kind) in findings {
+        let group_idx = groups
+            .iter()
+            .position(|(grouped_kind, _)| grouped_kind == &kind)
+            .unwrap_or_else(|| {
+                groups.push((kind, vec![]));
+                groups.len() - 1
+            });
+        groups[group_idx].1.push(finding);
+    }
+    groups
+}
+
+impl Warnings {
+    fn new(violations: Vec<RawBuildViolation>, assets: &dyn crate::dataview::rom::Assets) -> Self {
+        let names = Names::from_violations(&violations, assets);
+        Self { violations, names }
+    }
+
+    fn chip_warnings(&self, lang: &unic_langid::LanguageIdentifier) -> Vec<String> {
+        let mut findings = self
+            .violations
+            .iter()
+            .filter(|violation| matches!(violation, RawBuildViolation::Chip { .. }))
+            .collect::<Vec<_>>();
+        findings.sort_by_key(|violation| match violation {
+            RawBuildViolation::Chip { slot, id, .. } => (*id, *slot),
+            _ => unreachable!("filtered to chip violations"),
+        });
+        group_by_kind(findings.into_iter().map(|violation| {
+            let RawBuildViolation::Chip { kind, .. } = violation else {
+                unreachable!("filtered to chip violations")
+            };
+            (violation, *kind)
+        }))
         .into_iter()
-        .map(|violation| tango_gamesupport::BuildViolation::new(move |lang| format_presented(lang, &violation)))
+        .map(|(kind, findings)| {
+            let mut seen = std::collections::HashSet::new();
+            let subject = findings
+                .into_iter()
+                .filter_map(|finding| {
+                    let RawBuildViolation::Chip { id, code, .. } = finding else {
+                        return None;
+                    };
+                    seen.insert((*id, *code)).then(|| {
+                        chip_label(lang, *id, &code.to_string(), self.names.chips.get(id).map(String::as_str))
+                    })
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format_violation(lang, Some(&subject), violation_reason(lang, kind))
+        })
         .collect()
+    }
+
+    fn patch_card_warnings(&self, lang: &unic_langid::LanguageIdentifier) -> Vec<String> {
+        let mut findings = self
+            .violations
+            .iter()
+            .filter(|violation| matches!(violation, RawBuildViolation::PatchCard { .. }))
+            .collect::<Vec<_>>();
+        findings.sort_by_key(|violation| match violation {
+            RawBuildViolation::PatchCard { slot, id, .. } => (*id, *slot),
+            _ => unreachable!("filtered to Patch Card violations"),
+        });
+        group_by_kind(findings.into_iter().map(|violation| {
+            let RawBuildViolation::PatchCard { kind, .. } = violation else {
+                unreachable!("filtered to Patch Card violations")
+            };
+            (violation, *kind)
+        }))
+        .into_iter()
+        .map(|(kind, findings)| {
+            let mut seen = std::collections::HashSet::new();
+            let subject = findings
+                .into_iter()
+                .filter_map(|finding| {
+                    let RawBuildViolation::PatchCard { id, mb, .. } = finding else {
+                        return None;
+                    };
+                    seen.insert(*id).then(|| {
+                        patch_card_label(lang, *id, *mb, self.names.patch_cards.get(id).map(String::as_str))
+                    })
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format_violation(lang, Some(&subject), patch_card_violation_reason(lang, kind, None))
+        })
+        .collect()
+    }
+
+    fn navicust_warnings(&self, lang: &unic_langid::LanguageIdentifier) -> Vec<String> {
+        let mut findings = self
+            .violations
+            .iter()
+            .filter(|violation| matches!(violation, RawBuildViolation::NavicustPart { .. }))
+            .collect::<Vec<_>>();
+        findings.sort_by_key(|violation| match violation {
+            RawBuildViolation::NavicustPart { slot, id, row, col, .. } => (*id, *row, *col, *slot),
+            _ => unreachable!("filtered to NaviCust violations"),
+        });
+        group_by_kind(findings.into_iter().map(|violation| {
+            let RawBuildViolation::NavicustPart { kind, .. } = violation else {
+                unreachable!("filtered to NaviCust violations")
+            };
+            (violation, *kind)
+        }))
+        .into_iter()
+        .map(|(kind, findings)| {
+            let mut seen = std::collections::HashSet::new();
+            let subject = findings
+                .into_iter()
+                .filter_map(|finding| {
+                    let RawBuildViolation::NavicustPart { id, row, col, .. } = finding else {
+                        return None;
+                    };
+                    seen.insert((*id, *row, *col)).then(|| {
+                        navicust_part_label(lang, *id, self.names.navicust_parts.get(id).map(String::as_str))
+                    })
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            match kind {
+                NavicustViolationKind::MaterializationMismatch => {
+                    format_violation(lang, Some(&subject), navicust_violation_reason(lang))
+                }
+            }
+        })
+        .collect()
+    }
 }
 
-/// Battle Network's concrete rule report collapsed into the shared save-view
-/// metadata plus opaque opponent warnings.
-pub fn report(violations: Vec<BuildViolation>) -> crate::editor::BuildReport {
+impl tango_gamesupport::BuildWarnings for Warnings {
+    fn format(&self, lang: &unic_langid::LanguageIdentifier) -> Vec<String> {
+        let mut warnings = self
+            .violations
+            .iter()
+            .filter_map(|violation| match violation {
+                RawBuildViolation::FolderNotFull { used, required } => Some(folder_not_full(lang, *used, *required)),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        warnings.extend(self.chip_warnings(lang));
+        warnings.extend(self.patch_card_warnings(lang));
+        warnings.extend(self.navicust_warnings(lang));
+        warnings.extend(self.violations.iter().filter_map(|violation| {
+            matches!(violation, RawBuildViolation::NavicustMaterializationMismatch)
+                .then(|| t!(lang, "build-violation-navicust-materialization"))
+        }));
+        warnings
+    }
+}
+
+fn report_metadata(violations: &[RawBuildViolation]) -> (std::collections::HashSet<crate::editor::view::Tab>, bool) {
     use crate::editor::view::Tab;
 
     let mut error_tabs = std::collections::HashSet::new();
     let mut blocks_save = false;
-    for violation in &violations {
+    for violation in violations {
         match violation {
-            BuildViolation::FolderNotFull { .. } => {
+            RawBuildViolation::FolderNotFull { .. } => {
                 error_tabs.insert(Tab::Folder);
                 // A folder must be complete for the save to be structurally
                 // usable. Legality violations within a complete folder stay
                 // advisory and do not disable Save.
                 blocks_save = true;
             }
-            BuildViolation::Chip { .. } => {
+            RawBuildViolation::Chip { .. } => {
                 error_tabs.insert(Tab::Folder);
             }
-            BuildViolation::PatchCard { .. } => {
+            RawBuildViolation::PatchCard { .. } => {
                 error_tabs.insert(Tab::PatchCards);
             }
-            BuildViolation::NavicustPart { .. } | BuildViolation::NavicustMaterializationMismatch => {
+            RawBuildViolation::NavicustPart { .. } | RawBuildViolation::NavicustMaterializationMismatch => {
                 error_tabs.insert(Tab::Navicust);
             }
         }
     }
+    (error_tabs, blocks_save)
+}
+
+/// Adapt headless violations into save-editor-only metadata.
+pub fn report(violations: &[RawBuildViolation]) -> crate::editor::BuildReport {
+    let (error_tabs, blocks_save) = report_metadata(violations);
     crate::editor::BuildReport {
         error_tabs,
         blocks_save,
-        warnings: opaque_violations(violations),
+    }
+}
+
+/// Build the shared BN warning provider independently of editor metadata.
+pub fn warnings(
+    save: &crate::editor::Save,
+    assets: &crate::editor::Assets,
+) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
+    let violations = crate::dataview::build::violations(save, assets);
+    if violations.is_empty() {
+        vec![]
+    } else {
+        vec![std::sync::Arc::new(Warnings::new(violations, assets)) as tango_gamesupport::OpaqueBuildWarnings]
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tango_gamesupport::BuildWarnings as _;
 
     fn slot_warning_texts(lang: &unic_langid::LanguageIdentifier) -> Vec<String> {
         [
@@ -559,28 +554,26 @@ mod tests {
             BuildViolationKind::TagChipsExceedMemory { used: 65, limit: 60 },
         ];
         let english_reasons = kinds.map(|kind| violation_reason(&english, kind));
-        let patch_card = BuildPatchCard {
-            id: 1,
-            name: None,
-            mb: 40,
+        let warnings = Warnings {
+            violations: vec![
+                RawBuildViolation::PatchCard {
+                    slot: 0,
+                    id: 1,
+                    mb: 40,
+                    kind: PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 },
+                },
+                RawBuildViolation::NavicustPart {
+                    slot: 0,
+                    id: 1,
+                    col: 2,
+                    row: 3,
+                    kind: NavicustViolationKind::MaterializationMismatch,
+                },
+                RawBuildViolation::NavicustMaterializationMismatch,
+            ],
+            names: Names::default(),
         };
-        let english_patch_card = patch_card_violation(
-            &english,
-            &[&patch_card],
-            PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 },
-        );
-        let navicust_part = BuildNavicustPart {
-            id: 1,
-            name: None,
-            col: 2,
-            row: 3,
-        };
-        let english_navicust = navicust_violation(
-            &english,
-            &[&navicust_part],
-            NavicustViolationKind::MaterializationMismatch,
-        );
-        let english_navicust_generic = t!(&english, "build-violation-navicust-materialization");
+        let english_warnings = warnings.format(&english);
 
         for language in [
             "de-DE", "es-419", "fr-FR", "ja-JP", "nl-NL", "pt-BR", "ru-RU", "vi-VN", "zh-CN", "zh-TW",
@@ -590,80 +583,61 @@ mod tests {
             for (kind, english_reason) in kinds.iter().copied().zip(&english_reasons) {
                 assert_ne!(violation_reason(&language, kind), *english_reason);
             }
-            assert_ne!(
-                patch_card_violation(
-                    &language,
-                    &[&patch_card],
-                    PatchCardViolationKind::TotalMbExceeded { used: 90, limit: 80 },
-                ),
-                english_patch_card
-            );
-            assert_ne!(
-                navicust_violation(
-                    &language,
-                    &[&navicust_part],
-                    NavicustViolationKind::MaterializationMismatch,
-                ),
-                english_navicust
-            );
-            assert_ne!(
-                t!(&language, "build-violation-navicust-materialization"),
-                english_navicust_generic
-            );
+            for (localized, english) in warnings.format(&language).into_iter().zip(&english_warnings) {
+                assert_ne!(localized, *english);
+            }
         }
     }
 
     #[test]
-    fn battle_network_report_owns_tab_and_save_metadata() {
-        let partial = report(vec![
-            BuildViolation::FolderNotFull { used: 29, required: 30 },
-            BuildViolation::NavicustMaterializationMismatch,
+    fn editor_metadata_is_adapted_from_headless_violations() {
+        let (error_tabs, blocks_save) = report_metadata(&[
+            RawBuildViolation::FolderNotFull { used: 29, required: 30 },
+            RawBuildViolation::NavicustMaterializationMismatch,
         ]);
 
-        assert!(partial.blocks_save);
-        assert!(partial.error_tabs.contains(&crate::editor::view::Tab::Folder));
-        assert!(partial.error_tabs.contains(&crate::editor::view::Tab::Navicust));
-        assert_eq!(partial.warnings.len(), 2);
+        assert!(blocks_save);
+        assert!(error_tabs.contains(&crate::editor::view::Tab::Folder));
+        assert!(error_tabs.contains(&crate::editor::view::Tab::Navicust));
 
-        let illegal = report(vec![BuildViolation::Chip {
+        let (_, blocks_save) = report_metadata(&[RawBuildViolation::Chip {
             slot: 0,
-            chip: BuildChip {
-                id: 1,
-                code: "A".to_string(),
-                name: Some("Cannon".to_string()),
-            },
+            id: 1,
+            code: crate::dataview::save::ChipCode::A,
             kind: BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
         }]);
-        assert!(!illegal.blocks_save);
+        assert!(!blocks_save);
     }
 
     #[test]
-    fn opaque_chip_warnings_are_grouped_and_ordered_by_id() {
-        let violations = vec![
-            BuildViolation::Chip {
-                slot: 0,
-                chip: BuildChip {
+    fn chip_warnings_are_grouped_and_ordered_by_id() {
+        let warnings = Warnings {
+            violations: vec![
+                RawBuildViolation::Chip {
+                    slot: 0,
                     id: 2,
-                    code: "L".to_string(),
-                    name: Some("HiCannon".to_string()),
+                    code: crate::dataview::save::ChipCode::L,
+                    kind: BuildViolationKind::ChipIllegalForGame,
                 },
-                kind: BuildViolationKind::ChipIllegalForGame,
-            },
-            BuildViolation::Chip {
-                slot: 20,
-                chip: BuildChip {
+                RawBuildViolation::Chip {
+                    slot: 20,
                     id: 1,
-                    code: "A".to_string(),
-                    name: Some("Cannon".to_string()),
+                    code: crate::dataview::save::ChipCode::A,
+                    kind: BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
                 },
-                kind: BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
+            ],
+            names: Names {
+                chips: [(1, "Cannon".to_string()), (2, "HiCannon".to_string())]
+                    .into_iter()
+                    .collect(),
+                ..Names::default()
             },
-        ];
-        let warnings = opaque_violations(violations);
+        };
         let english = "en-US".parse().unwrap();
+        let warnings = warnings.format(&english);
 
-        assert!(warnings[0].format(&english).starts_with("Cannon A:"));
-        assert!(warnings[1].format(&english).starts_with("HiCannon L:"));
+        assert!(warnings[0].starts_with("Cannon A:"));
+        assert!(warnings[1].starts_with("HiCannon L:"));
     }
 
     #[test]
@@ -678,16 +652,23 @@ mod tests {
     #[test]
     fn navicust_shape_warning_omits_grid_coordinates() {
         let english = "en-US".parse().unwrap();
-        let part = BuildNavicustPart {
-            id: 1,
-            name: Some("Attack+1".to_string()),
-            col: 2,
-            row: 3,
+        let warnings = Warnings {
+            violations: vec![RawBuildViolation::NavicustPart {
+                slot: 0,
+                id: 1,
+                col: 2,
+                row: 3,
+                kind: NavicustViolationKind::MaterializationMismatch,
+            }],
+            names: Names {
+                navicust_parts: [(1, "Attack+1".to_string())].into_iter().collect(),
+                ..Names::default()
+            },
         };
 
         assert_eq!(
-            navicust_violation(&english, &[&part], NavicustViolationKind::MaterializationMismatch,),
-            "Attack+1: Placed on grid with invalid shape."
+            warnings.format(&english),
+            ["Attack+1: Placed on grid with invalid shape."]
         );
     }
 }

@@ -7573,6 +7573,7 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn5ds",
  "tango-gamesupport-bn6",
+ "tango-gamesupport-common-ui",
  "tango-gamesupport-exe45",
  "tango-gamesupport-exeoss",
  "tango-library",
