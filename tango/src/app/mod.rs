@@ -1287,6 +1287,15 @@ impl App {
                     self.config.show_replay_inputs = !self.config.show_replay_inputs;
                     self.persist_config();
                 }
+                // Clip exports share the replay tab's quality setting, so a
+                // choice made in the player's clip strip also appears in the
+                // full export form and feeds the same renderer snapshot.
+                if let session::Message::Replay(session::view::replay::Message::SetClipExportScale(scale)) = &m
+                {
+                    return self.update_replays(tabs::replays::Message::Export(
+                        tabs::replays::ExportMessage::SetScale(*scale),
+                    ));
+                }
                 // Same deal for the opponent-screen PiP toggle — the session
                 // handler flips the live session's state; this keeps the
                 // choice sticking across replays.

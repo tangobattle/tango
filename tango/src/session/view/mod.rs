@@ -149,6 +149,10 @@ pub struct Ctx<'a> {
     /// Which DS screen leads the arrangement — live from config, like
     /// the stacking.
     pub ds_primary_screen: crate::config::DsPrimaryScreen,
+    /// Quality mode used by replay exports: `0` is lossless at native
+    /// resolution; `1..=10` is lossy at that integer upscale. Owned by
+    /// the replays tab, but surfaced in the replay clip strip too.
+    pub clip_export_scale: u8,
     pub clip_job: Option<ClipJob<'a>>,
     /// How many replays are waiting behind this one. The queue itself lives
     /// in the replays tab; the transport bar only needs the count, to say so
@@ -166,6 +170,7 @@ pub fn view<'a>(
     show_replay_inputs: bool,
     ds_screen_stacking: crate::config::DsScreenStacking,
     ds_primary_screen: crate::config::DsPrimaryScreen,
+    clip_export_scale: u8,
     clip_job: Option<ClipJob<'a>>,
     queued: usize,
     effect: &'static Effect,
@@ -181,6 +186,7 @@ pub fn view<'a>(
         show_replay_inputs,
         ds_screen_stacking,
         ds_primary_screen,
+        clip_export_scale,
         clip_job,
         queued,
         effect,

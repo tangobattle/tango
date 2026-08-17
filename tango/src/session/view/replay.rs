@@ -49,6 +49,9 @@ pub enum Message {
     /// both sides, drawn over playback). The flag lives in config —
     /// the App's wrapper flips + persists it; nothing to do here.
     ToggleInputDisplay,
+    /// Set the quality mode shared with the replay export form. The
+    /// replays tab owns this setting; the App wrapper forwards it.
+    SetClipExportScale(u8),
     /// Toggle the opponent-screen picture-in-picture (the bar's PiP
     /// button). The App wrapper also persists the choice to config.
     TogglePip,
@@ -126,6 +129,7 @@ pub(crate) fn keyboard_shortcut(event: &iced::keyboard::Event, speed: f32) -> Op
                 .unwrap_or(SPEED_STEPS[SPEED_STEPS.len() - 1]),
         )),
         (Code::Space, Modifiers::NONE, false) => Some(Message::TogglePlay),
+        (Code::KeyI, Modifiers::NONE, false) => Some(Message::ToggleInputDisplay),
         (Code::Tab, Modifiers::NONE, false) => Some(Message::ToggleSwapPerspective),
         (Code::KeyP, Modifiers::NONE, false) => Some(Message::TogglePip),
         _ => None,
@@ -230,7 +234,10 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         Message::ToggleClipTools => {
             state.scrub.tools_open = !state.scrub.tools_open;
         }
-        Message::ExportClip { .. } | Message::CancelClipExport | Message::SkipToQueued => {
+        Message::SetClipExportScale(_)
+        | Message::ExportClip { .. }
+        | Message::CancelClipExport
+        | Message::SkipToQueued => {
             // App-side: see the wrappers in crate::app.
         }
     }
@@ -287,6 +294,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
             r,
             state,
             ctx.show_replay_inputs,
+            ctx.clip_export_scale,
             ctx.clip_job,
             ctx.queued,
         ));
@@ -386,14 +394,23 @@ fn replay_controls<'a>(
     r: &'a ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
+    clip_export_scale: u8,
     clip_job: Option<ClipJob<'a>>,
     queued: usize,
 ) -> Element<'a, SessionMessage> {
     let now = iced::time::Instant::now();
     let hide_progress = state.controls_anim.progress(now);
-    let panel = container(replay_bar(lang, r, state, show_replay_inputs, clip_job, queued))
-        .width(Fill)
-        .style(hud_chip_plate);
+    let panel = container(replay_bar(
+        lang,
+        r,
+        state,
+        show_replay_inputs,
+        clip_export_scale,
+        clip_job,
+        queued,
+    ))
+    .width(Fill)
+    .style(hud_chip_plate);
     // The bar's own messages are replay-local; lift them into the
     // session message space before the shared hover-pin wrapper.
     let panel = Element::from(panel).map(SessionMessage::Replay);
@@ -425,6 +442,7 @@ fn replay_bar<'a>(
     r: &'a ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
+    clip_export_scale: u8,
     clip_job: Option<ClipJob<'a>>,
     queued: usize,
 ) -> Element<'a, Message> {
@@ -631,7 +649,7 @@ fn replay_bar<'a>(
     // subtree and reset its widget state mid-interaction — the speed
     // menu's open dropdown died exactly that way.
     let clip_row: Element<'a, Message> = if tools_open {
-        clip_strip(lang, state, clip_job)
+        clip_strip(lang, state, clip_export_scale, clip_job)
     } else {
         iced::widget::Space::new().height(0.001).into()
     };
@@ -670,11 +688,16 @@ fn clip_lift(state: &State) -> f32 {
 }
 
 /// The clip strip: mark-in/mark-out stamps, the marked span's
-/// wallclock readout, clear, and the export CTA — swapped wholesale
-/// for a progress line while an export job is running. Lives between
-/// the scrubber and the transport row, only while the bar's scissors
-/// toggle is on.
-fn clip_strip<'a>(lang: &'a LanguageIdentifier, state: &'a State, job: Option<ClipJob<'a>>) -> Element<'a, Message> {
+/// wallclock readout, export quality, clear, and the export CTA —
+/// swapped wholesale for a progress line while an export job is
+/// running. Lives between the scrubber and the transport row, only
+/// while the bar's scissors toggle is on.
+fn clip_strip<'a>(
+    lang: &'a LanguageIdentifier,
+    state: &'a State,
+    export_scale: u8,
+    job: Option<ClipJob<'a>>,
+) -> Element<'a, Message> {
     let chip = |icon: Icon, lit: bool, tip: String, msg: Option<Message>| -> Element<'a, Message> {
         let style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
             let mut st = telemetry_plate_button(theme, status);
@@ -812,6 +835,49 @@ fn clip_strip<'a>(lang: &'a LanguageIdentifier, state: &'a State, job: Option<Cl
             None => {}
         }
     }
+    // Clips use the same render quality as full replay exports. Keep
+    // the current mode visible in the strip and put every supported
+    // mode in one compact menu: 0 is native-size lossless RGB/FLAC;
+    // 1..=10 are CRF-rated H.264/AAC integer upscales.
+    let export_scale = export_scale.min(10);
+    let scale_label = |scale: u8| {
+        if scale == 0 {
+            t!(lang, "replays-export-scale-lossless").to_string()
+        } else {
+            format!("{scale}×")
+        }
+    };
+    let current_scale_label = scale_label(export_scale);
+    let quality_items = (0..=10)
+        .map(|scale| {
+            widgets::MenuItem::toggle(
+                scale_label(scale),
+                Message::SetClipExportScale(scale),
+                scale == export_scale,
+            )
+        })
+        .collect();
+    let quality_menu = iced::widget::tooltip(
+        widgets::MenuButton::new(
+            row![
+                Icon::SlidersHorizontal.widget().size(14.0),
+                text(current_scale_label.clone()).size(12),
+            ]
+            .spacing(6)
+            .align_y(Alignment::Center),
+            quality_items,
+            true,
+            [4.0, 8.0],
+            crate::ui::style::STANDARD_PADDING,
+            telemetry_plate_button,
+        )
+        .menu_width(112.0)
+        .on_toggle(Message::BarMenuToggled),
+        widgets::tooltip_bubble(format!("{}: {}", t!(lang, "replays-export-scale"), current_scale_label)),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(4);
+    strip = strip.push(quality_menu);
     strip = strip.push(chip(
         Icon::Delete,
         false,
@@ -1258,7 +1324,12 @@ mod tests {
             keyboard_shortcut(&key_press(Code::Tab, Modifiers::NONE, false), 1.0),
             Some(Message::ToggleSwapPerspective)
         ));
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::KeyI, Modifiers::NONE, false), 1.0),
+            Some(Message::ToggleInputDisplay)
+        ));
         assert!(keyboard_shortcut(&key_press(Code::Tab, Modifiers::NONE, true), 1.0).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::KeyI, Modifiers::NONE, true), 1.0).is_none());
         assert!(keyboard_shortcut(&key_press(Code::KeyF, Modifiers::NONE, false), 1.0).is_none());
     }
 }

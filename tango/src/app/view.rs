@@ -81,6 +81,7 @@ impl App {
                 self.config.show_replay_inputs,
                 self.config.ds_screen_stacking,
                 self.config.ds_primary_screen,
+                self.replays.export_settings.scale,
                 clip_job,
                 self.replays.queue.len(),
                 crate::platform::video::effects::effect_for(&self.config.video_filter),
