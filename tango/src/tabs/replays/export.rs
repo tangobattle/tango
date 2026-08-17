@@ -1,5 +1,5 @@
 //! Replay video export: the per-replay render job + its settings, the
-//! inline export panel (form → progress → result), and the message
+//! floating export popover (form → progress → result), and the message
 //! handling that drives them. Split out of the replays tab so the
 //! list/detail browsing code in `mod.rs` isn't carrying the whole
 //! encode pipeline's UI state.
@@ -59,7 +59,7 @@ pub enum ExportMessage {
     SetTwosided(bool),
     /// Toggle the Nth round in the per-replay round mask.
     ToggleRound(usize, bool),
-    /// Open / close the inline export-options panel. Distinct from
+    /// Open / close the export-options popover. Distinct from
     /// [`SaveAs`](Self::SaveAs) (which actually triggers the export).
     /// Both carry a path because panel open-state is per-replay — the
     /// same panel can be open on replay A while closed on B.
@@ -293,7 +293,7 @@ impl ExportJob {
 /// parent, looked up by path.
 #[derive(Debug, Default, Clone)]
 pub struct PerReplay {
-    /// Inline export panel visibility. The view forces it open
+    /// Export popover visibility. The view forces it open
     /// while a render is in flight (see [`ReplaysState::is_panel_open`]),
     /// so a closed bool here only takes effect after the render
     /// settles.
@@ -359,7 +359,7 @@ impl ReplaysState {
 
     /// True iff `path` has a render currently in progress. The
     /// Render-toggle button uses this to disable itself so the
-    /// user can't even try to close the panel mid-render.
+    /// user can't even try to close the popover mid-render.
     pub fn is_rendering(&self, path: &std::path::Path) -> bool {
         self.per
             .get(path)
@@ -380,9 +380,8 @@ impl ReplaysState {
     }
 }
 
-/// Inline export panel. Three-state body — the chrome (border +
-/// padding) stays put across all of them so the user remains
-/// anchored to the same surface during a render:
+/// Floating render popover. Three-state body inside one shared
+/// popover shell:
 ///
 ///   * No job: the form (scale / lossless / mute / round mask +
 ///     Save As…).
@@ -390,11 +389,36 @@ impl ReplaysState {
 ///   * Finished job: success/error line + Open Replay + Reset
 ///     (Reset clears the job → form returns).
 ///
-/// While `open` is false the panel collapses to a zero-height
-/// element so the detail layout reflows around it.
-pub(super) fn export_panel<'a>(
+fn popover_shell<'a>(
     lang: &'a LanguageIdentifier,
-    open: bool,
+    replay_path: &std::path::Path,
+    close_enabled: bool,
+    body: Element<'a, Message>,
+) -> Element<'a, Message> {
+    let close = widgets::icon_button_styled(
+        Icon::X,
+        t!(lang, "playback-close"),
+        close_enabled.then(|| Message::Export(ExportMessage::PanelClose(replay_path.to_path_buf()))),
+        [4.0, 6.0],
+        widgets::flat,
+    );
+    let header = row![
+        Icon::Clapperboard.widget().size(16.0),
+        text(t!(lang, "replays-export")).size(TEXT_BODY),
+        horizontal_space(),
+        close,
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center);
+    container(column![header, body].spacing(10))
+        .width(Length::Fixed(440.0))
+        .padding(12)
+        .style(widgets::panel)
+        .into()
+}
+
+pub(super) fn export_popover<'a>(
+    lang: &'a LanguageIdentifier,
     settings: &'a ExportSettings,
     selected_rounds: &'a [bool],
     // The recording opens on a setup section, so `selected_rounds[0]`
@@ -406,9 +430,6 @@ pub(super) fn export_panel<'a>(
     job: Option<&'a ExportJob>,
     replay_path: &std::path::Path,
 ) -> Element<'a, Message> {
-    if !open {
-        return Space::new().height(0).into();
-    }
     // In-flight + finished states wrap a tighter body — render
     // them first so the rest of the fn deals only with the form.
     if let Some(job) = job {
@@ -425,7 +446,7 @@ pub(super) fn export_panel<'a>(
                 // cancel — the encoder thread still has to wind down
                 // its current tick + flush the partial WebM, and we
                 // don't want a second click queueing anything.
-                let cancel_button = widgets::icon_button_maybe(
+                let cancel_button = widgets::icon_button_styled(
                     Icon::X,
                     t!(lang, "replays-export-cancel").to_string(),
                     if cancel_requested {
@@ -433,7 +454,8 @@ pub(super) fn export_panel<'a>(
                     } else {
                         Some(Message::Export(ExportMessage::Cancel(replay_path.to_path_buf())))
                     },
-                    STANDARD_PADDING,
+                    [4.0, 6.0],
+                    widgets::flat,
                 );
                 let caption = if cancel_requested {
                     t!(lang, "replays-export-cancelling")
@@ -477,15 +499,15 @@ pub(super) fn export_panel<'a>(
                             Icon::Play,
                             t!(lang, "replays-export-open"),
                             Message::Export(ExportMessage::OpenFile(path_for_open)),
-                            STANDARD_PADDING,
-                            widgets::primary_button,
+                            [4.0, 10.0],
+                            widgets::neutral,
                         ),
                         widgets::labeled_icon_button(
                             Icon::RefreshCw,
                             t!(lang, "replays-export-reset"),
                             Message::Export(ExportMessage::Dismiss(replay_path.to_path_buf())),
-                            STANDARD_PADDING,
-                            widgets::neutral,
+                            [4.0, 10.0],
+                            widgets::flat,
                         ),
                     ]
                     .spacing(8),
@@ -501,100 +523,64 @@ pub(super) fn export_panel<'a>(
                     Icon::RefreshCw,
                     t!(lang, "replays-export-reset"),
                     Message::Export(ExportMessage::Dismiss(replay_path.to_path_buf())),
-                    STANDARD_PADDING,
-                    widgets::neutral,
+                    [4.0, 10.0],
+                    widgets::flat,
                 ),
             ]
             .spacing(6)
             .into(),
         };
-        return container(column![body].padding(12))
-            .width(Fill)
-            .style(widgets::panel)
-            .into();
+        return popover_shell(lang, replay_path, job.result.is_some(), body);
     }
     // Form path — there's no job for THIS replay (the `if let
     // Some(job)` branch above returned). Multiple concurrent
     // renders are allowed, so the form is always live here.
-    let in_flight = false;
-    // Scale slider goes 0..=10. The leftmost stop (0) is the
-    // lossless mode (libx264rgb -qp 0); 1..=10 is the lossy
-    // nearest-neighbor upscale factor.
-    let scale_label = text(format!(
-        "{}: {}",
-        t!(lang, "replays-export-scale"),
-        if settings.scale == 0 {
-            t!(lang, "replays-export-scale-lossless").to_string()
-        } else {
-            format!("{}×", settings.scale)
-        }
-    ))
-    .size(TEXT_CAPTION)
-    .style(widgets::muted_text_style);
-    let scale_slider: Element<'a, Message> = iced::widget::slider(0..=10u8, settings.scale, |s| {
-        Message::Export(ExportMessage::SetScale(s))
-    })
-    .style(widgets::chunky_slider)
-    .width(Length::Fixed(140.0))
-    .into();
+    // The clip strip uses this exact picker and state too, so changing
+    // either surface immediately updates the other.
+    let scale_picker = widgets::replay_export_scale_picker(
+        lang,
+        settings.scale,
+        |scale| Message::Export(ExportMessage::SetScale(scale)),
+        None,
+    );
     let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
         .label(t!(lang, "replays-export-disable-bgm"))
-        .style(widgets::chunky_checkbox);
-    let bgm_chk: Element<'a, Message> = if in_flight {
-        bgm_chk.into()
-    } else {
-        bgm_chk
-            .on_toggle(|b| Message::Export(ExportMessage::SetDisableBgm(b)))
-            .into()
-    };
+        .style(widgets::chunky_checkbox)
+        .on_toggle(|b| Message::Export(ExportMessage::SetDisableBgm(b)));
     let twosided_chk = iced::widget::checkbox(settings.twosided)
         .label(t!(lang, "replays-export-twosided"))
-        .style(widgets::chunky_checkbox);
-    let twosided_chk: Element<'a, Message> = if in_flight {
-        twosided_chk.into()
-    } else {
-        twosided_chk
-            .on_toggle(|b| Message::Export(ExportMessage::SetTwosided(b)))
-            .into()
-    };
-    // Save As… commits the form. Disabled when nothing is selected
-    // for export. Floats to the right of the controls row, bottom-
-    // aligned so it sits level with the slider widget itself (not
-    // the caption above it).
+        .style(widgets::chunky_checkbox)
+        .on_toggle(|b| Message::Export(ExportMessage::SetTwosided(b)));
+    // Save As… commits the form. Disabled when nothing is selected.
     let any_round = selected_rounds.is_empty() || selected_rounds.iter().any(|b| *b);
-    let can_start = any_round && !in_flight;
+    let can_start = any_round;
     let save_as_btn: Element<'a, Message> = if can_start {
         widgets::labeled_icon_button(
             Icon::Upload,
             t!(lang, "replays-export-save-as"),
             Message::Export(ExportMessage::SaveAs(replay_path.to_path_buf())),
-            STANDARD_PADDING,
-            widgets::primary_button,
+            [4.0, 10.0],
+            widgets::neutral,
         )
     } else {
         widgets::labeled_icon_button_maybe(
             Icon::Upload,
             t!(lang, "replays-export-save-as"),
             None,
-            STANDARD_PADDING,
-            widgets::neutral,
+            [4.0, 10.0],
+            widgets::flat,
         )
     };
-    // Left column stacks the controls (scale + checkboxes) and the
-    // optional rounds row. The Save As button lives in the outer
-    // row so it can float all the way to the right and bottom-align
-    // against whatever vertical extent the left column ends up at
-    // (which grows when the rounds row is present).
-    let controls_row = row![column![scale_label, scale_slider].spacing(2), bgm_chk, twosided_chk,]
-        .spacing(16)
+    let controls_row = row![scale_picker, bgm_chk, twosided_chk,]
+        .spacing(14)
         .align_y(Alignment::Center);
-    let mut left_col = column![controls_row].spacing(6);
+    let mut body = column![controls_row].spacing(8);
     if rounds_pending {
         // Where the rounds fall is the match analysis's answer, and it
         // hasn't finished. Say so rather than leaving a gap the user
         // reads as "this replay has one round": exporting right now
         // renders the whole match as a single chapter.
-        left_col = left_col.push(
+        body = body.push(
             text(t!(lang, "replays-export-rounds-analyzing"))
                 .size(TEXT_CAPTION)
                 .style(widgets::muted_text_style),
@@ -612,20 +598,13 @@ pub(super) fn export_panel<'a>(
             };
             let cb = iced::widget::checkbox(*picked)
                 .label(section_label)
-                .style(widgets::chunky_checkbox);
-            let cb: Element<'a, Message> = if in_flight {
-                cb.into()
-            } else {
-                cb.on_toggle(move |v| Message::Export(ExportMessage::ToggleRound(i, v)))
-                    .into()
-            };
+                .style(widgets::chunky_checkbox)
+                .on_toggle(move |v| Message::Export(ExportMessage::ToggleRound(i, v)));
             rounds_row = rounds_row.push(cb);
         }
-        left_col = left_col.push(rounds_row);
+        body = body.push(rounds_row);
     }
-    let body = row![left_col, horizontal_space(), save_as_btn]
-        .spacing(16)
-        .align_y(Alignment::End);
+    body = body.push(row![horizontal_space(), save_as_btn].align_y(Alignment::Center));
 
-    container(body.padding(12)).width(Fill).style(widgets::panel).into()
+    popover_shell(lang, replay_path, true, body.into())
 }

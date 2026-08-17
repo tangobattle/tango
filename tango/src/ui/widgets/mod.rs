@@ -50,6 +50,64 @@ pub fn menu_button<'a, M: Clone + 'a>(
         .into()
 }
 
+/// The replay renderer's shared quality/scale picker. Full replay
+/// exports and marked clips both edit the same setting, so they use
+/// this one control too: `0` is lossless at native resolution and
+/// `1..=10` is a lossy integer upscale.
+pub fn replay_export_scale_picker<'a, M: Clone + 'a>(
+    lang: &'a unic_langid::LanguageIdentifier,
+    scale: u8,
+    on_select: impl Fn(u8) -> M,
+    on_toggle: Option<fn(bool) -> M>,
+) -> Element<'a, M> {
+    let scale = scale.min(10);
+    let value_label = |scale: u8| {
+        if scale == 0 {
+            crate::i18n::t!(lang, "replays-export-scale-lossless").to_string()
+        } else {
+            format!("{scale}×")
+        }
+    };
+    let current_label = value_label(scale);
+    let items = (0..=10)
+        .map(|candidate| MenuItem::toggle(value_label(candidate), on_select(candidate), candidate == scale))
+        .collect();
+    let mut picker = MenuButton::new(
+        row![
+            Icon::Scaling.widget().size(14.0),
+            text(format!(
+                "{}: {}",
+                crate::i18n::t!(lang, "replays-export-scale"),
+                current_label
+            ))
+            .size(TEXT_CAPTION),
+            Icon::ChevronDown.widget().size(12.0),
+        ]
+        .spacing(6)
+        .align_y(Alignment::Center),
+        items,
+        true,
+        [4.0, 8.0],
+        crate::ui::style::STANDARD_PADDING,
+        neutral,
+    )
+    .menu_width(144.0);
+    if let Some(on_toggle) = on_toggle {
+        picker = picker.on_toggle(on_toggle);
+    }
+    tooltip(
+        picker,
+        tooltip_bubble(format!(
+            "{}: {}",
+            crate::i18n::t!(lang, "replays-export-scale"),
+            current_label
+        )),
+        tooltip::Position::Top,
+    )
+    .gap(4)
+    .into()
+}
+
 /// The fullscreen top bar's app-close X — window chrome, not a
 /// toolbar action. Borderless and muted at rest so it doesn't
 /// compete with the nav pills, flipping to a solid danger plate

@@ -797,6 +797,12 @@ fn clip_strip<'a>(
             Some(Message::SetClipEnd),
         ),
         stamp(mark_out),
+        chip(
+            Icon::Eraser,
+            false,
+            t!(lang, "playback-clip-clear"),
+            (mark_in.is_some() || mark_out.is_some()).then_some(Message::ClearClipMarks),
+        ),
     ]
     .spacing(8)
     .align_y(Alignment::Center);
@@ -835,55 +841,14 @@ fn clip_strip<'a>(
             None => {}
         }
     }
-    // Clips use the same render quality as full replay exports. Keep
-    // the current mode visible in the strip and put every supported
-    // mode in one compact menu: 0 is native-size lossless RGB/FLAC;
-    // 1..=10 are CRF-rated H.264/AAC integer upscales.
-    let export_scale = export_scale.min(10);
-    let scale_label = |scale: u8| {
-        if scale == 0 {
-            t!(lang, "replays-export-scale-lossless").to_string()
-        } else {
-            format!("{scale}×")
-        }
-    };
-    let current_scale_label = scale_label(export_scale);
-    let quality_items = (0..=10)
-        .map(|scale| {
-            widgets::MenuItem::toggle(
-                scale_label(scale),
-                Message::SetClipExportScale(scale),
-                scale == export_scale,
-            )
-        })
-        .collect();
-    let quality_menu = iced::widget::tooltip(
-        widgets::MenuButton::new(
-            row![
-                Icon::SlidersHorizontal.widget().size(14.0),
-                text(current_scale_label.clone()).size(12),
-            ]
-            .spacing(6)
-            .align_y(Alignment::Center),
-            quality_items,
-            true,
-            [4.0, 8.0],
-            crate::ui::style::STANDARD_PADDING,
-            telemetry_plate_button,
-        )
-        .menu_width(112.0)
-        .on_toggle(Message::BarMenuToggled),
-        widgets::tooltip_bubble(format!("{}: {}", t!(lang, "replays-export-scale"), current_scale_label)),
-        iced::widget::tooltip::Position::Top,
-    )
-    .gap(4);
+    // Full replay exports use this exact picker and state too.
+    let quality_menu = widgets::replay_export_scale_picker(
+        lang,
+        export_scale,
+        Message::SetClipExportScale,
+        Some(Message::BarMenuToggled),
+    );
     strip = strip.push(quality_menu);
-    strip = strip.push(chip(
-        Icon::Delete,
-        false,
-        t!(lang, "playback-clip-clear"),
-        (mark_in.is_some() || mark_out.is_some()).then_some(Message::ClearClipMarks),
-    ));
     // The one CTA in the strip: primary once a valid span exists.
     let export_msg = match (mark_in, mark_out) {
         (Some(start), Some(end)) if start < end => Some(Message::ExportClip { start, end }),

@@ -1210,7 +1210,8 @@ fn replay_detail<'a>(
     let title = format!("{game_short} @ {}", link_code_display(lang, &md.link_code));
 
     // Title + metadata pane: title row with action buttons, then
-    // export panel, timestamp, file path.
+    // timestamp and file path. Render settings float above this
+    // detail stack as a popover rather than changing its layout.
     let title_pane = container(
         column![
             row![
@@ -1362,16 +1363,6 @@ fn replay_detail<'a>(
                 .align_y(Alignment::Center),
             ]
             .spacing(3),
-            export::export_panel(
-                lang,
-                state.is_panel_open(&r.path),
-                &state.export_settings,
-                state.rounds_for(&r.path),
-                state.hp_charts.get(&r.path).is_some_and(|c| c.has_setup),
-                state.hp_pending.contains(&r.path),
-                state.job(&r.path),
-                &r.path,
-            ),
         ]
         .spacing(6),
     )
@@ -1455,7 +1446,47 @@ fn replay_detail<'a>(
     let panes = column![title_pane, matchup_pane, hp_pane]
         .spacing(style::PANE_GAP)
         .width(Fill);
-    panes.push(preview).height(Fill).into()
+    let content: Element<'a, Message> = panes.push(preview).height(Fill).into();
+    if !state.is_panel_open(&r.path) {
+        return content;
+    }
+
+    // Transparent click-away layer, then the popover itself. It is
+    // aligned beneath the top-right replay actions and floats over the
+    // detail panes without reflowing them. An in-flight render stays
+    // pinned: its progress/cancel controls must remain reachable.
+    let dismiss = if state.is_rendering(&r.path) {
+        Message::NoOp
+    } else {
+        Message::Export(ExportMessage::PanelClose(r.path.clone()))
+    };
+    let click_away =
+        iced::widget::mouse_area(iced::widget::Space::new().width(Length::Fill).height(Length::Fill))
+            .on_press(dismiss);
+    let popover = export::export_popover(
+        lang,
+        &state.export_settings,
+        state.rounds_for(&r.path),
+        state.hp_charts.get(&r.path).is_some_and(|c| c.has_setup),
+        state.hp_pending.contains(&r.path),
+        state.job(&r.path),
+        &r.path,
+    );
+    // Swallow presses on unused parts of the panel so they do not hit
+    // the click-away layer. Child controls capture their own presses.
+    let popover = iced::widget::mouse_area(popover).on_press(Message::NoOp);
+    let positioned = container(popover)
+        .width(Fill)
+        .height(Fill)
+        .align_x(iced::alignment::Horizontal::Right)
+        .align_y(iced::alignment::Vertical::Top)
+        .padding(iced::Padding {
+            top: 48.0,
+            right: style::PANE_PADDING,
+            bottom: 0.0,
+            left: 0.0,
+        });
+    iced::widget::stack![content, click_away, positioned].into()
 }
 
 /// Height of the HP graph in the detail panel: a 54 px trace field plus
