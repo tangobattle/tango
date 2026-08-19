@@ -42,6 +42,10 @@ pub enum Error {
     /// Booting, priming, or restoring the re-simulation pair.
     #[error(transparent)]
     Engine(#[from] tango_match::Error),
+    /// The encoder needs an integer rate, while an engine reports its
+    /// source rate as a float so live playback can servo it.
+    #[error("invalid native audio sample rate {0}")]
+    InvalidAudioSampleRate(f64),
     /// A replay naming a side the two-seat pair doesn't have.
     #[error("bad local player index {0}")]
     BadLocalPlayer(usize),
@@ -81,6 +85,7 @@ fn encoder_settings(
     width: u32,
     height: u32,
     timing: tango_match::FrameTiming,
+    audio_sample_rate: u32,
     audio_tracks: usize,
 ) -> encoder_facade::Settings {
     let lossless = scale.is_none();
@@ -111,7 +116,7 @@ fn encoder_settings(
             } else {
                 encoder_facade::AudioCodec::Aac { bitrate: 384_000 }
             },
-            sample_rate: SAMPLE_RATE as u32,
+            sample_rate: audio_sample_rate,
             channels: AUDIO_CHANNELS as u8,
         },
         container: container(lossless),
@@ -124,7 +129,9 @@ fn encoder_settings(
     }
 }
 
-const SAMPLE_RATE: f64 = 48000.0;
+/// AAC exports stay at the broadly-supported 48 kHz rate. Lossless
+/// exports use the rate reported by the emulator instead.
+const LOSSY_SAMPLE_RATE: f64 = 48_000.0;
 
 const AUDIO_CHANNELS: usize = 2;
 
@@ -248,6 +255,27 @@ enum Phase {
     Finished,
 }
 
+/// One audio track's path from emulator PCM to encoder PCM. Lossless
+/// rendering uses [`Passthrough`]; lossy rendering uses [`Resampler`].
+/// The render loop doesn't need to know which one it owns.
+trait AudioConverter: Send {
+    /// Convert interleaved stereo `samples`, using `out` when conversion
+    /// needs storage, and return the PCM to hand to the encoder.
+    fn convert<'a>(&mut self, source_rate: f64, samples: &'a [i16], out: &'a mut Vec<i16>) -> &'a [i16];
+
+    /// Forget any conversion state when a new written span begins.
+    fn reset(&mut self) {}
+}
+
+/// Native-rate PCM handed straight through to the encoder.
+struct Passthrough;
+
+impl AudioConverter for Passthrough {
+    fn convert<'a>(&mut self, _source_rate: f64, samples: &'a [i16], _out: &'a mut Vec<i16>) -> &'a [i16] {
+        samples
+    }
+}
+
 /// One audio track's offline rate conversion: samples staged at the
 /// console's own rate, read out at the output's. The same linear
 /// interpolation the live session plays through, minus the servo — an
@@ -297,12 +325,26 @@ impl Resampler {
         }
         written
     }
+}
 
-    /// Forget everything staged — for a write gap's restart, so a new
-    /// span doesn't open on the tail of a span the viewer never saw.
+impl AudioConverter for Resampler {
+    fn convert<'a>(&mut self, source_rate: f64, samples: &'a [i16], out: &'a mut Vec<i16>) -> &'a [i16] {
+        self.feed(samples);
+        let frames = self.take(source_rate / LOSSY_SAMPLE_RATE, out);
+        &out[..frames * AUDIO_CHANNELS]
+    }
+
     fn reset(&mut self) {
         self.source.clear();
         self.cursor = 0.0;
+    }
+}
+
+fn audio_converter(lossless: bool) -> Box<dyn AudioConverter> {
+    if lossless {
+        Box::new(Passthrough)
+    } else {
+        Box::new(Resampler::default())
     }
 }
 
@@ -352,7 +394,7 @@ pub struct Render<W: Writer> {
 
     scratch: Vec<i16>,
     samples: Vec<i16>,
-    resamplers: [Resampler; 2],
+    audio_converters: [Box<dyn AudioConverter>; 2],
     prev_should_write: bool,
 
     /// Chapter bookkeeping, in output frames: the open chapter's
@@ -369,9 +411,9 @@ pub struct Render<W: Writer> {
 impl<W: Writer> Render<W> {
     /// Boot the re-simulation and open the encoders.
     ///
-    /// `open_output` opens the destination. The encoders start first, so
-    /// a missing one fails before seconds of CPU go into the re-sim, and
-    /// the output opens last, so a broken encoder can't truncate a file
+    /// `open_output` opens the destination. The pair boots first so its
+    /// audio rate can configure the lossless encoder; the output opens
+    /// after the encoder, so neither kind of failure can truncate a file
     /// it will never fill.
     pub fn new(
         request: Request<'_>,
@@ -415,12 +457,8 @@ impl<W: Writer> Render<W> {
             side_size
         };
 
+        let lossless = scale.is_none();
         let audio_tracks = if twosided { 2 } else { 1 };
-        let session = encoder_facade::Session::new(
-            encoder_settings(scale, width, height, backend.frame_timing(), audio_tracks),
-            canceller,
-        )?;
-        let output = encoder_facade::Output::new(open_output()?);
 
         // Jump-start a clip from its capture: the pair starts at the
         // capture tick and only the (≤ one keyframe interval) gap to the
@@ -437,6 +475,27 @@ impl<W: Writer> Render<W> {
         let mut playback = backend.open_replay(config)?.linear(land_on)?;
         // Drop the audio the boot piled up (nothing drained during it).
         playback.discard_audio();
+
+        // A lossless render carries the emulator's PCM straight into
+        // FLAC at the rate it was produced. Lossy AAC stays at 48 kHz,
+        // with the offline converter below bridging any source rate.
+        let audio_sample_rate = if lossless {
+            integer_sample_rate(playback.side(first_seat).audio_sample_rate())?
+        } else {
+            LOSSY_SAMPLE_RATE as u32
+        };
+        let session = encoder_facade::Session::new(
+            encoder_settings(
+                scale,
+                width,
+                height,
+                backend.frame_timing(),
+                audio_sample_rate,
+                audio_tracks,
+            ),
+            canceller,
+        )?;
+        let output = encoder_facade::Output::new(open_output()?);
 
         let progress_base = playback.cursor() as usize;
         // The re-sim stops at the last selected section's end (see
@@ -472,7 +531,7 @@ impl<W: Writer> Render<W> {
             frame: vec![0u8; (width * height * 4) as usize],
             scratch: vec![0i16; 16384 * AUDIO_CHANNELS],
             samples: Vec::new(),
-            resamplers: [Resampler::default(), Resampler::default()],
+            audio_converters: std::array::from_fn(|_| audio_converter(lossless)),
             prev_should_write: false,
             frames_written: 0,
             chapters: vec![],
@@ -557,13 +616,15 @@ impl<W: Writer> Render<W> {
             self.open_chapter = Some((cur_round, self.frames_written));
         }
         if should_write && !self.prev_should_write {
-            for r in &mut self.resamplers {
-                r.reset();
+            for converter in &mut self.audio_converters {
+                converter.reset();
             }
         }
         self.prev_should_write = should_write;
 
-        // Drain + resample each seat's tick of audio; blit its frame.
+        // Drain each seat's tick of audio; lossless PCM goes straight
+        // through at the emulator's rate, while lossy audio is
+        // converted to 48 kHz. Then blit the seat's frame.
         // Track/screen order: shown perspective first. An unwritten
         // tick still drains — the consoles' own rings are small, and
         // sound left there would open the next span as a stale burst —
@@ -581,21 +642,29 @@ impl<W: Writer> Render<W> {
                 let written = side
                     .drain_audio(&mut self.scratch)
                     .min(self.scratch.len() / AUDIO_CHANNELS);
-                self.resamplers[slot].feed(&self.scratch[..written * AUDIO_CHANNELS]);
                 if written == 0 {
                     break;
                 }
+                if should_write {
+                    let drained = &self.scratch[..written * AUDIO_CHANNELS];
+                    let samples = self.audio_converters[slot].convert(rate, drained, &mut self.samples);
+                    self.session.write_audio(slot, samples)?;
+                }
             }
-            let n = self.resamplers[slot].take(rate / SAMPLE_RATE, &mut self.samples);
             if should_write {
-                self.session.write_audio(slot, &self.samples[..n * AUDIO_CHANNELS])?;
                 if let Some(fb) = side.frame() {
                     let width = if self.twosided {
                         self.side_size.0 as usize * 2
                     } else {
                         self.side_size.0 as usize
                     };
-                    blit_seat(&mut self.frame, width, slot * self.side_size.0 as usize, &self.screens, &fb);
+                    blit_seat(
+                        &mut self.frame,
+                        width,
+                        slot * self.side_size.0 as usize,
+                        &self.screens,
+                        &fb,
+                    );
                 }
             }
         }
@@ -625,6 +694,16 @@ impl<W: Writer> Render<W> {
             });
         }
     }
+}
+
+/// Turn the engine's source-rate report into the integer rate the
+/// encoder accepts without silently rounding a value it cannot encode
+/// exactly.
+fn integer_sample_rate(rate: f64) -> Result<u32> {
+    if !rate.is_finite() || rate < 1.0 || rate > u32::MAX as f64 || rate.fract() != 0.0 {
+        return Err(Error::InvalidAudioSampleRate(rate));
+    }
+    Ok(rate as u32)
 }
 
 /// Run a render to completion on the calling thread, reporting
@@ -785,10 +864,38 @@ mod tests {
         let mut out = Vec::new();
         let mut total = 0usize;
         for _ in 0..100 {
-            resampler.feed(&vec![100i16; 548 * 2]);
-            total += resampler.take(32768.0 / 48000.0, &mut out);
+            let input = vec![100i16; 548 * 2];
+            total += resampler.convert(32_768.0, &input, &mut out).len() / AUDIO_CHANNELS;
         }
         let want = (548.0 * 100.0 * 48000.0 / 32768.0) as usize;
         assert!(total.abs_diff(want) < 4, "{total} output frames for {want} expected");
+    }
+
+    #[test]
+    fn passthrough_returns_native_pcm_directly() {
+        let input = vec![-32_768, 32_767, -123, 456];
+        let mut out = vec![7; input.len()];
+        let samples = Passthrough.convert(32_768.0, &input, &mut out);
+        assert_eq!(samples, input);
+        assert_eq!(samples.as_ptr(), input.as_ptr());
+    }
+
+    #[test]
+    fn native_sample_rates_are_preserved_exactly() {
+        assert_eq!(integer_sample_rate(32_768.0).unwrap(), 32_768);
+        assert!(integer_sample_rate(32_768.5).is_err());
+
+        let settings = encoder_settings(
+            None,
+            240,
+            160,
+            tango_match::FrameTiming {
+                timescale: 16_777_216,
+                frame_duration: 280_896,
+            },
+            32_768,
+            1,
+        );
+        assert_eq!(settings.audio.sample_rate, 32_768);
     }
 }
