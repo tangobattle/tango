@@ -494,24 +494,15 @@ impl tango_gamesupport_common_ui::editor::BuildWarnings for DeckWarnings {
     }
 }
 
-/// Whether BCC's private deck findings make the save structurally unusable.
-fn deck_violations_block_save(violations: &[DeckViolation]) -> bool {
-    violations
-        .iter()
-        .any(|violation| matches!(violation, DeckViolation::MissingNavi))
-}
-
 pub fn build_report(loaded: &OpenSave) -> BuildReport {
     let violations = current_deck_violations(loaded);
     if violations.is_empty() {
         return BuildReport::default();
     }
-    let blocks_save = deck_violations_block_save(&violations);
     BuildReport {
         error_tabs: [tango_gamesupport_common_ui::editor::view::Tab::ProgramDeck]
             .into_iter()
             .collect(),
-        blocks_save,
     }
 }
 
@@ -880,12 +871,13 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
         }
         // The slot this row would fill: the picked one, else the first
         // empty one. A full deck with nothing picked disables the
-        // library. Legality is advisory: over-budget program chips and
-        // Navi choices that would reduce capacity too far stay clickable
-        // and turn red.
+        // library. Over-budget program chips and Navi choices that would
+        // reduce capacity too far are shown disabled with an explanatory
+        // tooltip.
         let target = selected.or(first_empty);
         let issue = target.and_then(|slot| candidate_issue(lang, loaded, slot, id));
-        let on_add = target.map(|slot| Action::SetDeckChip {
+        let selectable = issue.is_none();
+        let on_add = target.filter(|_| selectable).map(|slot| Action::SetDeckChip {
             slot,
             chip_id: id,
             code: tango_gamesupport_common_dataview::save::ChipCode::Star,
@@ -976,9 +968,8 @@ fn sorted_library_entries(loaded: &OpenSave, navi_targeted: bool, sort: LibraryS
 /// are the element indicator then AP / HP / MB (the card screen's
 /// stats — the chips carry no code letters). Same composition as the
 /// shared folder library row — flush stripe gutter over `list_item`'s
-/// zebra base, danger text for advisory-invalid choices, and a translucent
-/// wash only when there is no target slot — so the two editors read
-/// identically.
+/// zebra base and a translucent wash for unavailable choices — so the two
+/// editors read identically.
 fn library_row<'a>(
     loaded: &'a OpenSave,
     id: usize,
@@ -987,7 +978,6 @@ fn library_row<'a>(
     on_add: Option<Action>,
     issue: Option<String>,
 ) -> Element<'a, Action> {
-    let illegal = issue.is_some();
     let info = bcc_assets(loaded).and_then(|a| a.chip_info(id));
     let (elem, hp, ap, mb) = info
         .map(|i| (i.element(), i.hp(), i.attack_power(), i.mb()))
@@ -1036,11 +1026,7 @@ fn library_row<'a>(
         .align_y(Alignment::Center);
     let addable = on_add.is_some();
     let body = button(content).width(Fill).padding(0);
-    let mut body = if illegal && addable {
-        body.style(widgets::danger_text_list_item(row_idx))
-    } else {
-        body.style(widgets::list_item(false, row_idx))
-    };
+    let mut body = body.style(widgets::list_item(false, row_idx));
     if let Some(action) = on_add {
         body = body.on_press(action);
     }
@@ -1120,16 +1106,6 @@ mod legality_tests {
         let english = "en-US".parse().unwrap();
 
         assert!(warnings.format(&english)[0].starts_with("Cannon, HiCannon:"));
-    }
-
-    #[test]
-    fn only_a_missing_navi_blocks_saving_the_program_deck() {
-        assert!(deck_violations_block_save(&[DeckViolation::MissingNavi]));
-        assert!(!deck_violations_block_save(&[DeckViolation::Chip {
-            slot: 0,
-            id: 1,
-            kind: DeckViolationKind::ProgramDeckExceedsMemory { used: 90, limit: 80 },
-        }]));
     }
 
     #[test]

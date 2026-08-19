@@ -163,7 +163,6 @@ pub fn build_report(loaded: &OpenSave) -> BuildReport {
         error_tabs: [tango_gamesupport_common_ui::editor::view::Tab::PatchCards]
             .into_iter()
             .collect(),
-        blocks_save: false,
     }
 }
 

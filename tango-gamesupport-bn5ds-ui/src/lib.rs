@@ -138,8 +138,9 @@ impl GameEdit for SetPartyNavi {
 }
 
 /// Put one more party program on a slot's member: the member's record takes
-/// the summed bonuses and the slot entry takes the program list. Gauge and
-/// copy limits are advisory, so only the fixed loadout length gates the offer.
+/// the summed bonuses and the slot entry takes the program list. Only the fixed
+/// loadout length gates the offer; gauge and copy-limit errors block Save until
+/// the user corrects them.
 #[derive(Debug)]
 struct AddPartyProgram {
     slot: usize,
@@ -600,8 +601,6 @@ fn partycust_build_report(loaded: &OpenSave) -> BuildReport {
     }
     BuildReport {
         error_tabs: [Tab::Party].into_iter().collect(),
-        // An overfilled Party Customizer is illegal but structurally valid.
-        blocks_save: false,
     }
 }
 
@@ -702,7 +701,8 @@ fn partycust_gauge<'a>(loaded: &'a OpenSave, capacity: u8, equipped: &[usize]) -
 /// Editing, the navi is a dropdown over the file's recruited roster
 /// (the CHANGE button's own offer), each program grows a ✕, and a
 /// dropdown of what the fixed loadout can still hold sits under them. Programs
-/// remain available when they would exceed the gauge or advisory copy limit.
+/// remain available when they would exceed the gauge or copy limit, but the
+/// resulting editor error disables Save.
 ///
 /// Returned as its two halves so each caller can hang them in the
 /// container its side of the editor wants: see [`party_slot_pane`] and

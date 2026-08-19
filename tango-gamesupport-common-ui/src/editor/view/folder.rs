@@ -134,8 +134,8 @@ pub fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave, g
 /// slot. Each pane scrolls independently. The equipped navi's
 /// [`crate::dataview::save::FolderLimits`] (mega/giga caps, per-chip copy
 /// cap, Regular/Tag memory) are surfaced in the folder header and enforced
-/// by red, explained chip text plus disabled REG / TAG toggles that would
-/// break their separate memory rules. Limit-breaking additions remain allowed.
+/// by disabled, explained library rows plus disabled REG / TAG toggles that
+/// would break their separate memory rules.
 pub fn render_folder_edit<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
@@ -338,14 +338,15 @@ pub fn render_folder_edit<'a>(
         if !filter.is_empty() && !name.to_lowercase().contains(filter.as_str()) {
             continue;
         }
-        // A full folder uses the old disabled gray wash. Otherwise, red text
-        // explains which limit the still-allowed addition would exceed.
+        // A full folder and any addition that would violate a folder limit are
+        // disabled with the same gray wash. The tooltip explains the reason.
         let full = filled >= folder_size;
         let issues = if full {
             vec![]
         } else {
             usage.chip_issues(loaded.assets.as_ref(), id, &limits, 1)
         };
+        let addable = !full && issues.is_empty();
         lib_list = lib_list.push(library_entry_row(
             lang,
             loaded,
@@ -355,7 +356,7 @@ pub fn render_folder_edit<'a>(
             shown,
             chips_have_mb,
             issues,
-            !full,
+            addable,
         ));
         shown += 1;
     }
@@ -459,8 +460,8 @@ fn folder_slot_row<'a>(
 /// One chip+code in the editor's right pane (the library / palette).
 /// Shows the chip's stats (element / code / ATK / MB, like the read-only
 /// list). The whole row is a click-to-add button that drops this
-/// chip+code into the folder. A full folder disables it; a folder-limit
-/// violation only turns its text red and leaves it addable.
+/// chip+code into the folder. A full folder or a folder-limit violation
+/// grays it out and makes it unavailable.
 fn library_entry_row<'a>(
     lang: &'a LanguageIdentifier,
     loaded: &'a OpenSave,
@@ -479,11 +480,12 @@ fn library_entry_row<'a>(
         info.as_ref().map(|i| i.dark()).unwrap_or(false),
     );
     let [element, atk, mb] = chip_stat_cells(loaded, chip_id, chips_have_mb);
-    let illegal = !issues.is_empty() && addable;
-    let issue = if addable {
+    let issue = if !issues.is_empty() {
         render_build_violation_reasons(lang, &issues)
-    } else {
+    } else if !addable {
         Some(t!(lang, "folder-cannot-add-full"))
+    } else {
+        None
     };
 
     let code_cell = container(text(code.to_string()).size(TEXT_BODY).font(iced::Font::MONOSPACE))
@@ -507,8 +509,7 @@ fn library_entry_row<'a>(
     // padding of its own), so `list_item`'s zebra base paints the full
     // width behind it and the gutter stays tinted even when a chip has no
     // accent. Same composition as `edit_row_wrap` / `card_wrap`, so the
-    // library row isn't a bespoke wrapper. Only a full folder disables it;
-    // folder-limit warnings keep the row clickable. ChipCode is Copy.
+    // library row isn't a bespoke wrapper. ChipCode is Copy.
     let stripe: Element<'a, Action> = container(Space::new())
         .width(Length::Fixed(6.0))
         .height(Length::Fill)
@@ -521,17 +522,12 @@ fn library_entry_row<'a>(
         .height(Length::Shrink)
         .align_y(Alignment::Center);
     let body = button(content).width(Fill).padding(0);
-    let mut body = if illegal {
-        body.style(widgets::danger_text_list_item(row_idx))
-    } else {
-        body.style(widgets::list_item(false, row_idx))
-    };
+    let mut body = body.style(widgets::list_item(false, row_idx));
     if addable {
         body = body.on_press(Action::AddChip { chip_id, code });
     }
-    // A full folder has no slot to receive another chip. Restore the original
-    // disabled treatment: a translucent pane-coloured wash over the whole
-    // row, distinct from the red text used for advisory limit violations.
+    // Unavailable choices use a translucent pane-coloured wash over the whole
+    // row, whether the folder is full or the addition would violate a limit.
     let row_el: Element<'a, Action> = if addable {
         body.into()
     } else {
@@ -631,7 +627,7 @@ fn sorted_library_entries(
     rows.into_iter().map(|e| (e.id, e.name, e.code)).collect()
 }
 
-// The folder's class/copy tallies and structured advisory answers live with
+// The folder's class/copy tallies and structured legality answers live with
 // the model, in `tango_gamesupport::model::rules`. Re-exported here because
 // this is where the panes that render them look.
 pub use crate::build::BuildViolationKind;

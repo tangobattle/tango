@@ -27,13 +27,13 @@ pub use tango_gamesupport::{BuildWarnings, OpaqueBuildWarnings};
 pub type Save = dyn crate::dataview::save::Save + Send + Sync;
 pub type Assets = dyn crate::dataview::rom::Assets + Send + Sync;
 
-/// Build-legality state used only by the loaded editor: section chrome and
-/// whether committing is blocked. Prepared-save validation is handled by
+/// Build-legality state used only by the loaded editor. Any tab in
+/// [`error_tabs`](Self::error_tabs) blocks committing until its errors are
+/// resolved. Prepared-save validation is handled by
 /// [`GameSaveEditor::validate_save`] before editor state is constructed.
 #[derive(Default)]
 pub struct BuildReport {
     pub error_tabs: std::collections::HashSet<Tab>,
-    pub blocks_save: bool,
 }
 
 impl BuildReport {
@@ -41,7 +41,10 @@ impl BuildReport {
     /// concrete violation vocabulary.
     pub fn extend(&mut self, other: Self) {
         self.error_tabs.extend(other.error_tabs);
-        self.blocks_save |= other.blocks_save;
+    }
+
+    pub fn has_errors(&self) -> bool {
+        !self.error_tabs.is_empty()
     }
 }
 

@@ -225,37 +225,7 @@ pub fn nav_tab_button_badged<'a, M: Clone + 'a>(
     if !badge {
         return pill;
     }
-    // 7 px glowing pip in the pill's top-right corner. The Fill
-    // container resolves to the base layer's (the pill's) bounds —
-    // see iced's Stack sizing — so this floats inside the pill's
-    // own chrome.
-    let pip = container(iced::widget::Space::new().width(7).height(7)).style(|theme: &Theme| {
-        let primary = theme.palette().primary;
-        container::Style {
-            background: Some(iced::Background::Color(primary)),
-            border: iced::Border {
-                radius: 3.5.into(),
-                ..Default::default()
-            },
-            shadow: iced::Shadow {
-                color: iced::Color { a: 0.7, ..primary },
-                offset: iced::Vector::new(0.0, 0.0),
-                blur_radius: 6.0,
-            },
-            ..Default::default()
-        }
-    });
-    iced::widget::Stack::new()
-        .push(pill)
-        .push(
-            container(pip)
-                .width(iced::Length::Fill)
-                .height(iced::Length::Fill)
-                .align_x(iced::alignment::Horizontal::Right)
-                .align_y(iced::alignment::Vertical::Top)
-                .padding(4),
-        )
-        .into()
+    pill_tab_badge(pill, |theme| theme.palette().primary)
 }
 
 /// Icon-only variant of [`nav_tab_button`] for the right-aligned

@@ -142,8 +142,7 @@ fn candidate_violations_from_parts(
 }
 
 /// Preview the legality consequences of placing one chip into one deck slot.
-/// Editors use this to keep advisory-invalid choices selectable while marking
-/// them red before the save is mutated.
+/// Editors use this to disable invalid choices before the save is mutated.
 pub fn candidate_violations(
     save: &crate::save::Save,
     assets: &crate::rom::Assets,

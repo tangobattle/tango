@@ -383,6 +383,42 @@ pub fn pill_tab<'a, M: Clone + 'a>(
         .into()
 }
 
+/// Float a 7 px glowing status pip over a pill tab's top-right corner without
+/// changing the pill's layout bounds. `color` lets callers distinguish kinds
+/// of attention while sharing the same placement and glow treatment.
+pub fn pill_tab_badge<'a, M: 'a>(
+    pill: Element<'a, M>,
+    color: impl Fn(&Theme) -> iced::Color + 'a,
+) -> Element<'a, M> {
+    let pip = container(iced::widget::Space::new().width(7).height(7)).style(move |theme: &Theme| {
+        let color = color(theme);
+        container::Style {
+            background: Some(iced::Background::Color(color)),
+            border: iced::Border {
+                radius: 3.5.into(),
+                ..Default::default()
+            },
+            shadow: iced::Shadow {
+                color: iced::Color { a: 0.7, ..color },
+                offset: iced::Vector::new(0.0, 0.0),
+                blur_radius: 6.0,
+            },
+            ..Default::default()
+        }
+    });
+    iced::widget::Stack::new()
+        .push(pill)
+        .push(
+            container(pip)
+                .width(iced::Length::Fill)
+                .height(iced::Length::Fill)
+                .align_x(iced::alignment::Horizontal::Right)
+                .align_y(iced::alignment::Vertical::Top)
+                .padding(4),
+        )
+        .into()
+}
+
 /// Shared "pill tab" button style — used by the global top nav,
 /// save_view's sub-tab strip, and the settings sidebar so every
 /// tab affordance in the app reads as the same widget family.
@@ -1013,4 +1049,3 @@ pub fn chunky_pick_list(
         },
     }
 }
-

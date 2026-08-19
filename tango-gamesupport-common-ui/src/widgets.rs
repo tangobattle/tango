@@ -21,9 +21,9 @@ pub fn error_dot<'a, M: 'a>() -> Element<'a, M> {
 /// Compact tab pill used by sub-navs (save_view's
 /// Cover/Navi/Folder/Patch Cards/Auto Battle Data strip, etc).
 /// Body-text size, modest padding — meant to sit inside a pane
-/// without competing with the global top nav. A legality error makes
-/// the label red and exposes every localized error in a whole-pill hover
-/// tooltip; no separate warning glyph competes with the tab icon.
+/// without competing with the global top nav. A legality error adds a
+/// danger-red pip at the pill's top-right corner and exposes every localized
+/// error in a whole-pill hover tooltip.
 pub fn tab_button<'a, M: Clone + 'a>(
     icon: Icon,
     label: String,
@@ -34,23 +34,20 @@ pub fn tab_button<'a, M: Clone + 'a>(
     use iced::widget::{button, column, container, row, text, tooltip};
     use iced::{Alignment, Length};
 
-    let mut label = text(label);
-    if legality_errors.is_some() {
-        label = label.style(|theme: &Theme| iced::widget::text::Style {
-            color: Some(theme.palette().danger),
-        });
-    }
+    let label = text(label);
     let content = row![icon.widget().size(crate::style::TEXT_BODY), label]
         .spacing(8)
         .align_y(Alignment::Center);
-    let button = button(content)
+    let button: Element<'a, M> = button(content)
         .padding([6.0, 14.0])
         .style(pill_tab_style(active))
-        .on_press(msg);
+        .on_press(msg)
+        .into();
 
     let Some(errors) = legality_errors.filter(|errors| !errors.is_empty()) else {
-        return button.into();
+        return button;
     };
+    let button = pill_tab_badge(button, |theme| theme.palette().danger);
     let mut error_list = column![].spacing(5);
     for error in errors {
         error_list = error_list.push(
@@ -98,8 +95,8 @@ pub fn zebra_row(idx: usize) -> impl Fn(&Theme) -> iced::widget::container::Styl
     }
 }
 
-/// Normal library-row chrome with danger-red text for over-limit chips that
-/// remain pressable. Full-folder choices use the separate disabled gray wash.
+/// Normal library-row chrome with danger-red text for enabled palette choices
+/// that would introduce an editor error.
 pub fn danger_text_list_item(
     idx: usize,
 ) -> impl Fn(&Theme, iced::widget::button::Status) -> iced::widget::button::Style {

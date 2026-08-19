@@ -712,8 +712,8 @@ fn tab_icon(tab: Tab) -> lucide_icons::Icon {
     }
 }
 
-fn loaded_save_has_critical_build_issue(loaded: &OpenSave) -> bool {
-    loaded.save_editor.build_report(loaded).blocks_save
+fn loaded_save_has_build_issue(loaded: &OpenSave) -> bool {
+    loaded.save_editor.build_report(loaded).has_errors()
 }
 
 /// Wholesale save-view widget: tab strip with Lucide icons, optional
@@ -745,7 +745,7 @@ pub fn view<'a>(
 
     let available = available_tabs(loaded, streamer_mode);
     let build_report = loaded.save_editor.build_report(loaded);
-    let can_save = !build_report.blocks_save;
+    let can_save = !build_report.has_errors();
 
     let now = iced::time::Instant::now();
     // Body entrance — restarted on sub-tab switches (sliding along the strip's
@@ -1057,9 +1057,7 @@ pub fn view<'a>(
 /// The global edit mode's Save / Cancel pair, shown at the navi
 /// header's right edge while edit mode is on (or sliding out). One
 /// pair for the whole save: they commit / discard the edits on *all*
-/// tabs at once. Only critical structural errors disable Save (for example an
-/// empty Battle Network folder or BCC deck without a Navi); all other legality
-/// errors remain advisory.
+/// tabs at once. Any save-editor error disables Save until it is resolved.
 fn edit_buttons(lang: &LanguageIdentifier, can_save: bool) -> Element<'_, Action> {
     use crate::widgets;
     use lucide_icons::Icon;
@@ -1632,7 +1630,7 @@ impl State {
             // Save and Cancel both leave the global edit mode; the host
             // runs the commit/discard side effect (covering every tab).
             // Dropping the whole EditState clears every editor's scratch.
-            Action::SaveEdit if loaded.is_some_and(loaded_save_has_critical_build_issue) => iced::Task::none(),
+            Action::SaveEdit if loaded.is_some_and(loaded_save_has_build_issue) => iced::Task::none(),
             Action::SaveEdit | Action::CancelEdit => {
                 self.editing = None;
                 // Returning read-only body rises in (mirroring
@@ -1878,7 +1876,7 @@ impl State {
             }
             // One global Save / Cancel for the whole save.
             Action::SaveEdit => loaded
-                .filter(|loaded| !loaded_save_has_critical_build_issue(loaded))
+                .filter(|loaded| !loaded_save_has_build_issue(loaded))
                 .map(|_| Outcome::Commit),
             Action::CancelEdit => Some(Outcome::Cancel),
             Action::AddChip { chip_id, code } => {

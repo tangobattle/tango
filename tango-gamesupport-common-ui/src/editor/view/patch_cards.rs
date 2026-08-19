@@ -150,7 +150,7 @@ fn patch_card56_cells<'a, M: 'static>(
 /// (index · name+MB · parameters · abilities) with an ✕ remove button appended.
 /// Every newly registered card is active — there's no enable/disable toggle —
 /// so the list is simply the set of equipped cards. An over-budget set is an
-/// advisory error and its enabled rows render danger-red.
+/// editor error that blocks Save, and its enabled rows render danger-red.
 fn patch_card56_list_row<'a>(
     lang: &LanguageIdentifier,
     loaded: &'a OpenSave,
@@ -207,7 +207,8 @@ fn patch_card56_list_row<'a>(
 /// name+MB · parameters · abilities). The whole row is a click-to-add button (the
 /// palette affordance) that registers the card. A full list renders the row
 /// greyed and unclickable. An addition that would exceed the MB budget remains
-/// clickable but renders danger-red, matching advisory folder-limit choices.
+/// clickable but renders danger-red; Save stays disabled until the error is
+/// resolved.
 fn patch_card56_library_row<'a>(
     lang: &LanguageIdentifier,
     loaded: &'a OpenSave,
@@ -297,8 +298,8 @@ pub fn render_patch_cards56_edit<'a>(
         .spacing(3)
         .style(reorder_drag_style)
         .on_drag(Action::ReorderPatchCard56s);
-    // The MB budget is advisory: its total and contributing enabled card rows
-    // turn red when exceeded, but cards remain addable.
+    // The MB budget is save-blocking: its total and contributing enabled card
+    // rows turn red when exceeded, though cards remain addable while editing.
     let mb_text = limit_caption(
         t!(
             lang,

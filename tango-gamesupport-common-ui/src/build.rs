@@ -382,33 +382,18 @@ pub fn tab_errors(
     tango_gamesupport::BuildWarnings::format(&Warnings::new(violations, assets), lang)
 }
 
-fn report_metadata(violations: &[RawBuildViolation]) -> (std::collections::HashSet<crate::editor::view::Tab>, bool) {
+fn report_metadata(violations: &[RawBuildViolation]) -> std::collections::HashSet<crate::editor::view::Tab> {
     let mut error_tabs = std::collections::HashSet::new();
-    let mut blocks_save = false;
     for violation in violations {
         error_tabs.insert(violation_tab(violation));
-        match violation {
-            RawBuildViolation::FolderNotFull { .. } => {
-                // A folder must be complete for the save to be structurally
-                // usable. Legality violations within a complete folder stay
-                // advisory and do not disable Save.
-                blocks_save = true;
-            }
-            RawBuildViolation::Chip { .. }
-            | RawBuildViolation::PatchCard { .. }
-            | RawBuildViolation::NavicustPart { .. }
-            | RawBuildViolation::NavicustMaterializationMismatch => {}
-        }
     }
-    (error_tabs, blocks_save)
+    error_tabs
 }
 
 /// Adapt headless violations into save-editor-only metadata.
 pub fn report(violations: &[RawBuildViolation]) -> crate::editor::BuildReport {
-    let (error_tabs, blocks_save) = report_metadata(violations);
     crate::editor::BuildReport {
-        error_tabs,
-        blocks_save,
+        error_tabs: report_metadata(violations),
     }
 }
 
@@ -610,22 +595,23 @@ mod tests {
 
     #[test]
     fn editor_metadata_is_adapted_from_headless_violations() {
-        let (error_tabs, blocks_save) = report_metadata(&[
+        let error_tabs = report_metadata(&[
             RawBuildViolation::FolderNotFull { used: 29, required: 30 },
             RawBuildViolation::NavicustMaterializationMismatch,
         ]);
 
-        assert!(blocks_save);
         assert!(error_tabs.contains(&crate::editor::view::Tab::Folder));
         assert!(error_tabs.contains(&crate::editor::view::Tab::Navicust));
 
-        let (_, blocks_save) = report_metadata(&[RawBuildViolation::Chip {
+        let error_tabs = report_metadata(&[RawBuildViolation::Chip {
             slot: 0,
             id: 1,
             code: crate::dataview::save::ChipCode::A,
             kind: BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
         }]);
-        assert!(!blocks_save);
+        assert!(error_tabs.contains(&crate::editor::view::Tab::Folder));
+
+        assert!(report_metadata(&[]).is_empty());
     }
 
     #[test]

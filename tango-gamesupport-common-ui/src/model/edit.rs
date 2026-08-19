@@ -476,8 +476,9 @@ pub fn apply_patch_card56_edit(save: &mut SaveModel, edit: PatchCard56Edit) {
     match edit {
         PatchCard56Edit::AddCard { id } => {
             // No-op if the list is full or the card is already registered.
-            // The MB budget is advisory, matching folder-construction limits:
-            // the UI highlights over-budget choices instead of rejecting them.
+            // This low-level applier stays permissive about the MB budget; the
+            // editor highlights an over-budget result and blocks Save until it
+            // is corrected.
             // Appended, enabled, at the end of the list.
             if new_cards.len() >= max || new_cards.iter().any(|c| c.id == id) {
                 return;
