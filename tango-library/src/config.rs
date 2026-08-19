@@ -63,12 +63,14 @@ pub enum OpponentView {
     Off,
     /// Float the other perspective over the main screen.
     PictureInPicture,
-    /// Give both perspectives equal panes.
-    SideBySide,
+    /// Give both perspectives equal left/right panes.
+    StackHorizontally,
+    /// Give both perspectives equal top/bottom panes.
+    StackVertically,
 }
 
 /// Read the old `show_opponent_pip: bool` setting as well as the new
-/// three-way enum. The field itself carries a serde alias below, so an
+/// four-way enum. The field itself carries a serde alias below, so an
 /// existing `true` becomes picture-in-picture without invalidating the
 /// user's whole config file.
 fn de_opponent_view<'de, D: serde::Deserializer<'de>>(d: D) -> Result<OpponentView, D::Error> {
@@ -581,12 +583,12 @@ mod tests {
     #[test]
     fn opponent_view_serializes_under_its_new_name() {
         let config = Config {
-            opponent_view: OpponentView::SideBySide,
+            opponent_view: OpponentView::StackVertically,
             ..Config::default()
         };
         let json = serde_json::to_value(config).unwrap();
 
-        assert_eq!(json.get("opponent_view"), Some(&serde_json::json!("SideBySide")));
+        assert_eq!(json.get("opponent_view"), Some(&serde_json::json!("StackVertically")));
         assert!(json.get("show_opponent_pip").is_none());
     }
 }

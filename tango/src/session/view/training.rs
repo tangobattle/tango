@@ -36,22 +36,14 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
     iced::Task::none()
 }
 
-/// Training: emulator + PiP inset + the PiP/swap toggle cluster + the
-/// shared corner commands.
+/// Training: emulator + selected opponent layout + the view/swap control
+/// cluster + the shared corner commands.
 pub(crate) fn view<'a>(s: &'a TrainingSession, ctx: Ctx<'a>) -> Element<'a, SessionMessage> {
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
-    let main_alignment = if ctx.opponent_view == crate::config::OpponentView::SideBySide {
-        iced::alignment::Horizontal::Right
-    } else {
-        iced::alignment::Horizontal::Center
-    };
-    let frame = framebuffer_view(ctx, None, main_alignment);
-    let frame = if ctx.opponent_view == crate::config::OpponentView::SideBySide {
-        side_by_side_framebuffers(ctx, frame, None)
-    } else {
-        frame
-    };
+    let (main_horizontal, main_vertical) = main_frame_alignment(ctx.opponent_view);
+    let frame = framebuffer_view(ctx, None, main_horizontal, main_vertical);
+    let frame = stacked_framebuffers(ctx, frame, None, ctx.opponent_view);
     let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     let mut stacked = stack![body];
     // Opponent-screen PiP — outside the controls gate, so it doesn't tuck
@@ -132,7 +124,7 @@ fn bottom_bar<'a>(
             crate::ui::style::STANDARD_PADDING,
             opponent_view_style,
         )
-        .menu_width(190.0)
+        .menu_width(260.0)
         .on_toggle(Message::BarMenuToggled),
         widgets::tooltip_bubble(format!(
             "{}: {}",

@@ -1,6 +1,6 @@
 //! Replay-playback session view: the transport bar (play/pause +
 //! scrubber + speed and display toggles), the input-display overlay,
-//! the opponent-screen PiP, and the scrub hover thumbnail — plus the
+//! the opponent-screen presentation, and the scrub hover thumbnail — plus the
 //! [`Message`]s those controls emit and their [`update`] handler.
 
 use super::*;
@@ -136,11 +136,12 @@ pub(crate) fn keyboard_shortcut(
         (Code::KeyI, Modifiers::NONE, false) => Some(Message::ToggleInputDisplay),
         (Code::Tab, Modifiers::NONE, false) => Some(Message::ToggleSwapPerspective),
         (Code::KeyP, Modifiers::NONE, false) => {
-            use crate::config::OpponentView::{Off, PictureInPicture, SideBySide};
+            use crate::config::OpponentView::{Off, PictureInPicture, StackHorizontally, StackVertically};
             Some(Message::SetOpponentView(match opponent_view {
                 Off => PictureInPicture,
-                PictureInPicture => SideBySide,
-                SideBySide => Off,
+                PictureInPicture => StackHorizontally,
+                StackHorizontally => StackVertically,
+                StackVertically => Off,
             }))
         }
         _ => None,
@@ -280,17 +281,9 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     } else {
         (None, None)
     };
-    let main_alignment = if ctx.opponent_view == crate::config::OpponentView::SideBySide {
-        iced::alignment::Horizontal::Right
-    } else {
-        iced::alignment::Horizontal::Center
-    };
-    let frame = framebuffer_view(ctx, touch_spot, main_alignment);
-    let frame = if ctx.opponent_view == crate::config::OpponentView::SideBySide {
-        side_by_side_framebuffers(ctx, frame, pip_touch_spot)
-    } else {
-        frame
-    };
+    let (main_horizontal, main_vertical) = main_frame_alignment(ctx.opponent_view);
+    let frame = framebuffer_view(ctx, touch_spot, main_horizontal, main_vertical);
+    let frame = stacked_framebuffers(ctx, frame, pip_touch_spot, ctx.opponent_view);
     let body = emulator_body(r.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     // Clicking the screen itself plays/pauses, like any video player.
     // This is the stack's bottom layer, and iced dispatches presses
@@ -590,7 +583,7 @@ fn replay_bar<'a>(
             crate::ui::style::STANDARD_PADDING,
             opponent_view_style,
         )
-        .menu_width(190.0)
+        .menu_width(260.0)
         .on_toggle(Message::BarMenuToggled),
         widgets::tooltip_bubble(format!(
             "{}: {}",
@@ -1346,7 +1339,7 @@ mod tests {
             keyboard_shortcut(
                 &key_press(Code::KeyP, Modifiers::NONE, false),
                 1.0,
-                crate::config::OpponentView::SideBySide,
+                crate::config::OpponentView::StackVertically,
             ),
             Some(Message::SetOpponentView(crate::config::OpponentView::Off))
         ));

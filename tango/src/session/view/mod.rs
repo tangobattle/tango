@@ -242,30 +242,54 @@ fn opponent_view_label(lang: &LanguageIdentifier, view: crate::config::OpponentV
     match view {
         crate::config::OpponentView::Off => t!(lang, "opponent-view-off"),
         crate::config::OpponentView::PictureInPicture => t!(lang, "opponent-view-picture-in-picture"),
-        crate::config::OpponentView::SideBySide => t!(lang, "opponent-view-side-by-side"),
+        crate::config::OpponentView::StackHorizontally => t!(lang, "opponent-view-stack-horizontally"),
+        crate::config::OpponentView::StackVertically => t!(lang, "opponent-view-stack-vertically"),
     }
 }
 
-/// The three checked rows used by each opponent-view dropdown.
+/// The four checked rows used by each opponent-view dropdown.
 fn opponent_view_items<M>(
     lang: &LanguageIdentifier,
     selected: crate::config::OpponentView,
     message: impl Fn(crate::config::OpponentView) -> M,
 ) -> Vec<widgets::MenuItem<M>> {
-    use crate::config::OpponentView::{Off, PictureInPicture, SideBySide};
-    [Off, PictureInPicture, SideBySide]
+    use crate::config::OpponentView::{Off, PictureInPicture, StackHorizontally, StackVertically};
+    [Off, PictureInPicture, StackHorizontally, StackVertically]
         .into_iter()
         .map(|view| widgets::MenuItem::toggle(opponent_view_label(lang, view), message(view), view == selected))
         .collect()
 }
 
 /// Glyph for the menu's current presentation. Off uses a neutral multi-view
-/// affordance; the two active choices name their actual geometry.
+/// affordance; the three active choices name their actual geometry.
 fn opponent_view_icon(view: crate::config::OpponentView) -> Icon {
     match view {
         crate::config::OpponentView::Off => Icon::GalleryHorizontal,
         crate::config::OpponentView::PictureInPicture => Icon::PictureInPicture2,
-        crate::config::OpponentView::SideBySide => Icon::Columns,
+        crate::config::OpponentView::StackHorizontally => Icon::Columns,
+        crate::config::OpponentView::StackVertically => Icon::Rows,
+    }
+}
+
+/// Where the main perspective sits inside its half of a stacked layout.
+/// Docking both frames against their shared seam prevents integer scaling
+/// from leaving an empty band between them.
+fn main_frame_alignment(
+    view: crate::config::OpponentView,
+) -> (iced::alignment::Horizontal, iced::alignment::Vertical) {
+    match view {
+        crate::config::OpponentView::StackHorizontally => (
+            iced::alignment::Horizontal::Right,
+            iced::alignment::Vertical::Center,
+        ),
+        crate::config::OpponentView::StackVertically => (
+            iced::alignment::Horizontal::Center,
+            iced::alignment::Vertical::Bottom,
+        ),
+        _ => (
+            iced::alignment::Horizontal::Center,
+            iced::alignment::Vertical::Center,
+        ),
     }
 }
 
@@ -281,9 +305,10 @@ fn framebuffer_view<'a>(
     // A recorded touch to draw at its spot on the touch screen (the
     // replay input display); `None` everywhere else.
     touch_spot: Option<(u16, u16)>,
-    // Side-by-side docks the two frames against the center seam; every
+    // Stacked layouts dock the two frames against their center seam; every
     // other presentation centers the main frame in its pane.
     horizontal_alignment: iced::alignment::Horizontal,
+    vertical_alignment: iced::alignment::Vertical,
 ) -> Element<'a, Message> {
     let state = ctx.state;
     let (fractional_scaling, effect) = (ctx.fractional_scaling, ctx.effect);
@@ -436,7 +461,7 @@ fn framebuffer_view<'a>(
                 .width(Fill)
                 .height(Fill)
                 .align_x(horizontal_alignment)
-                .align_y(iced::alignment::Vertical::Center)
+                .align_y(vertical_alignment)
                 .into()
         };
 
@@ -467,7 +492,12 @@ fn framebuffer_view<'a>(
 /// primitive type so iced gives it an independent resident GPU texture, but
 /// otherwise mirrors the main framebuffer's arrangement, scaling, filter,
 /// touch marker, and shadow treatment.
-fn opponent_framebuffer_view<'a>(ctx: Ctx<'a>, touch_spot: Option<(u16, u16)>) -> Element<'a, Message> {
+fn opponent_framebuffer_view<'a>(
+    ctx: Ctx<'a>,
+    touch_spot: Option<(u16, u16)>,
+    horizontal_alignment: iced::alignment::Horizontal,
+    vertical_alignment: iced::alignment::Vertical,
+) -> Element<'a, Message> {
     let state = ctx.state;
     let (fractional_scaling, effect) = (ctx.fractional_scaling, ctx.effect);
     let layout = state.active.as_ref().map(|s| s.screen_layout());
@@ -538,8 +568,8 @@ fn opponent_framebuffer_view<'a>(ctx: Ctx<'a>, touch_spot: Option<(u16, u16)>) -
             container(content)
                 .width(Fill)
                 .height(Fill)
-                .align_x(iced::alignment::Horizontal::Left)
-                .align_y(iced::alignment::Vertical::Center)
+                .align_x(horizontal_alignment)
+                .align_y(vertical_alignment)
                 .into()
         };
         if fractional_scaling {
@@ -562,22 +592,51 @@ fn opponent_framebuffer_view<'a>(ctx: Ctx<'a>, touch_spot: Option<(u16, u16)>) -
     .into()
 }
 
-/// Split the emulator body into two equal perspective panes.
-fn side_by_side_framebuffers<'a>(
+/// Split the emulator body into two equal perspective panes along the
+/// selected axis. Both arrangements have a zero-width center seam.
+fn stacked_framebuffers<'a>(
     ctx: Ctx<'a>,
     main: Element<'a, Message>,
     opponent_touch: Option<(u16, u16)>,
+    view: crate::config::OpponentView,
 ) -> Element<'a, Message> {
-    let opponent = opponent_framebuffer_view(ctx, opponent_touch);
-    row![
-        container(main).width(Length::FillPortion(1)).height(Fill),
-        container(opponent).width(Length::FillPortion(1)).height(Fill),
-    ]
-    .spacing(0)
-    .padding([0, 12])
-    .width(Fill)
-    .height(Fill)
-    .into()
+    match view {
+        crate::config::OpponentView::StackHorizontally => {
+            let opponent = opponent_framebuffer_view(
+                ctx,
+                opponent_touch,
+                iced::alignment::Horizontal::Left,
+                iced::alignment::Vertical::Center,
+            );
+            row![
+                container(main).width(Length::FillPortion(1)).height(Fill),
+                container(opponent).width(Length::FillPortion(1)).height(Fill),
+            ]
+            .spacing(0)
+            .padding([0, 12])
+            .width(Fill)
+            .height(Fill)
+            .into()
+        }
+        crate::config::OpponentView::StackVertically => {
+            let opponent = opponent_framebuffer_view(
+                ctx,
+                opponent_touch,
+                iced::alignment::Horizontal::Center,
+                iced::alignment::Vertical::Top,
+            );
+            column![
+                container(main).width(Fill).height(Length::FillPortion(1)),
+                container(opponent).width(Fill).height(Length::FillPortion(1)),
+            ]
+            .spacing(0)
+            .padding([12, 0])
+            .width(Fill)
+            .height(Fill)
+            .into()
+        }
+        _ => main,
+    }
 }
 
 /// The layout's screens in the order this arrangement lays them out,
