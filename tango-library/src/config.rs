@@ -54,6 +54,38 @@ fn de_language<'de, D: serde::Deserializer<'de>>(d: D) -> Result<unic_langid::La
     s.parse().map_err(serde::de::Error::custom)
 }
 
+/// How the second player's screen is presented during modes that render
+/// both perspectives (replay playback and training).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum OpponentView {
+    /// Do not render the other perspective.
+    #[default]
+    Off,
+    /// Float the other perspective over the main screen.
+    PictureInPicture,
+    /// Give both perspectives equal panes.
+    SideBySide,
+}
+
+/// Read the old `show_opponent_pip: bool` setting as well as the new
+/// three-way enum. The field itself carries a serde alias below, so an
+/// existing `true` becomes picture-in-picture without invalidating the
+/// user's whole config file.
+fn de_opponent_view<'de, D: serde::Deserializer<'de>>(d: D) -> Result<OpponentView, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Wire {
+        View(OpponentView),
+        LegacyPip(bool),
+    }
+
+    Ok(match Wire::deserialize(d)? {
+        Wire::View(view) => view,
+        Wire::LegacyPip(true) => OpponentView::PictureInPicture,
+        Wire::LegacyPip(false) => OpponentView::Off,
+    })
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum ThemeMode {
     Light,
@@ -196,12 +228,12 @@ pub struct Config {
     /// playhead. Toggled from the replay transport bar.
     #[serde(default)]
     pub show_replay_inputs: bool,
-    /// When true, replay playback shows the opponent's screen as a
-    /// picture-in-picture inset (their perspective is re-simulated
-    /// anyway; this turns its renderer on). Toggled from the replay
-    /// transport bar, like [`show_replay_inputs`](Self::show_replay_inputs).
-    #[serde(default)]
-    pub show_opponent_pip: bool,
+    /// How replay playback and training present the opponent's screen.
+    /// The renderer only runs while this is not [`OpponentView::Off`].
+    /// `show_opponent_pip` is the pre-menu field name and remains a read
+    /// alias so existing configs migrate in place.
+    #[serde(default, alias = "show_opponent_pip", deserialize_with = "de_opponent_view")]
+    pub opponent_view: OpponentView,
     /// Width in logical pixels of each PvP setup drawer, `[self,
     /// opponent]`. Dragged from the drawer's inner edge during a match
     /// and persisted on release, so the next one opens the panes where
@@ -380,7 +412,7 @@ impl Default for Config {
             ds_primary_screen: DsPrimaryScreen::default(),
             hide_emulator_border: false,
             show_replay_inputs: false,
-            show_opponent_pip: false,
+            opponent_view: OpponentView::Off,
             pvp_setup_pane_widths: default_setup_pane_widths(),
             enable_updater: true,
             allow_prerelease_upgrades: false,
@@ -532,3 +564,29 @@ impl Config {
 /// File name of the config within whatever directory the frontend
 /// resolves for it.
 pub const FILE_NAME: &str = "config.json";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opponent_view_migrates_the_legacy_pip_boolean() {
+        let on: Config = serde_json::from_value(serde_json::json!({ "show_opponent_pip": true })).unwrap();
+        let off: Config = serde_json::from_value(serde_json::json!({ "show_opponent_pip": false })).unwrap();
+
+        assert_eq!(on.opponent_view, OpponentView::PictureInPicture);
+        assert_eq!(off.opponent_view, OpponentView::Off);
+    }
+
+    #[test]
+    fn opponent_view_serializes_under_its_new_name() {
+        let config = Config {
+            opponent_view: OpponentView::SideBySide,
+            ..Config::default()
+        };
+        let json = serde_json::to_value(config).unwrap();
+
+        assert_eq!(json.get("opponent_view"), Some(&serde_json::json!("SideBySide")));
+        assert!(json.get("show_opponent_pip").is_none());
+    }
+}

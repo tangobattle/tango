@@ -79,6 +79,7 @@ impl App {
                 self.config.fractional_scaling,
                 self.config.hide_emulator_border,
                 self.config.show_replay_inputs,
+                self.config.opponent_view,
                 self.config.ds_screen_stacking,
                 self.config.ds_primary_screen,
                 self.replays.export_settings.scale,
@@ -168,6 +169,7 @@ impl App {
                 .session
                 .active_as::<session::replay::ReplaySession>()
                 .map(|replay| replay.speed());
+            let opponent_view = self.config.opponent_view;
             return crate::platform::input_capture::InputCapture::new(composed, move |input| {
                 // Esc is reserved as the in-session escape/menu key —
                 // it never reaches the joyflag pipeline so the user
@@ -193,10 +195,10 @@ impl App {
                 }
                 // Give the replay view its raw keyboard event before
                 // `to_event` strips modifiers and repeat state. It returns the
-                // same messages as its on-screen controls; PiP therefore also
-                // follows the App's normal persistence path.
+                // same messages as its on-screen controls; opponent view
+                // therefore also follows the App's normal persistence path.
                 if let (Some(speed), crate::platform::input_capture::Input::Keyboard(kb)) = (replay_speed, &input) {
-                    if let Some(shortcut) = session::view::replay::keyboard_shortcut(kb, speed) {
+                    if let Some(shortcut) = session::view::replay::keyboard_shortcut(kb, speed, opponent_view) {
                         return Some(Message::Session(session::Message::Replay(shortcut)));
                     }
                 }

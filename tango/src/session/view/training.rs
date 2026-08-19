@@ -1,5 +1,5 @@
-//! Training-mode session view: the emulator pane plus two toggles —
-//! opponent-screen picture-in-picture and a side-swap that hands the
+//! Training-mode session view: the emulator pane plus opponent-view menu
+//! and a side-swap toggle that hands the
 //! player control of the other core — over the shared corner commands.
 
 use super::*;
@@ -10,18 +10,20 @@ use crate::session::Message as SessionMessage;
 /// way out; inert unless a training session is active.
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// Toggle the opponent-screen picture-in-picture.
-    TogglePip,
+    /// Select how the opponent's screen is presented.
+    SetOpponentView(crate::config::OpponentView),
     /// Swap which side (core) the player controls.
     ToggleSwap,
+    /// Pin the floating bar while the opponent-view dropdown is open.
+    BarMenuToggled(bool),
 }
 
 /// Apply a training-view message.
 pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
     match msg {
-        Message::TogglePip => {
+        Message::SetOpponentView(view) => {
             if let Some(s) = state.active_as::<TrainingSession>() {
-                s.toggle_pip();
+                s.set_opponent_visible(view != crate::config::OpponentView::Off);
             }
         }
         Message::ToggleSwap => {
@@ -29,6 +31,7 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
                 s.toggle_swap();
             }
         }
+        Message::BarMenuToggled(open) => state.bar_menu_open = open,
     }
     iced::Task::none()
 }
@@ -38,16 +41,28 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
 pub(crate) fn view<'a>(s: &'a TrainingSession, ctx: Ctx<'a>) -> Element<'a, SessionMessage> {
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
-    let frame = framebuffer_view(ctx, None);
+    let main_alignment = if ctx.opponent_view == crate::config::OpponentView::SideBySide {
+        iced::alignment::Horizontal::Right
+    } else {
+        iced::alignment::Horizontal::Center
+    };
+    let frame = framebuffer_view(ctx, None, main_alignment);
+    let frame = if ctx.opponent_view == crate::config::OpponentView::SideBySide {
+        side_by_side_framebuffers(ctx, frame, None)
+    } else {
+        frame
+    };
     let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     let mut stacked = stack![body];
     // Opponent-screen PiP — outside the controls gate, so it doesn't tuck
     // away with the idle cursor (same treatment as replay).
-    if let Some(o) = pip_overlay(ctx, None) {
-        stacked = stacked.push(o);
+    if ctx.opponent_view == crate::config::OpponentView::PictureInPicture {
+        if let Some(o) = pip_overlay(ctx, None) {
+            stacked = stacked.push(o);
+        }
     }
     if state.controls_anim.visible(now) {
-        stacked = stacked.push(bottom_bar(lang, s, state));
+        stacked = stacked.push(bottom_bar(lang, s, state, ctx.opponent_view));
         stacked = stacked.push(corner_commands_overlay(lang, state, SessionMessage::Close, false));
     }
     finish_session_stack(lang, state, stacked)
@@ -93,15 +108,42 @@ fn bottom_bar<'a>(
     lang: &'a unic_langid::LanguageIdentifier,
     s: &'a TrainingSession,
     state: &'a State,
+    opponent_view: crate::config::OpponentView,
 ) -> Element<'a, SessionMessage> {
     let now = iced::time::Instant::now();
+    let opponent_view_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+        let mut st = telemetry_plate_button(theme, status);
+        if opponent_view != crate::config::OpponentView::Off {
+            let primary = theme.palette().primary;
+            st.text_color = primary;
+            st.border.color = iced::Color { a: 0.35, ..primary };
+        }
+        st
+    };
+    let opponent_view_menu = iced::widget::tooltip(
+        widgets::MenuButton::new(
+            container(opponent_view_icon(opponent_view).widget().size(16.0))
+                .width(Length::Fixed(18.0))
+                .height(Length::Fixed(18.0))
+                .center(Fill),
+            opponent_view_items(lang, opponent_view, Message::SetOpponentView),
+            true,
+            [7.0, 7.0],
+            crate::ui::style::STANDARD_PADDING,
+            opponent_view_style,
+        )
+        .menu_width(190.0)
+        .on_toggle(Message::BarMenuToggled),
+        widgets::tooltip_bubble(format!(
+            "{}: {}",
+            t!(lang, "training-opponent-view"),
+            opponent_view_label(lang, opponent_view)
+        )),
+        iced::widget::tooltip::Position::Bottom,
+    )
+    .gap(4);
     let bar = row![
-        toggle_button(
-            Icon::PictureInPicture2,
-            s.show_pip(),
-            t!(lang, "training-pip"),
-            Message::TogglePip
-        ),
+        opponent_view_menu,
         toggle_button(
             Icon::ArrowLeftRight,
             s.is_swapped(),

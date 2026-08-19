@@ -143,6 +143,9 @@ pub struct Ctx<'a> {
     pub fractional_scaling: bool,
     pub hide_emulator_border: bool,
     pub show_replay_inputs: bool,
+    /// How modes with two perspectives present the auxiliary surface.
+    /// Read live from config so replay and training switch immediately.
+    pub opponent_view: crate::config::OpponentView,
     /// How a DS session's two screens stack in the pane. Read live
     /// from config, so the switch re-lays out an active session.
     pub ds_screen_stacking: crate::config::DsScreenStacking,
@@ -168,6 +171,7 @@ pub fn view<'a>(
     fractional_scaling: bool,
     hide_emulator_border: bool,
     show_replay_inputs: bool,
+    opponent_view: crate::config::OpponentView,
     ds_screen_stacking: crate::config::DsScreenStacking,
     ds_primary_screen: crate::config::DsPrimaryScreen,
     clip_export_scale: u8,
@@ -184,6 +188,7 @@ pub fn view<'a>(
         fractional_scaling,
         hide_emulator_border,
         show_replay_inputs,
+        opponent_view,
         ds_screen_stacking,
         ds_primary_screen,
         clip_export_scale,
@@ -231,6 +236,39 @@ fn finish_session_stack<'a>(
         .into()
 }
 
+/// Localized label for one opponent-surface presentation. Shared by the
+/// replay and training menus so the same setting reads identically in both.
+fn opponent_view_label(lang: &LanguageIdentifier, view: crate::config::OpponentView) -> String {
+    match view {
+        crate::config::OpponentView::Off => t!(lang, "opponent-view-off"),
+        crate::config::OpponentView::PictureInPicture => t!(lang, "opponent-view-picture-in-picture"),
+        crate::config::OpponentView::SideBySide => t!(lang, "opponent-view-side-by-side"),
+    }
+}
+
+/// The three checked rows used by each opponent-view dropdown.
+fn opponent_view_items<M>(
+    lang: &LanguageIdentifier,
+    selected: crate::config::OpponentView,
+    message: impl Fn(crate::config::OpponentView) -> M,
+) -> Vec<widgets::MenuItem<M>> {
+    use crate::config::OpponentView::{Off, PictureInPicture, SideBySide};
+    [Off, PictureInPicture, SideBySide]
+        .into_iter()
+        .map(|view| widgets::MenuItem::toggle(opponent_view_label(lang, view), message(view), view == selected))
+        .collect()
+}
+
+/// Glyph for the menu's current presentation. Off uses a neutral multi-view
+/// affordance; the two active choices name their actual geometry.
+fn opponent_view_icon(view: crate::config::OpponentView) -> Icon {
+    match view {
+        crate::config::OpponentView::Off => Icon::GalleryHorizontal,
+        crate::config::OpponentView::PictureInPicture => Icon::PictureInPicture2,
+        crate::config::OpponentView::SideBySide => Icon::Columns,
+    }
+}
+
 /// The live framebuffer, rendered through a custom wgpu shader widget
 /// (one persistent GPU texture, written in place each vblank) instead
 /// of a per-frame `image` handle. The shader fills the widget's
@@ -243,6 +281,9 @@ fn framebuffer_view<'a>(
     // A recorded touch to draw at its spot on the touch screen (the
     // replay input display); `None` everywhere else.
     touch_spot: Option<(u16, u16)>,
+    // Side-by-side docks the two frames against the center seam; every
+    // other presentation centers the main frame in its pane.
+    horizontal_alignment: iced::alignment::Horizontal,
 ) -> Element<'a, Message> {
     let state = ctx.state;
     let (fractional_scaling, effect) = (ctx.fractional_scaling, ctx.effect);
@@ -394,7 +435,7 @@ fn framebuffer_view<'a>(
             iced::widget::container(content)
                 .width(Fill)
                 .height(Fill)
-                .align_x(iced::alignment::Horizontal::Center)
+                .align_x(horizontal_alignment)
                 .align_y(iced::alignment::Vertical::Center)
                 .into()
         };
@@ -419,6 +460,123 @@ fn framebuffer_view<'a>(
             centered(framed.into())
         }
     })
+    .into()
+}
+
+/// The auxiliary opponent framebuffer as a full pane. This uses the PiP
+/// primitive type so iced gives it an independent resident GPU texture, but
+/// otherwise mirrors the main framebuffer's arrangement, scaling, filter,
+/// touch marker, and shadow treatment.
+fn opponent_framebuffer_view<'a>(ctx: Ctx<'a>, touch_spot: Option<(u16, u16)>) -> Element<'a, Message> {
+    let state = ctx.state;
+    let (fractional_scaling, effect) = (ctx.fractional_scaling, ctx.effect);
+    let layout = state.active.as_ref().map(|s| s.screen_layout());
+    let multi = layout.as_ref().is_some_and(|layout| layout.screens.len() > 1);
+    let touch_first = multi && ctx.ds_primary_screen == crate::config::DsPrimaryScreen::Touch;
+    let (native_w, native_h) = match &layout {
+        Some(layout) if multi && ctx.ds_screen_stacking == crate::config::DsScreenStacking::Vertical => (
+            layout.screens.iter().map(|s| s.width).max().unwrap_or(1),
+            layout.screens.iter().map(|s| s.height).sum(),
+        ),
+        Some(layout) if multi && ctx.ds_screen_stacking == crate::config::DsScreenStacking::PrimaryOnly => {
+            let screen = layout.screens[touch_first as usize];
+            (screen.width, screen.height)
+        }
+        _ => state.active.as_ref().map(|s| s.frame_size()).unwrap_or((1, 1)),
+    };
+    let (img_w, img_h) = ((native_w * effect.scale) as f32, (native_h * effect.scale) as f32);
+    let touch_screen = layout
+        .as_ref()
+        .and_then(|layout| touch_screen_placement(layout, ctx.ds_screen_stacking, touch_first));
+
+    // Keep the equal pane mounted while its first frame is being captured.
+    // The black pixel stretches into the same aspect-sized widget, avoiding a
+    // one-frame layout jump when the session publishes the auxiliary surface.
+    let base_frame = state
+        .pip_frame
+        .clone()
+        .unwrap_or_else(crate::platform::video::framebuffer::Frame::black);
+    let base_frame = match (&layout, multi) {
+        (Some(layout), true) => present_frame(base_frame, layout, ctx.ds_screen_stacking, ctx.ds_primary_screen),
+        _ => base_frame,
+    };
+    let spot = touch_spot.and_then(|(tx, ty)| {
+        touch_screen.map(|((origin_x, origin_y), _)| {
+            (
+                (origin_x + tx as f32 + 0.5) / native_w as f32,
+                (origin_y + ty as f32 + 0.5) / native_h as f32,
+            )
+        })
+    });
+
+    iced::widget::responsive(move |size| {
+        let raw = (size.width / img_w).min(size.height / img_h);
+        let scale = if fractional_scaling {
+            raw.max(0.0)
+        } else {
+            raw.floor().max(1.0)
+        };
+        let (w, h) = (img_w * scale, img_h * scale);
+        let mut frame = base_frame.clone();
+        frame.effect = effect;
+        let fb = iced::widget::shader::Shader::new(crate::platform::video::framebuffer::PipProgram::new(frame))
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h));
+        let mut fb: Element<'a, Message> = fb.into();
+        if let Some((fx, fy)) = spot {
+            let marker = Canvas::new(TouchSpot {
+                fx,
+                fy,
+                rf: TOUCH_SPOT_R / native_w as f32,
+            })
+            .width(Length::Fixed(w))
+            .height(Length::Fixed(h));
+            fb = stack![fb, marker].into();
+        }
+
+        let centered = |content: Element<'a, Message>| -> Element<'a, Message> {
+            container(content)
+                .width(Fill)
+                .height(Fill)
+                .align_x(iced::alignment::Horizontal::Left)
+                .align_y(iced::alignment::Vertical::Center)
+                .into()
+        };
+        if fractional_scaling {
+            centered(fb)
+        } else {
+            let framed = container(fb)
+                .width(Length::Fixed(w))
+                .height(Length::Fixed(h))
+                .style(|_theme: &iced::Theme| iced::widget::container::Style {
+                    shadow: iced::Shadow {
+                        color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55),
+                        offset: iced::Vector::new(0.0, 8.0),
+                        blur_radius: 24.0,
+                    },
+                    ..Default::default()
+                });
+            centered(framed.into())
+        }
+    })
+    .into()
+}
+
+/// Split the emulator body into two equal perspective panes.
+fn side_by_side_framebuffers<'a>(
+    ctx: Ctx<'a>,
+    main: Element<'a, Message>,
+    opponent_touch: Option<(u16, u16)>,
+) -> Element<'a, Message> {
+    let opponent = opponent_framebuffer_view(ctx, opponent_touch);
+    row![
+        container(main).width(Length::FillPortion(1)).height(Fill),
+        container(opponent).width(Length::FillPortion(1)).height(Fill),
+    ]
+    .spacing(0)
+    .padding([0, 12])
+    .width(Fill)
+    .height(Fill)
     .into()
 }
 

@@ -52,9 +52,9 @@ pub enum Message {
     /// Set the quality mode shared with the replay export form. The
     /// replays tab owns this setting; the App wrapper forwards it.
     SetClipExportScale(u8),
-    /// Toggle the opponent-screen picture-in-picture (the bar's PiP
-    /// button). The App wrapper also persists the choice to config.
-    TogglePip,
+    /// Select how the opponent screen is presented. The App wrapper also
+    /// persists the choice to config.
+    SetOpponentView(crate::config::OpponentView),
     /// Swap which perspective the main screen shows (the bar's swap
     /// button). Per-session, unlike the PiP — it isn't persisted.
     ToggleSwapPerspective,
@@ -94,7 +94,11 @@ pub enum Message {
 /// Map a raw keyboard press to a replay transport command. This stays
 /// beside the replay view and its message handler so every replay-only
 /// key—including modifier and repeat semantics—has one owner.
-pub(crate) fn keyboard_shortcut(event: &iced::keyboard::Event, speed: f32) -> Option<Message> {
+pub(crate) fn keyboard_shortcut(
+    event: &iced::keyboard::Event,
+    speed: f32,
+    opponent_view: crate::config::OpponentView,
+) -> Option<Message> {
     use iced::keyboard::key::{Code, Physical};
     use iced::keyboard::{Event, Modifiers};
 
@@ -131,7 +135,14 @@ pub(crate) fn keyboard_shortcut(event: &iced::keyboard::Event, speed: f32) -> Op
         (Code::Space, Modifiers::NONE, false) => Some(Message::TogglePlay),
         (Code::KeyI, Modifiers::NONE, false) => Some(Message::ToggleInputDisplay),
         (Code::Tab, Modifiers::NONE, false) => Some(Message::ToggleSwapPerspective),
-        (Code::KeyP, Modifiers::NONE, false) => Some(Message::TogglePip),
+        (Code::KeyP, Modifiers::NONE, false) => {
+            use crate::config::OpponentView::{Off, PictureInPicture, SideBySide};
+            Some(Message::SetOpponentView(match opponent_view {
+                Off => PictureInPicture,
+                PictureInPicture => SideBySide,
+                SideBySide => Off,
+            }))
+        }
         _ => None,
     }
 }
@@ -186,9 +197,9 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
             // Config-owned flag; the App wrapper flips + persists it
             // before this dispatch. The view reads it from config.
         }
-        Message::TogglePip => {
+        Message::SetOpponentView(view) => {
             if let Some(s) = state.active_as::<ReplaySession>() {
-                s.toggle_pip();
+                s.set_opponent_visible(view != crate::config::OpponentView::Off);
             }
         }
         Message::ToggleSwapPerspective => {
@@ -269,7 +280,17 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     } else {
         (None, None)
     };
-    let frame = framebuffer_view(ctx, touch_spot);
+    let main_alignment = if ctx.opponent_view == crate::config::OpponentView::SideBySide {
+        iced::alignment::Horizontal::Right
+    } else {
+        iced::alignment::Horizontal::Center
+    };
+    let frame = framebuffer_view(ctx, touch_spot, main_alignment);
+    let frame = if ctx.opponent_view == crate::config::OpponentView::SideBySide {
+        side_by_side_framebuffers(ctx, frame, pip_touch_spot)
+    } else {
+        frame
+    };
     let body = emulator_body(r.local_game(), frame, ctx.hide_emulator_border, [None, None]);
     // Clicking the screen itself plays/pauses, like any video player.
     // This is the stack's bottom layer, and iced dispatches presses
@@ -294,6 +315,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
             r,
             state,
             ctx.show_replay_inputs,
+            ctx.opponent_view,
             ctx.clip_export_scale,
             ctx.clip_job,
             ctx.queued,
@@ -307,11 +329,13 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     if let Some(o) = input_display_overlay(r, state, ctx.show_replay_inputs) {
         stacked = stacked.push(o.map(SessionMessage::Replay));
     }
-    // PiP: the opponent's screen while the bar toggle is on. Also
+    // PiP: the opponent's screen while that presentation is selected. Also
     // outside the controls gate — it's for watching, so it must not
     // tuck away with the idle cursor.
-    if let Some(o) = pip_overlay(ctx, pip_touch_spot) {
-        stacked = stacked.push(o);
+    if ctx.opponent_view == crate::config::OpponentView::PictureInPicture {
+        if let Some(o) = pip_overlay(ctx, pip_touch_spot) {
+            stacked = stacked.push(o);
+        }
     }
     if let Some(o) = scrub_thumbnail_overlay(state) {
         stacked = stacked.push(o.map(SessionMessage::Replay));
@@ -394,6 +418,7 @@ fn replay_controls<'a>(
     r: &'a ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
+    opponent_view: crate::config::OpponentView,
     clip_export_scale: u8,
     clip_job: Option<ClipJob<'a>>,
     queued: usize,
@@ -405,6 +430,7 @@ fn replay_controls<'a>(
         r,
         state,
         show_replay_inputs,
+        opponent_view,
         clip_export_scale,
         clip_job,
         queued,
@@ -442,6 +468,7 @@ fn replay_bar<'a>(
     r: &'a ReplaySession,
     state: &'a State,
     show_replay_inputs: bool,
+    opponent_view: crate::config::OpponentView,
     clip_export_scale: u8,
     clip_job: Option<ClipJob<'a>>,
     queued: usize,
@@ -538,32 +565,38 @@ fn replay_bar<'a>(
     )
     .gap(4);
 
-    // Opponent-screen PiP toggle: same chip treatment as the input
-    // display. The replay re-simulates the opponent's core anyway; this
-    // just turns its renderer on and insets the result top-right.
-    let pip_on = r.show_pip();
-    let pip_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
+    // Opponent view: one menu replaces the old binary PiP toggle. The
+    // selected row owns both whether the auxiliary renderer runs and how its
+    // surface is laid out; non-Off choices light the trigger like the other
+    // display controls.
+    let opponent_view_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
         let mut st = telemetry_plate_button(theme, status);
-        if pip_on {
+        if opponent_view != crate::config::OpponentView::Off {
             let primary = theme.palette().primary;
             st.text_color = primary;
             st.border.color = iced::Color { a: 0.35, ..primary };
         }
         st
     };
-    let pip_toggle = iced::widget::tooltip(
-        button(
-            container(Icon::PictureInPicture2.widget().size(16.0))
+    let opponent_view_menu = iced::widget::tooltip(
+        widgets::MenuButton::new(
+            container(opponent_view_icon(opponent_view).widget().size(16.0))
                 .width(iced::Length::Fixed(18.0))
                 .height(iced::Length::Fixed(18.0))
                 .center(Fill),
+            opponent_view_items(lang, opponent_view, Message::SetOpponentView),
+            true,
+            [7.0, 7.0],
+            crate::ui::style::STANDARD_PADDING,
+            opponent_view_style,
         )
-        .padding(0)
-        .width(iced::Length::Fixed(32.0))
-        .height(iced::Length::Fixed(32.0))
-        .style(pip_toggle_style)
-        .on_press(Message::TogglePip),
-        widgets::tooltip_bubble(t!(lang, "playback-pip")),
+        .menu_width(190.0)
+        .on_toggle(Message::BarMenuToggled),
+        widgets::tooltip_bubble(format!(
+            "{}: {}",
+            t!(lang, "playback-opponent-view"),
+            opponent_view_label(lang, opponent_view)
+        )),
         iced::widget::tooltip::Position::Top,
     )
     .gap(4);
@@ -659,7 +692,7 @@ fn replay_bar<'a>(
         .push(clip_toggle)
         .push(speed_menu)
         .push(input_toggle)
-        .push(pip_toggle)
+        .push(opponent_view_menu)
         .push(swap_toggle);
 
     column![]
@@ -1278,23 +1311,62 @@ mod tests {
     #[test]
     fn keyboard_shortcuts_keep_transport_semantics_together() {
         assert!(matches!(
-            keyboard_shortcut(&key_press(Code::Period, Modifiers::NONE, true), 1.0),
+            keyboard_shortcut(
+                &key_press(Code::Period, Modifiers::NONE, true),
+                1.0,
+                crate::config::OpponentView::Off,
+            ),
             Some(Message::SeekRelative(1))
         ));
         assert!(matches!(
-            keyboard_shortcut(&key_press(Code::Period, Modifiers::SHIFT, false), 1.0),
+            keyboard_shortcut(
+                &key_press(Code::Period, Modifiers::SHIFT, false),
+                1.0,
+                crate::config::OpponentView::Off,
+            ),
             Some(Message::SetSpeed(2.0))
         ));
         assert!(matches!(
-            keyboard_shortcut(&key_press(Code::Tab, Modifiers::NONE, false), 1.0),
+            keyboard_shortcut(
+                &key_press(Code::Tab, Modifiers::NONE, false),
+                1.0,
+                crate::config::OpponentView::Off,
+            ),
             Some(Message::ToggleSwapPerspective)
         ));
         assert!(matches!(
-            keyboard_shortcut(&key_press(Code::KeyI, Modifiers::NONE, false), 1.0),
+            keyboard_shortcut(
+                &key_press(Code::KeyI, Modifiers::NONE, false),
+                1.0,
+                crate::config::OpponentView::Off,
+            ),
             Some(Message::ToggleInputDisplay)
         ));
-        assert!(keyboard_shortcut(&key_press(Code::Tab, Modifiers::NONE, true), 1.0).is_none());
-        assert!(keyboard_shortcut(&key_press(Code::KeyI, Modifiers::NONE, true), 1.0).is_none());
-        assert!(keyboard_shortcut(&key_press(Code::KeyF, Modifiers::NONE, false), 1.0).is_none());
+        assert!(matches!(
+            keyboard_shortcut(
+                &key_press(Code::KeyP, Modifiers::NONE, false),
+                1.0,
+                crate::config::OpponentView::SideBySide,
+            ),
+            Some(Message::SetOpponentView(crate::config::OpponentView::Off))
+        ));
+        assert!(keyboard_shortcut(
+            &key_press(Code::Tab, Modifiers::NONE, true),
+            1.0,
+            crate::config::OpponentView::Off,
+        )
+        .is_none());
+        assert!(keyboard_shortcut(
+            &key_press(Code::KeyI, Modifiers::NONE, true),
+            1.0,
+            crate::config::OpponentView::Off,
+        )
+        .is_none());
+        assert!(keyboard_shortcut(
+            &key_press(Code::KeyF, Modifiers::NONE, false),
+            1.0,
+            crate::config::OpponentView::Off,
+        )
+        .is_none());
     }
 }

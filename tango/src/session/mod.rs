@@ -1405,7 +1405,7 @@ pub fn build_playback(
         // the session's.
         p1_game.pvp.frame_timing().fps() as f32,
         audio_binder.sample_rate(),
-        config.show_opponent_pip,
+        config.opponent_view != config::OpponentView::Off,
         stats_job,
         round_boundaries,
     )?;
@@ -1848,6 +1848,7 @@ pub fn spawn_training(
         audio_binder.sample_rate(),
         Box::new(training::NoopController),
     )?;
+    session.set_opponent_visible(config.opponent_view != config::OpponentView::Off);
     let drive = spawn_drive_thread("training", driver)?;
     Ok((session, bind_session_audio(audio_binder, audio), drive))
 }

@@ -281,15 +281,11 @@ impl TrainingSession {
         self.controlled.fetch_xor(1, Ordering::Relaxed);
     }
 
-    /// Whether the opponent-screen picture-in-picture is on.
-    pub fn show_pip(&self) -> bool {
-        self.show_pip.load(Ordering::Relaxed)
-    }
-
-    /// Toggle the opponent-screen picture-in-picture. Takes effect on the
-    /// next published frame.
-    pub fn toggle_pip(&self) {
-        self.show_pip.fetch_xor(true, Ordering::Relaxed);
+    /// Turn the auxiliary opponent surface on or off. The host presents
+    /// that surface as either picture-in-picture or an equal second pane.
+    /// Takes effect on the next published frame.
+    pub fn set_opponent_visible(&self, visible: bool) {
+        self.show_pip.store(visible, Ordering::Relaxed);
     }
 }
 

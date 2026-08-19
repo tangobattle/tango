@@ -370,17 +370,12 @@ impl ReplaySession {
         Ok((session, workers, audio))
     }
 
-    /// Whether the opponent-screen PiP is on — drives the transport bar
-    /// toggle's lit state.
-    pub fn show_pip(&self) -> bool {
-        self.show_pip.load(Ordering::Relaxed)
-    }
-
-    /// Toggle the opponent-screen PiP. While playing, the overlay
-    /// appears on the next published frame; on a paused replay it's
-    /// re-blitted from the current frame's snapshot immediately.
-    pub fn toggle_pip(&self) {
-        self.show_pip.fetch_xor(true, Ordering::Relaxed);
+    /// Turn the auxiliary opponent surface on or off. While playing, it
+    /// appears on the next published frame; on a paused replay it is
+    /// re-blitted from the current frame's snapshot immediately. The host
+    /// decides whether that surface is an inset or an equal second pane.
+    pub fn set_opponent_visible(&self, visible: bool) {
+        self.show_pip.store(visible, Ordering::Relaxed);
         self.refresh_paused_frame();
     }
 

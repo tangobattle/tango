@@ -1312,11 +1312,18 @@ impl App {
                         tabs::replays::ExportMessage::SetScale(*scale),
                     ));
                 }
-                // Same deal for the opponent-screen PiP toggle — the session
-                // handler flips the live session's state; this keeps the
-                // choice sticking across replays.
-                if let session::Message::Replay(session::view::replay::Message::TogglePip) = &m {
-                    self.config.show_opponent_pip = !self.config.show_opponent_pip;
+                // Replay and training share one opponent-view preference.
+                // Their session handlers switch the auxiliary renderer; this
+                // keeps the selected layout across either kind of session.
+                let selected_opponent_view = match &m {
+                    session::Message::Replay(session::view::replay::Message::SetOpponentView(view))
+                    | session::Message::Training(session::view::training::Message::SetOpponentView(view)) => {
+                        Some(*view)
+                    }
+                    _ => None,
+                };
+                if let Some(view) = selected_opponent_view {
+                    self.config.opponent_view = view;
                     self.persist_config();
                 }
                 // The transport bar's Export-clip chip: everything
