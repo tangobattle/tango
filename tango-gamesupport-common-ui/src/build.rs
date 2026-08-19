@@ -60,6 +60,7 @@ fn chip_label(lang: &unic_langid::LanguageIdentifier, id: usize, code: &str, nam
 pub fn violation_reason(lang: &unic_langid::LanguageIdentifier, kind: BuildViolationKind) -> String {
     match kind {
         BuildViolationKind::ChipIllegalForGame => t!(lang, "build-violation-chip-illegal-for-game"),
+        BuildViolationKind::ChipCodeUnavailable => t!(lang, "build-violation-chip-code-unavailable"),
         BuildViolationKind::TooManyCopiesOfChip { used, limit } => t!(
             lang,
             "build-violation-too-many-copies-of-chip",
@@ -418,6 +419,7 @@ mod tests {
     fn slot_warning_texts(lang: &unic_langid::LanguageIdentifier) -> Vec<String> {
         [
             BuildViolationKind::ChipIllegalForGame,
+            BuildViolationKind::ChipCodeUnavailable,
             BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
             BuildViolationKind::TooManyNaviChips { used: 6, limit: 5 },
             BuildViolationKind::TooManyMegaChips { used: 6, limit: 5 },
@@ -511,6 +513,7 @@ mod tests {
             english_texts,
             [
                 "Not legal for this game or version.",
+                "This code is not available for this chip.",
                 "6 copies are installed; the limit is 5.",
                 "The folder contains 6 Navi chips; the limit is 5.",
                 "The folder contains 6 Mega chips; the limit is 5.",
@@ -549,6 +552,7 @@ mod tests {
         let english_text = folder_not_full(&english, 29, 30);
         let kinds = [
             BuildViolationKind::ChipIllegalForGame,
+            BuildViolationKind::ChipCodeUnavailable,
             BuildViolationKind::TooManyCopiesOfChip { used: 6, limit: 5 },
             BuildViolationKind::TooManyNaviChips { used: 6, limit: 5 },
             BuildViolationKind::TooManyMegaChips { used: 6, limit: 5 },

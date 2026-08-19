@@ -39,6 +39,7 @@ build-violation-patch-card4-wrong-slot-reason = 改造カードスロット{ $ac
 build-violation-patch-card4-not-in-catalog-reason = 改造カードスロット{ $actual_slot }は、このゲームのカタログにありません。
 build-violation-folder-not-full = フォルダには必要な{ $required }枚のうち{ $used }枚のチップが入っています。
 build-violation-chip-illegal-for-game = このゲームまたはバージョンでは使用できません。
+build-violation-chip-code-unavailable = このコードはこのチップでは使用できません。
 build-violation-too-many-copies-of-chip = { $used }枚入っています。上限は{ $limit }枚です。
 build-violation-too-many-navi-chips = フォルダにナビチップが{ $used }枚入っています。上限は{ $limit }枚です。
 build-violation-too-many-mega-chips = フォルダにメガチップが{ $used }枚入っています。上限は{ $limit }枚です。

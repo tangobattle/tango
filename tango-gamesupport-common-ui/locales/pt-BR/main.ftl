@@ -54,6 +54,7 @@ build-violation-folder-not-full = { $required ->
    *[other] O Folder contém { $used } dos { $required } chips necessários.
 }
 build-violation-chip-illegal-for-game = Não é permitido neste jogo ou versão.
+build-violation-chip-code-unavailable = Este código não está disponível para este chip.
 build-violation-too-many-copies-of-chip = { $used ->
     [one] Há 1 cópia instalada; o limite é { $limit }.
    *[other] Há { $used } cópias instaladas; o limite é { $limit }.

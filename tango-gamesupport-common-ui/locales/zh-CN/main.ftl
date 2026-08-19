@@ -48,6 +48,7 @@ build-violation-patch-card4-wrong-slot-reason = 安装在改造卡槽{ $actual_s
 build-violation-patch-card4-not-in-catalog-reason = 改造卡槽{ $actual_slot }不在此游戏的目录中。
 build-violation-folder-not-full = 卡组中有 { $used } 张芯片，需要 { $required } 张。
 build-violation-chip-illegal-for-game = 在此游戏或版本中不可用。
+build-violation-chip-code-unavailable = 此代码不适用于该芯片。
 build-violation-too-many-copies-of-chip = 已安装 { $used } 张；上限为 { $limit } 张。
 build-violation-too-many-navi-chips = 卡组中有 { $used } 张领航员芯片；上限为 { $limit } 张。
 build-violation-too-many-mega-chips = 卡组中有 { $used } 张MEGA芯片；上限为 { $limit } 张。

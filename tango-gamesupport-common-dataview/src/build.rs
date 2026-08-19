@@ -9,6 +9,7 @@ pub const MAX_PATCH_CARD56_MB: u32 = 80;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildViolationKind {
     ChipIllegalForGame,
+    ChipCodeUnavailable,
     TooManyCopiesOfChip { used: usize, limit: usize },
     TooManyNaviChips { used: usize, limit: usize },
     TooManyMegaChips { used: usize, limit: usize },
@@ -71,6 +72,13 @@ pub struct FolderUsage {
     pub giga: usize,
     pub dark: usize,
     pub copies: std::collections::HashMap<usize, usize>,
+}
+
+fn chip_code_available(codes: impl IntoIterator<Item = char>, code: save::ChipCode) -> bool {
+    codes
+        .into_iter()
+        .filter_map(save::ChipCode::from_char)
+        .any(|available| available == code)
 }
 
 impl FolderUsage {
@@ -190,6 +198,9 @@ impl FolderUsage {
         let Some(info) = assets.chip(chip.id) else {
             return issues;
         };
+        if !chip_code_available(info.codes(), chip.code) {
+            issues.push(BuildViolationKind::ChipCodeUnavailable);
+        }
         let mb_at = |slot: usize| {
             view.chip(folder_idx, slot)
                 .and_then(|chip| assets.chip(chip.id))
@@ -468,5 +479,13 @@ mod tests {
             ]),
             [4].into_iter().collect()
         );
+    }
+
+    #[test]
+    fn chip_code_must_be_in_the_chip_record() {
+        assert!(chip_code_available(['A', 'B', '*'], save::ChipCode::A));
+        assert!(chip_code_available(['A', 'B', '*'], save::ChipCode::Star));
+        assert!(!chip_code_available(['A', 'B', '*'], save::ChipCode::C));
+        assert!(!chip_code_available(['?'], save::ChipCode::Star));
     }
 }

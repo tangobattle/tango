@@ -55,6 +55,7 @@ build-violation-folder-not-full = { $required ->
    *[other] В папке { $used } из { $required } необходимых чипов.
 }
 build-violation-chip-illegal-for-game = Недопустимо в этой игре или версии.
+build-violation-chip-code-unavailable = Этот код недоступен для этого чипа.
 build-violation-too-many-copies-of-chip = { $used ->
     [one] Установлена { $used } копия; лимит — { $limit }.
     [few] Установлены { $used } копии; лимит — { $limit }.

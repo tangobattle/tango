@@ -48,6 +48,7 @@ build-violation-patch-card4-wrong-slot-reason = Được cài vào ô Mod Card {
 build-violation-patch-card4-not-in-catalog-reason = Ô Mod Card { $actual_slot } không có trong danh mục của trò chơi này.
 build-violation-folder-not-full = Folder có { $used } trong số { $required } chip bắt buộc.
 build-violation-chip-illegal-for-game = Không hợp lệ trong trò chơi hoặc phiên bản này.
+build-violation-chip-code-unavailable = Mã này không khả dụng cho chip này.
 build-violation-too-many-copies-of-chip = Đã cài { $used } bản sao; giới hạn là { $limit }.
 build-violation-too-many-navi-chips = Folder có { $used } chip Navi; giới hạn là { $limit }.
 build-violation-too-many-mega-chips = Folder có { $used } chip Mega; giới hạn là { $limit }.

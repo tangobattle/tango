@@ -54,6 +54,7 @@ build-violation-folder-not-full = { $required ->
    *[other] Le Folder contient { $used } des { $required } puces requises.
 }
 build-violation-chip-illegal-for-game = Non autorisée dans ce jeu ou cette version.
+build-violation-chip-code-unavailable = Ce code n’est pas disponible pour cette puce.
 build-violation-too-many-copies-of-chip = { $used ->
     [one] 1 exemplaire est installé ; la limite est de { $limit }.
    *[other] { $used } exemplaires sont installés ; la limite est de { $limit }.
