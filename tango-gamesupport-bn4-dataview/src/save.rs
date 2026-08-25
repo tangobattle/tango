@@ -237,6 +237,12 @@ pub struct ChipsView<S> {
     save: S,
 }
 
+const EQUIPPED_FOLDER_OFFSET: usize = 0x2132;
+/// The Regular-chip slot the game uses for the equipped folder in battle.
+/// The three persistent per-folder selections immediately follow it.
+const ACTIVE_REGULAR_CHIP_OFFSET: usize = 0x214c;
+const REGULAR_CHIP_INDEXES_OFFSET: usize = ACTIVE_REGULAR_CHIP_OFFSET + 1;
+
 #[repr(transparent)]
 #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
 struct RawChip {
@@ -252,11 +258,14 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     }
 
     fn equipped_folder_index(&self) -> usize {
-        self.save.buf[0x2132] as usize
+        self.save.buf[EQUIPPED_FOLDER_OFFSET] as usize
     }
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<Option<usize>> {
-        let idx = self.save.buf[0x214d + folder_index];
+        if folder_index >= self.num_folders() {
+            return None;
+        }
+        let idx = self.save.buf[REGULAR_CHIP_INDEXES_OFFSET + folder_index];
         Some(if idx >= 30 { None } else { Some(idx as usize) })
     }
 
@@ -290,7 +299,8 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
         if folder_index >= self.num_folders() {
             return false;
         }
-        self.save.buf[0x2132] = folder_index as u8;
+        self.save.buf[EQUIPPED_FOLDER_OFFSET] = folder_index as u8;
+        self.save.buf[ACTIVE_REGULAR_CHIP_OFFSET] = self.save.buf[REGULAR_CHIP_INDEXES_OFFSET + folder_index];
         true
     }
 
@@ -347,7 +357,10 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
             None => 0xff,
             Some(_) => return false,
         };
-        self.save.buf[0x214d + folder_index] = raw;
+        self.save.buf[REGULAR_CHIP_INDEXES_OFFSET + folder_index] = raw;
+        if self.equipped_folder_index() == folder_index {
+            self.save.buf[ACTIVE_REGULAR_CHIP_OFFSET] = raw;
+        }
         true
     }
 
@@ -779,5 +792,64 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
             },
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn blank_save() -> Save {
+        let mut buf = [0; SAVE_SIZE];
+        buf[ACTIVE_REGULAR_CHIP_OFFSET] = 0xff;
+        buf[REGULAR_CHIP_INDEXES_OFFSET..][..3].fill(0xff);
+        Save::from_wram(
+            &buf,
+            GameInfo {
+                variant: Variant::RedSun,
+                region: Region::US,
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn regular_chip_keeps_the_equipped_folder_cache_in_sync() {
+        let mut save = blank_save();
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+
+            // Editing an unequipped folder persists its selection without
+            // changing the cache used by the currently equipped folder.
+            assert!(chips.set_regular_chip_index(1, Some(9)));
+            assert_eq!(chips.regular_chip_index(1), Some(Some(9)));
+        }
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 0xff);
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+
+            // Equipping that folder materializes its stored selection into
+            // the active byte consumed by battle startup.
+            assert!(chips.set_equipped_folder(1));
+        }
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 9);
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+
+            // Subsequent changes and clearing update both representations.
+            assert!(chips.set_regular_chip_index(1, Some(4)));
+        }
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 4);
+        assert_eq!(save.buf[REGULAR_CHIP_INDEXES_OFFSET + 1], 4);
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+            assert!(chips.set_regular_chip_index(1, None));
+        }
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 0xff);
+        assert_eq!(save.buf[REGULAR_CHIP_INDEXES_OFFSET + 1], 0xff);
     }
 }
