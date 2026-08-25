@@ -90,6 +90,12 @@ pub struct ChipsView<S> {
     save: S,
 }
 
+const EQUIPPED_FOLDER_OFFSET: usize = 0x0dc2;
+/// The Regular-chip slot the game uses for the equipped folder in battle.
+/// The three persistent per-folder selections immediately follow it.
+const ACTIVE_REGULAR_CHIP_OFFSET: usize = 0x0ddc;
+const REGULAR_CHIP_INDEXES_OFFSET: usize = ACTIVE_REGULAR_CHIP_OFFSET + 1;
+
 #[repr(packed, C)]
 #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
 struct RawChip {
@@ -104,11 +110,14 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     }
 
     fn equipped_folder_index(&self) -> usize {
-        self.save.buf[0x0dc2] as usize
+        self.save.buf[EQUIPPED_FOLDER_OFFSET] as usize
     }
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<Option<usize>> {
-        let idx = self.save.buf[0x0ddd + folder_index];
+        if folder_index >= self.num_folders() {
+            return None;
+        }
+        let idx = self.save.buf[REGULAR_CHIP_INDEXES_OFFSET + folder_index];
         Some(if idx >= 30 { None } else { Some(idx as usize) })
     }
 
@@ -190,7 +199,10 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
             None => 0xff,
             Some(_) => return false,
         };
-        self.save.buf[0x0ddd + folder_index] = raw;
+        self.save.buf[REGULAR_CHIP_INDEXES_OFFSET + folder_index] = raw;
+        if self.equipped_folder_index() == folder_index {
+            self.save.buf[ACTIVE_REGULAR_CHIP_OFFSET] = raw;
+        }
         true
     }
 
@@ -208,6 +220,49 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
 
     fn rebuild_anticheat(&mut self) {
         // BN2 has no anti-cheat shadow copy (introduced in BN4).
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tango_gamesupport_common_dataview::save::Save as _;
+
+    fn blank_save(equipped_folder_index: usize) -> Save {
+        let mut buf = [0; SAVE_SIZE];
+        buf[EQUIPPED_FOLDER_OFFSET] = equipped_folder_index as u8;
+        buf[ACTIVE_REGULAR_CHIP_OFFSET] = 0xff;
+        buf[REGULAR_CHIP_INDEXES_OFFSET..][..3].fill(0xff);
+        Save::from_wram(&buf).unwrap()
+    }
+
+    #[test]
+    fn regular_chip_keeps_the_equipped_folder_cache_in_sync() {
+        let mut save = blank_save(1);
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+
+            // Editing an unequipped folder must not change the cache used by
+            // the currently equipped folder.
+            assert!(chips.set_regular_chip_index(0, Some(9)));
+            assert_eq!(chips.regular_chip_index(0), Some(Some(9)));
+        }
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 0xff);
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+            assert!(chips.set_regular_chip_index(1, Some(4)));
+        }
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 4);
+        assert_eq!(save.buf[REGULAR_CHIP_INDEXES_OFFSET + 1], 4);
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+            assert!(chips.set_regular_chip_index(1, None));
+        }
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 0xff);
+        assert_eq!(save.buf[REGULAR_CHIP_INDEXES_OFFSET + 1], 0xff);
     }
 }
 
