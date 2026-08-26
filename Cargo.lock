@@ -2303,7 +2303,7 @@ dependencies = [
 [[package]]
 name = "encoder-facade"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/encoder-facade#e0f8d4fc4e7491edaa9de0fd0c670823df92805d"
+source = "git+https://github.com/tangobattle/encoder-facade#e4fda44c61f297eaa02768587df65aae050b18ad"
 dependencies = [
  "bytes",
  "js-sys",

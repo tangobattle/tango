@@ -311,7 +311,7 @@ pub struct PerReplay {
 /// legacy replay-dump window.
 #[derive(Clone, Copy, Debug)]
 pub struct ExportSettings {
-    /// 0 = lossless (libx264rgb -qp 0, no upscale). 1..=10 = lossy
+    /// 0 = lossless (raw RGB24 + PCM, no upscale). 1..=10 = lossy
     /// `scale`× nearest-neighbor upscale. The form surfaces this as a
     /// single 0..=10 slider with "lossless" as the leftmost stop.
     pub scale: u8,

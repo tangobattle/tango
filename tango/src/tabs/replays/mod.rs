@@ -260,8 +260,8 @@ pub enum Effect {
     /// Open the native Save-File dialog for the given replay's
     /// rendered video. App picks a path async and dispatches
     /// `Message::ExportStart`. `lossless` selects the default
-    /// extension/filter: .mkv for lossless (libx264rgb + flac), .mp4
-    /// for scaled exports.
+    /// extension/filter: .mkv for lossless raw RGB24 + PCM, .mp4 for
+    /// scaled exports.
     OpenExportSaveDialog { replay: std::path::PathBuf, lossless: bool },
     /// User confirmed an export. App decodes the replay, resolves
     /// hooks + ROMs, spawns the crate::replay_render task,

@@ -946,8 +946,8 @@ impl App {
             .name("replay-export".to_string())
             .spawn(move || {
                 let ExportPrep { games, roms, replay } = prep;
-                // scale == 0 is the slider's lossless stop (RGB-domain
-                // H.264, no upscale); 1..=10 is a lossy render at that
+                // scale == 0 is the slider's lossless stop (raw RGB24
+                // + PCM, no upscale); 1..=10 is a lossy render at that
                 // nearest-neighbor upscale. The exporter picks the
                 // codecs and container to match.
                 let scale_arg = if user_settings.scale == 0 {

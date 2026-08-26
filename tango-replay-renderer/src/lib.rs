@@ -1,7 +1,7 @@
 //! Turning a recorded replay back into video: re-simulates it through
 //! the seam's replay path ([`tango_match::ReplaySet`]) and feeds the
-//! frames and audio to [`encoder_facade`], which encodes and muxes them
-//! into a video file.
+//! frames and audio to [`encoder_facade`], which muxes the lossless
+//! streams directly or encodes the shareable ones into a video file.
 //!
 //! Engine-neutral on purpose: the boot comes from the game's own
 //! [`tango_match::Backend`] — the same registration the player watches
@@ -9,11 +9,12 @@
 //! audio, the console's screen layout and frame clock) is the seam's,
 //! so a GBA replay and a DS replay render through the same pipeline.
 //!
-//! Nothing here picks an encoder or opens a file. [`encoder_facade`]
-//! starts whichever encoder the target has (ffmpeg subprocesses
-//! natively, WebCodecs in a browser), and the host passes in something
-//! seekable to write to — a `File`, a `Cursor<Vec<u8>>`, a shim over an
-//! OPFS sync handle — so the same re-simulation serves both.
+//! Nothing here picks a backend or opens a file. [`encoder_facade`]
+//! copies raw lossless media itself, or starts whichever encoder the
+//! target has (ffmpeg subprocesses natively, WebCodecs in a browser).
+//! The host passes in something seekable to write to — a `File`, a
+//! `Cursor<Vec<u8>>`, a shim over an OPFS sync handle — so the same
+//! re-simulation serves both.
 //!
 //! A render is driven, not run: [`Render::pump`] advances a slice of
 //! ticks and hands control back. A thread can pump until it's done —
@@ -42,8 +43,8 @@ pub enum Error {
     /// Booting, priming, or restoring the re-simulation pair.
     #[error(transparent)]
     Engine(#[from] tango_match::Error),
-    /// The encoder needs an integer rate, while an engine reports its
-    /// source rate as a float so live playback can servo it.
+    /// The engine reported a source rate that cannot be represented as
+    /// the exact rational sample clock required by a lossless export.
     #[error("invalid native audio sample rate {0}")]
     InvalidAudioSampleRate(f64),
     /// A replay naming a side the two-seat pair doesn't have.
@@ -66,8 +67,8 @@ pub trait Writer: std::io::Read + std::io::Write + std::io::Seek {}
 impl<W: std::io::Read + std::io::Write + std::io::Seek> Writer for W {}
 
 /// Which container a render lands in, and so which extension a save
-/// dialog should offer. Lossless is RGB H.264 with FLAC, neither of
-/// which MP4 carries, so it goes to Matroska.
+/// dialog should offer. Lossless is uncompressed RGB24 with PCM, which
+/// goes to Matroska; the shareable export is H.264/AAC in MP4.
 pub fn container(lossless: bool) -> encoder_facade::Container {
     if lossless {
         encoder_facade::Container::Matroska
@@ -85,21 +86,22 @@ fn encoder_settings(
     width: u32,
     height: u32,
     timing: tango_match::FrameTiming,
-    audio_sample_rate: u32,
+    audio_sample_rate: encoder_facade::SampleRate,
     audio_tracks: usize,
 ) -> encoder_facade::Settings {
     let lossless = scale.is_none();
     encoder_facade::Settings {
         video: encoder_facade::VideoSettings {
-            // A lossless render stays in RGB; a lossy one is CRF-rated,
+            // The archival path copies RGB channels into Matroska
+            // without an encoder. The shareable path is CRF-rated,
             // which at this frame size is predictable where a bitrate
             // target would swing with the content.
-            codec: encoder_facade::VideoCodec::H264 {
-                quality: if lossless {
-                    encoder_facade::H264Quality::Lossless
-                } else {
-                    encoder_facade::H264Quality::Crf(18)
-                },
+            codec: if lossless {
+                encoder_facade::VideoCodec::RawRgb24
+            } else {
+                encoder_facade::VideoCodec::H264 {
+                    quality: encoder_facade::H264Quality::Crf(18),
+                }
             },
             width,
             height,
@@ -107,12 +109,15 @@ fn encoder_settings(
             keyframe_interval: KEYFRAME_INTERVAL,
             timescale: timing.timescale,
             frame_duration: timing.frame_duration,
-            // An RGB H.264 stream can't carry these at all.
-            color: (!lossless).then_some(encoder_facade::ColorInfo::SRGB_FULL),
+            color: Some(if lossless {
+                encoder_facade::ColorInfo::SRGB_RGB_FULL
+            } else {
+                encoder_facade::ColorInfo::SRGB_FULL
+            }),
         },
         audio: encoder_facade::AudioSettings {
             codec: if lossless {
-                encoder_facade::AudioCodec::Flac
+                encoder_facade::AudioCodec::PcmS16Le
             } else {
                 encoder_facade::AudioCodec::Aac { bitrate: 384_000 }
             },
@@ -241,8 +246,8 @@ pub enum Progress<T> {
     /// the re-sim actually started (the snapshot tick for a
     /// jump-started clip) so a bar doesn't sit near-done from tick one.
     Rendering { done: usize, total: usize },
-    /// Every frame is in and the encoders are finishing. Nothing left
-    /// to feed; pump again to let them.
+    /// Every frame is in and the media backend is finishing. Nothing
+    /// left to feed; pump again to let it.
     Flushing,
     /// The container is closed and the writer is handed back.
     Done(T),
@@ -409,11 +414,11 @@ pub struct Render<W: Writer> {
 }
 
 impl<W: Writer> Render<W> {
-    /// Boot the re-simulation and open the encoders.
+    /// Boot the re-simulation and open the media backend.
     ///
     /// `open_output` opens the destination. The pair boots first so its
-    /// audio rate can configure the lossless encoder; the output opens
-    /// after the encoder, so neither kind of failure can truncate a file
+    /// audio rate can configure the lossless stream; the output opens
+    /// after the backend, so neither kind of failure can truncate a file
     /// it will never fill.
     pub fn new(
         request: Request<'_>,
@@ -476,13 +481,14 @@ impl<W: Writer> Render<W> {
         // Drop the audio the boot piled up (nothing drained during it).
         playback.discard_audio();
 
-        // A lossless render carries the emulator's PCM straight into
-        // FLAC at the rate it was produced. Lossy AAC stays at 48 kHz,
-        // with the offline converter below bridging any source rate.
+        // A lossless render copies the emulator's PCM into Matroska and
+        // describes its hardware clock exactly. Lossy AAC stays at
+        // 48 kHz, with the offline converter below bridging any source
+        // rate.
         let audio_sample_rate = if lossless {
-            integer_sample_rate(playback.side(first_seat).audio_sample_rate())?
+            native_sample_rate(playback.side(first_seat).audio_sample_rate())?
         } else {
-            LOSSY_SAMPLE_RATE as u32
+            encoder_facade::SampleRate::integer(LOSSY_SAMPLE_RATE as u32)
         };
         let session = encoder_facade::Session::new(
             encoder_settings(
@@ -696,16 +702,30 @@ impl<W: Writer> Render<W> {
     }
 }
 
-/// Turn the engine's source-rate report into the nearest integer rate
-/// the encoder can put in a container header. Some hardware clocks do
-/// not divide into a whole number of samples per second (the DS is
-/// 33,513,982 / 1,024 Hz), while FLAC's rate field is integer-only; the
-/// PCM itself still passes through unchanged.
-fn integer_sample_rate(rate: f64) -> Result<u32> {
+/// Recover the exact binary rational hardware clock from the engine's
+/// `f64` report. Both supported consoles fit comfortably: GBA is
+/// 32,768/1 Hz and DS reduces from 33,513,982/1,024 to
+/// 16,756,991/512 Hz. No tolerance is used: accepting an approximation
+/// here would reintroduce long-export drift.
+fn native_sample_rate(rate: f64) -> Result<encoder_facade::SampleRate> {
     if !rate.is_finite() || rate < 1.0 || rate > u32::MAX as f64 {
         return Err(Error::InvalidAudioSampleRate(rate));
     }
-    Ok(rate.round() as u32)
+    let mut denominator = 1u32;
+    loop {
+        let scaled = rate * denominator as f64;
+        if scaled <= u32::MAX as f64 {
+            let numerator = scaled as u32;
+            if numerator as f64 == scaled {
+                return Ok(encoder_facade::SampleRate::new(numerator, denominator));
+            }
+        }
+        if denominator == 65_536 {
+            break;
+        }
+        denominator *= 2;
+    }
+    Err(Error::InvalidAudioSampleRate(rate))
 }
 
 /// Run a render to completion on the calling thread, reporting
@@ -883,10 +903,15 @@ mod tests {
     }
 
     #[test]
-    fn native_sample_rates_fit_container_headers() {
-        assert_eq!(integer_sample_rate(32_768.0).unwrap(), 32_768);
-        assert_eq!(integer_sample_rate(33_513_982.0 / 1_024.0).unwrap(), 32_728);
-        assert!(integer_sample_rate(f64::NAN).is_err());
+    fn native_sample_rates_preserve_the_hardware_clocks() {
+        assert_eq!(
+            native_sample_rate(32_768.0).unwrap(),
+            encoder_facade::SampleRate::integer(32_768)
+        );
+        let ds = native_sample_rate(33_513_982.0 / 1_024.0).unwrap();
+        assert_eq!(ds, encoder_facade::SampleRate::new(16_756_991, 512));
+        assert_eq!(ds.as_f64(), 33_513_982.0 / 1_024.0);
+        assert!(native_sample_rate(f64::NAN).is_err());
 
         let settings = encoder_settings(
             None,
@@ -896,9 +921,12 @@ mod tests {
                 timescale: 16_777_216,
                 frame_duration: 280_896,
             },
-            32_768,
+            ds,
             1,
         );
-        assert_eq!(settings.audio.sample_rate, 32_768);
+        assert_eq!(settings.video.codec, encoder_facade::VideoCodec::RawRgb24);
+        assert_eq!(settings.audio.codec, encoder_facade::AudioCodec::PcmS16Le);
+        assert_eq!(settings.audio.sample_rate, ds);
+        assert_eq!(settings.container, encoder_facade::Container::Matroska);
     }
 }

@@ -32,9 +32,9 @@ const SLICE_TICKS: usize = 8;
 
 /// Nearest-neighbour upscale. 2x is 480x320 — a sane size to send
 /// someone, and a whole multiple so the pixels stay square and sharp.
-/// `None` here would mean lossless RGB H.264 + FLAC in Matroska, which
-/// is a beautiful thing to make on a phone and a terrible thing to try
-/// to share from one.
+/// `None` here would mean uncompressed RGB24 + PCM in Matroska, which is
+/// a faithful archival file and a terrible thing to try to share from a
+/// phone.
 const SCALE: Option<usize> = Some(2);
 
 /// How far along, for the replays screen.
