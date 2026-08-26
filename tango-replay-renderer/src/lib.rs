@@ -696,14 +696,16 @@ impl<W: Writer> Render<W> {
     }
 }
 
-/// Turn the engine's source-rate report into the integer rate the
-/// encoder accepts without silently rounding a value it cannot encode
-/// exactly.
+/// Turn the engine's source-rate report into the nearest integer rate
+/// the encoder can put in a container header. Some hardware clocks do
+/// not divide into a whole number of samples per second (the DS is
+/// 33,513,982 / 1,024 Hz), while FLAC's rate field is integer-only; the
+/// PCM itself still passes through unchanged.
 fn integer_sample_rate(rate: f64) -> Result<u32> {
-    if !rate.is_finite() || rate < 1.0 || rate > u32::MAX as f64 || rate.fract() != 0.0 {
+    if !rate.is_finite() || rate < 1.0 || rate > u32::MAX as f64 {
         return Err(Error::InvalidAudioSampleRate(rate));
     }
-    Ok(rate as u32)
+    Ok(rate.round() as u32)
 }
 
 /// Run a render to completion on the calling thread, reporting
@@ -881,9 +883,10 @@ mod tests {
     }
 
     #[test]
-    fn native_sample_rates_are_preserved_exactly() {
+    fn native_sample_rates_fit_container_headers() {
         assert_eq!(integer_sample_rate(32_768.0).unwrap(), 32_768);
-        assert!(integer_sample_rate(32_768.5).is_err());
+        assert_eq!(integer_sample_rate(33_513_982.0 / 1_024.0).unwrap(), 32_728);
+        assert!(integer_sample_rate(f64::NAN).is_err());
 
         let settings = encoder_settings(
             None,

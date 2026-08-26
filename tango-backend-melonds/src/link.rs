@@ -11,13 +11,11 @@ use tango_match::{HostInput, Screen, ScreenLayout};
 
 /// The rate the SPU hands samples out at.
 ///
-/// Not the DS's own 32823.6328 Hz: melonDS resamples internally, and
-/// what it resamples *to* is `NDSArgs::OutputSampleRate`, which the shim
-/// leaves at its 48 kHz default. Claiming the console's native rate
-/// instead stretches playback by 48000/32823.6 — about six semitones
-/// flat — and drains the source queue half again as fast as it fills,
-/// which underruns into a crackle on top of the wrong pitch.
-pub const SAMPLE_RATE: f64 = 48_000.0;
+/// The DS master clock is 33,513,982 Hz and the SPU emits one sample
+/// every 1,024 cycles. The melonDS shim configures its output to this
+/// exact rate, so rate conversion belongs to the host audio path rather
+/// than happening inside the emulator first.
+pub const SAMPLE_RATE: f64 = melonds::AUDIO_SAMPLE_RATE;
 
 /// The DS's video framerate, which is also the rate audio production
 /// scales against when a host paces the simulation faster or slower.
