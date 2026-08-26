@@ -43,10 +43,6 @@ pub enum Error {
     /// Booting, priming, or restoring the re-simulation pair.
     #[error(transparent)]
     Engine(#[from] tango_match::Error),
-    /// The engine reported a source rate that cannot be represented as
-    /// the exact rational sample clock required by a lossless export.
-    #[error("invalid native audio sample rate {0}")]
-    InvalidAudioSampleRate(f64),
     /// A replay naming a side the two-seat pair doesn't have.
     #[error("bad local player index {0}")]
     BadLocalPlayer(usize),
@@ -486,7 +482,8 @@ impl<W: Writer> Render<W> {
         // 48 kHz, with the offline converter below bridging any source
         // rate.
         let audio_sample_rate = if lossless {
-            native_sample_rate(playback.side(first_seat).audio_sample_rate())?
+            let rate = playback.side(first_seat).audio_sample_rate();
+            encoder_facade::SampleRate::new(rate.numerator, rate.denominator)
         } else {
             encoder_facade::SampleRate::integer(LOSSY_SAMPLE_RATE as u32)
         };
@@ -641,7 +638,7 @@ impl<W: Writer> Render<W> {
                 break;
             }
             let mut side = self.playback.side(seat);
-            let rate = side.audio_sample_rate();
+            let rate = side.audio_sample_rate().as_f64();
             loop {
                 // What landed is whatever fit: a drain fills as far as
                 // it goes and reports the console's whole total.
@@ -700,32 +697,6 @@ impl<W: Writer> Render<W> {
             });
         }
     }
-}
-
-/// Recover the exact binary rational hardware clock from the engine's
-/// `f64` report. Both supported consoles fit comfortably: GBA is
-/// 32,768/1 Hz and DS reduces from 33,513,982/1,024 to
-/// 16,756,991/512 Hz. No tolerance is used: accepting an approximation
-/// here would reintroduce long-export drift.
-fn native_sample_rate(rate: f64) -> Result<encoder_facade::SampleRate> {
-    if !rate.is_finite() || rate < 1.0 || rate > u32::MAX as f64 {
-        return Err(Error::InvalidAudioSampleRate(rate));
-    }
-    let mut denominator = 1u32;
-    loop {
-        let scaled = rate * denominator as f64;
-        if scaled <= u32::MAX as f64 {
-            let numerator = scaled as u32;
-            if numerator as f64 == scaled {
-                return Ok(encoder_facade::SampleRate::new(numerator, denominator));
-            }
-        }
-        if denominator == 65_536 {
-            break;
-        }
-        denominator *= 2;
-    }
-    Err(Error::InvalidAudioSampleRate(rate))
 }
 
 /// Run a render to completion on the calling thread, reporting
@@ -904,14 +875,11 @@ mod tests {
 
     #[test]
     fn native_sample_rates_preserve_the_hardware_clocks() {
-        assert_eq!(
-            native_sample_rate(32_768.0).unwrap(),
-            encoder_facade::SampleRate::integer(32_768)
-        );
-        let ds = native_sample_rate(33_513_982.0 / 1_024.0).unwrap();
-        assert_eq!(ds, encoder_facade::SampleRate::new(16_756_991, 512));
+        let gba = tango_match::AudioSampleRate::integer(32_768);
+        assert_eq!(gba.as_f64(), 32_768.0);
+        let ds = tango_match::AudioSampleRate::new(33_513_982, 1_024);
         assert_eq!(ds.as_f64(), 33_513_982.0 / 1_024.0);
-        assert!(native_sample_rate(f64::NAN).is_err());
+        let encoded_ds = encoder_facade::SampleRate::new(ds.numerator, ds.denominator);
 
         let settings = encoder_settings(
             None,
@@ -921,12 +889,12 @@ mod tests {
                 timescale: 16_777_216,
                 frame_duration: 280_896,
             },
-            ds,
+            encoded_ds,
             1,
         );
         assert_eq!(settings.video.codec, encoder_facade::VideoCodec::RawRgb24);
         assert_eq!(settings.audio.codec, encoder_facade::AudioCodec::PcmS16Le);
-        assert_eq!(settings.audio.sample_rate, ds);
+        assert_eq!(settings.audio.sample_rate, encoded_ds);
         assert_eq!(settings.container, encoder_facade::Container::Matroska);
     }
 }

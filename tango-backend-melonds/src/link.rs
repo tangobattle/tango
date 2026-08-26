@@ -7,7 +7,7 @@
 //! [`Match`](tango_match::Match) drive either.
 
 use tango_match::telemetry::Telemetry;
-use tango_match::{HostInput, Screen, ScreenLayout};
+use tango_match::{AudioSampleRate, HostInput, Screen, ScreenLayout};
 
 /// The rate the SPU hands samples out at.
 ///
@@ -15,7 +15,10 @@ use tango_match::{HostInput, Screen, ScreenLayout};
 /// every 1,024 cycles. The melonDS shim configures its output to this
 /// exact rate, so rate conversion belongs to the host audio path rather
 /// than happening inside the emulator first.
-pub const SAMPLE_RATE: f64 = melonds::AUDIO_SAMPLE_RATE;
+pub const SAMPLE_RATE: AudioSampleRate = AudioSampleRate::new(
+    melonds::AUDIO_SAMPLE_RATE.numerator,
+    melonds::AUDIO_SAMPLE_RATE.denominator,
+);
 
 /// The DS's video framerate, which is also the rate audio production
 /// scales against when a host paces the simulation faster or slower.
@@ -300,7 +303,7 @@ impl tango_match::Side for DsSide<'_> {
         Some(self.0.console().save_memory())
     }
 
-    fn audio_sample_rate(&mut self) -> f64 {
+    fn audio_sample_rate(&mut self) -> AudioSampleRate {
         SAMPLE_RATE
     }
 
@@ -407,6 +410,15 @@ pub(crate) fn rtc_parts(rtc: std::time::SystemTime) -> (i32, i32, i32, i32, i32,
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_spu_rate_keeps_the_hardware_ratio() {
+        assert_eq!(
+            super::SAMPLE_RATE,
+            tango_match::AudioSampleRate::new(33_513_982, 1_024)
+        );
+        assert_eq!(super::SAMPLE_RATE.as_f64(), 33_513_982.0 / 1_024.0);
+    }
+
     /// The shared rollback loop accepts this link — the point of the
     /// seam. A DS match and a GBA match are the same
     /// [`tango_match::Match`], and neither engine reimplements the

@@ -34,6 +34,33 @@
 /// machinery shares its keyframes across the host's workers.
 pub type Snapshot = Box<dyn std::any::Any + Send + Sync>;
 
+/// An emulator's exact audio clock, in samples per second.
+///
+/// Playback APIs generally want floating-point Hz, while archival
+/// containers can retain the underlying ratio. Carrying both integers
+/// through the engine seam keeps each caller free to choose without
+/// reconstructing information the emulator already knew.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AudioSampleRate {
+    pub numerator: u32,
+    pub denominator: u32,
+}
+
+impl AudioSampleRate {
+    pub const fn new(numerator: u32, denominator: u32) -> Self {
+        Self { numerator, denominator }
+    }
+
+    pub const fn integer(hz: u32) -> Self {
+        Self::new(hz, 1)
+    }
+
+    /// The clock in floating-point Hz, for live playback and resampling.
+    pub const fn as_f64(self) -> f64 {
+        self.numerator as f64 / self.denominator as f64
+    }
+}
+
 /// An emulator's linked pair: two consoles plus whatever connects
 /// them, snapshotted and restored as one unit. That is the rollback
 /// unit, because the wire between two consoles carries state just as
@@ -127,8 +154,8 @@ pub trait Side {
         None
     }
 
-    /// The rate this console produces audio at, in Hz.
-    fn audio_sample_rate(&mut self) -> f64;
+    /// The exact rate this console produces audio at.
+    fn audio_sample_rate(&mut self) -> AudioSampleRate;
 
     /// Take up to `out`'s worth of this console's produced audio, as
     /// interleaved stereo, and answer with how much it had in total —

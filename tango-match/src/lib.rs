@@ -42,7 +42,8 @@ pub use solo::{Console, Solo, SoloConfig};
 pub use engine::Match;
 pub use audio::{AudioIn, AudioOut};
 pub use link::{
-    Backend, FrameTiming, Link, PeerRom, Screen, ScreenLayout, SessionMode, Side, Snapshot, StartConfig,
+    AudioSampleRate, Backend, FrameTiming, Link, PeerRom, Screen, ScreenLayout, SessionMode, Side, Snapshot,
+    StartConfig,
 };
 pub use replay::{
     BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,

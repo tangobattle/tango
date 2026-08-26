@@ -361,7 +361,7 @@ impl Pump {
 
     /// Empty one console, publishing what comes out.
     fn take(&mut self, side: &mut dyn crate::Side) {
-        self.into.set_sample_rate(side.audio_sample_rate());
+        self.into.set_sample_rate(side.audio_sample_rate().as_f64());
         loop {
             self.scratch.resize(DRAIN_CHUNK * CHANNELS, 0);
             // A drain fills as far as it goes and answers with the
@@ -479,7 +479,7 @@ mod tests {
     /// bigger than one call can carry.
     struct Console {
         queued: Vec<i16>,
-        rate: f64,
+        rate: crate::AudioSampleRate,
     }
 
     impl crate::Side for Console {
@@ -487,7 +487,7 @@ mod tests {
             None
         }
 
-        fn audio_sample_rate(&mut self) -> f64 {
+        fn audio_sample_rate(&mut self) -> crate::AudioSampleRate {
             self.rate
         }
 
@@ -509,7 +509,7 @@ mod tests {
         let mut pump = Pump::lone(into);
         let mut console = Console {
             queued: ramp(0, DRAIN_CHUNK * 2 + 7),
-            rate: 65536.0,
+            rate: crate::AudioSampleRate::integer(65_536),
         };
         pump.take(&mut console);
         assert_eq!(out.available(), DRAIN_CHUNK * 2 + 7);
@@ -525,7 +525,7 @@ mod tests {
         let mut pump = Pump::lone(into);
         let mut console = Console {
             queued: ramp(0, 10),
-            rate: 32768.0,
+            rate: crate::AudioSampleRate::integer(32_768),
         };
         pump.take(&mut console);
 
@@ -556,7 +556,7 @@ mod tests {
         let mut pump = Pump::new(into, seat.clone());
         let mut console = Console {
             queued: ramp(0, 10),
-            rate: 32768.0,
+            rate: crate::AudioSampleRate::integer(32_768),
         };
         pump.take(&mut console);
         assert_eq!(out.available(), 10);

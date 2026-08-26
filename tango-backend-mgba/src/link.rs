@@ -22,7 +22,7 @@
 //! the ring answers for it instead.
 
 use tango_match::telemetry::Telemetry;
-use tango_match::{HostInput, Screen, ScreenLayout};
+use tango_match::{AudioSampleRate, HostInput, Screen, ScreenLayout};
 
 /// Bit mask of a joyflags value: the GBA keypad is 10 bits (A, B, Select,
 /// Start, →, ←, ↑, ↓, R, L), occupying bits 0..=9. The top 6 bits are unused by
@@ -157,8 +157,8 @@ impl tango_match::Side for GbaSide<'_> {
         self.link.export_save(self.player)
     }
 
-    fn audio_sample_rate(&mut self) -> f64 {
-        self.link.core(self.player).audio_sample_rate() as f64
+    fn audio_sample_rate(&mut self) -> AudioSampleRate {
+        AudioSampleRate::integer(self.link.core(self.player).audio_sample_rate())
     }
 
     fn drain_audio(&mut self, out: &mut [i16]) -> usize {
