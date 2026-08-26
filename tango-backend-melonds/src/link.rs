@@ -319,15 +319,19 @@ impl tango_match::Side for DsSide<'_> {
     }
 }
 
-/// Compose `screens` into one RGBA8 frame, in the selection's own
-/// order — which is [`Screens::layout`]'s, so the frame and the layout
-/// describing it never disagree.
+/// Compose the core's unpacked BGR666 screens into one RGBA8 frame, in
+/// the selection's own order — which is [`Screens::layout`]'s, so the
+/// frame and the layout describing it never disagree.
 ///
 /// Side by side, so a row of the composite is a row of each selected
 /// screen in turn. Stacked would be the cheaper concatenation — a
 /// vertical stack is free when the widths match — but a 256x384 pane
 /// wastes most of the width of any display it is drawn into.
-fn compose_frame(top: &[u32], bottom: &[u32], screens: Screens) -> Vec<u8> {
+fn compose_frame(
+    top: &[melonds::UnpackedBgr666],
+    bottom: &[melonds::UnpackedBgr666],
+    screens: Screens,
+) -> Vec<u8> {
     let sources = [top, bottom];
     let (width, height) = (SCREENS[0].width as usize, SCREENS[0].height as usize);
     let mut rgba = vec![0u8; screens.layout().buffer_len()];
@@ -343,14 +347,22 @@ fn compose_frame(top: &[u32], bottom: &[u32], screens: Screens) -> Vec<u8> {
             let src = &sources[screen as usize][row * width..(row + 1) * width];
             let dst = &mut rgba[at..at + span];
             for (pixel, out) in src.iter().zip(dst.chunks_exact_mut(4)) {
-                // The core hands out BGRA words; hosts want RGBA bytes.
-                let [b, g, r, _] = pixel.to_le_bytes();
-                out.copy_from_slice(&[r, g, b, 0xff]);
+                out.copy_from_slice(&unpacked_bgr666_to_rgba8(*pixel));
             }
             at += span;
         }
     }
     rgba
+}
+
+/// Expand one of melonDS's native six-bit compositor pixels to the
+/// RGBA8 presentation format the backend seam promises hosts. Each
+/// component is mapped proportionally with `value * 255 / 63`, the
+/// six-bit counterpart of the mGBA backend's BGR555 conversion.
+#[inline]
+pub fn unpacked_bgr666_to_rgba8(pixel: melonds::UnpackedBgr666) -> [u8; 4] {
+    let expand = |value: u8| (u16::from(value) * 0xff / 0x3f) as u8;
+    [expand(pixel.red()), expand(pixel.green()), expand(pixel.blue()), 0xff]
 }
 
 /// Reduce the seam's input word to what this console could produce.
@@ -450,27 +462,30 @@ mod tests {
         assert_eq!(lifted.keys, keys::A);
     }
 
-    /// The core hands out BGRA words and a host wants RGBA bytes, with
-    /// the alpha the console has no opinion about forced opaque. The
-    /// composite is written a row at a time for speed, so pin the pixel
-    /// conversion itself rather than trusting the loop around it.
+    /// The core hands out unpacked BGR666 and a host wants RGBA8, with
+    /// the alpha the console has no opinion about forced opaque. Pin the
+    /// proportional component expansion rather than trusting the
+    /// composition loop around it.
     #[test]
-    fn a_bgra_word_composes_to_opaque_rgba() {
+    fn an_unpacked_bgr666_word_composes_to_opaque_rgba8() {
         let px = (super::SCREENS[0].width * super::SCREENS[0].height) as usize;
-        // BGRA little-endian: b=0x11, g=0x22, r=0x33, and an alpha byte
-        // that must not survive.
-        let top = vec![0x44_33_22_11u32; px];
-        let bottom = vec![0u32; px];
+        // 0xXXBBGGRR: b=0x11, g=0x22, r=0x33. XX and each component's
+        // upper two byte bits carry no color information.
+        let top = vec![melonds::UnpackedBgr666::from_raw(0x44_d1_a2_f3); px];
+        let bottom = vec![melonds::UnpackedBgr666::from_raw(0); px];
         let out = super::compose_frame(&top, &bottom, super::Screens::UPPER);
-        assert_eq!(&out[..8], &[0x33, 0x22, 0x11, 0xff, 0x33, 0x22, 0x11, 0xff]);
-        assert_eq!(&out[out.len() - 4..], &[0x33, 0x22, 0x11, 0xff]);
+        assert_eq!(&out[..8], &[0xce, 0x89, 0x44, 0xff, 0xce, 0x89, 0x44, 0xff]);
+        assert_eq!(&out[out.len() - 4..], &[0xce, 0x89, 0x44, 0xff]);
     }
 
     /// A red top screen and a blue bottom one, as the core hands them
-    /// out: BGRA words, so red is `0x00ff0000`.
-    fn framebuffers() -> (Vec<u32>, Vec<u32>) {
+    /// out: unpacked BGR666 words, so red is `0x0000003f`.
+    fn framebuffers() -> (Vec<melonds::UnpackedBgr666>, Vec<melonds::UnpackedBgr666>) {
         let px = (super::SCREENS[0].width * super::SCREENS[0].height) as usize;
-        (vec![0x00ff_0000; px], vec![0x0000_00ff; px])
+        (
+            vec![melonds::UnpackedBgr666::from_raw(0x0000_003f); px],
+            vec![melonds::UnpackedBgr666::from_raw(0x003f_0000); px],
+        )
     }
 
     /// A selection's composed frame is exactly the size its layout

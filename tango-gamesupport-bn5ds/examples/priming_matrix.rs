@@ -93,7 +93,7 @@ fn save_shot(link: &mut tango_backend_melonds::Link, seat: usize, path: &str) {
     let mut img = image::RgbImage::new(256, 384);
     for (half, screen) in [top, bottom].into_iter().enumerate() {
         for (i, &pixel) in screen.iter().enumerate() {
-            let [b, g, r, _] = pixel.to_le_bytes();
+            let [r, g, b, _] = tango_backend_melonds::unpacked_bgr666_to_rgba8(pixel);
             img.put_pixel((i % 256) as u32, (half * 192 + i / 256) as u32, image::Rgb([r, g, b]));
         }
     }

@@ -27,7 +27,7 @@ pub mod link;
 pub mod solo;
 
 pub use backend::{mute_sequences, DsBackend, GameSupport};
-pub use link::{DsScreen, Link, Screens, EXPECTED_FPS, SAMPLE_RATE};
+pub use link::{unpacked_bgr666_to_rgba8, DsScreen, Link, Screens, EXPECTED_FPS, SAMPLE_RATE};
 pub use solo::SoloConsole;
 
 /// Re-exported so a game crate can name a console's own input word
@@ -36,4 +36,4 @@ pub use melonds_rollback::Input;
 
 /// One console of a pair. A game crate needs this to reach past the
 /// link when priming: execution traps are installed per console.
-pub use melonds::Nds;
+pub use melonds::{Nds, UnpackedBgr666};
