@@ -397,7 +397,7 @@ impl tango_match::ReplayBoot for Boot {
     /// double as the round-lifecycle anchors), the walk's pokes are
     /// core state, and the lockstep blobs ride in the snapshot.
     fn boot_unprimed(&self, observe: bool) -> Result<tango_match::BootedReplay, tango_match::Error> {
-        let (pair, events, _primed) = assemble_pair(
+        let (pair, events, primed) = assemble_pair(
             self.roms.clone(),
             self.saves.clone(),
             self.support.map(|s| s as &dyn GameSupport),
@@ -407,12 +407,15 @@ impl tango_match::ReplayBoot for Boot {
         )
         .map_err(tango_match::Error::from)?;
         // The capture this pair is about to land on is round 1 already
-        // started — the walk's handoff fired on the pair that took it,
-        // leaving the sink latched for `Telemetry::new`'s baseline
-        // `Started` at tick 0. Reproduce the latch, since no walk runs
-        // here to fire it. The primed latches stay unset: only the
-        // priming loop reads them, and the walk traps gate on game
-        // state a battle capture leaves inert.
+        // started — the walk's handoff fired on the pair that took it.
+        // Reproduce both host-side signals, since no walk runs here to
+        // fire them. The per-core latches also gate the BN1–3 sound
+        // request traps: leaving them unset makes the background pass
+        // swallow the one-shot battle BGM request, and seeks then restore
+        // those silent keyframes into the display pair.
+        for latch in &primed {
+            latch.set();
+        }
         events.round_started();
         Ok(self.wrap(pair, observe.then_some(events)))
     }
