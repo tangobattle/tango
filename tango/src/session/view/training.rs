@@ -118,7 +118,7 @@ fn bottom_bar<'a>(
                 .width(Length::Fixed(18.0))
                 .height(Length::Fixed(18.0))
                 .center(Fill),
-            opponent_view_items(lang, opponent_view, Message::SetOpponentView),
+            opponent_view_items(lang, opponent_view, Message::SetOpponentView, false),
             true,
             [7.0, 7.0],
             crate::ui::style::STANDARD_PADDING,

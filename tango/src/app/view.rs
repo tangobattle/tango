@@ -169,7 +169,6 @@ impl App {
                 .session
                 .active_as::<session::replay::ReplaySession>()
                 .map(|replay| replay.speed());
-            let opponent_view = self.config.opponent_view;
             return crate::platform::input_capture::InputCapture::new(composed, move |input| {
                 // Esc is reserved as the in-session escape/menu key —
                 // it never reaches the joyflag pipeline so the user
@@ -198,7 +197,7 @@ impl App {
                 // same messages as its on-screen controls; opponent view
                 // therefore also follows the App's normal persistence path.
                 if let (Some(speed), crate::platform::input_capture::Input::Keyboard(kb)) = (replay_speed, &input) {
-                    if let Some(shortcut) = session::view::replay::keyboard_shortcut(kb, speed, opponent_view) {
+                    if let Some(shortcut) = session::view::replay::keyboard_shortcut(kb, speed) {
                         return Some(Message::Session(session::Message::Replay(shortcut)));
                     }
                 }

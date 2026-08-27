@@ -27,15 +27,17 @@ use sweeten::widget::overlay::menu;
 /// message selecting it emits. `danger` tints the row's resting
 /// icon + label in the theme's danger color — for destructive
 /// actions, matching the red their standalone buttons used to wear.
-/// `checked` rows are selections: they wear a trailing primary check
-/// while on, and nothing (the slot stays reserved by the fixed menu
-/// width) while off.
+/// `shortcut` is a muted, right-aligned key equivalent like a native
+/// desktop menu. `checked` rows are selections: they wear a primary
+/// check on the left while on, with the slot reserved so rows stay
+/// aligned while off.
 #[derive(Clone)]
 pub struct MenuItem<M> {
     /// `None` rows are label-only — selection menus whose choices are
     /// self-describing (the speed steps) skip the glyph column.
     icon: Option<Icon>,
     label: String,
+    shortcut: Option<String>,
     message: M,
     danger: bool,
     checked: Option<bool>,
@@ -46,6 +48,7 @@ impl<M> MenuItem<M> {
         Self {
             icon: Some(icon),
             label,
+            shortcut: None,
             message,
             danger: false,
             checked: None,
@@ -57,24 +60,33 @@ impl<M> MenuItem<M> {
         Self {
             icon: Some(icon),
             label,
+            shortcut: None,
             message,
             danger: true,
             checked: None,
         }
     }
 
-    /// A label-only selection row: a trailing check marks it while
+    /// A label-only selection row: a leading check marks it while
     /// `on`. Selecting it still just emits `message` (and closes the
     /// menu) — state lives with the caller.
     pub fn toggle(label: String, message: M, on: bool) -> Self {
         Self {
             icon: None,
             label,
+            shortcut: None,
             message,
             danger: false,
             checked: Some(on),
         }
     }
+
+    /// Add a muted, right-aligned keyboard equivalent to this row.
+    pub fn shortcut(mut self, shortcut: impl Into<String>) -> Self {
+        self.shortcut = Some(shortcut.into());
+        self
+    }
+
 }
 
 /// Default width of the dropdown pane. Independent of the trigger's
@@ -86,6 +98,11 @@ const MENU_WIDTH: f32 = 180.0;
 
 /// Gap between a row's icon and its label.
 const ICON_GAP: f32 = 8.0;
+
+/// Fixed trailing column for keyboard equivalents. Wide enough for chords
+/// such as `Alt+4`; the label gets the rest of the row and clips before it.
+const SHORTCUT_COLUMN_WIDTH: f32 = 64.0;
+const SHORTCUT_GAP: f32 = 12.0;
 
 /// How far the pane glides on entrance — from tucked toward the
 /// trigger to its rest position, so the motion reads as the menu
@@ -537,6 +554,21 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
                     wrapping: text::Wrapping::default(),
                 };
                 let mut label_x = row.x + self.item_padding.left;
+                if item.checked.is_some() {
+                    if item.checked == Some(true) {
+                        renderer.fill_text(
+                            text_at(
+                                char::from(Icon::Check).to_string(),
+                                iced::Font::with_name("lucide"),
+                                text::Shaping::Basic,
+                            ),
+                            Point::new(label_x, row.center_y()),
+                            if hovered { style.selected_text_color } else { primary },
+                            bounds,
+                        );
+                    }
+                    label_x += f32::from(text_size) + ICON_GAP;
+                }
                 if let Some(icon) = item.icon {
                     renderer.fill_text(
                         text_at(
@@ -550,27 +582,46 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
                     );
                     label_x += f32::from(text_size) + ICON_GAP;
                 }
-                renderer.fill_text(
-                    text_at(item.label.clone(), renderer.default_font(), text::Shaping::Advanced),
-                    Point::new(label_x, row.center_y()),
-                    color,
-                    bounds,
-                );
-                // Selection rows: a trailing check while on. Primary at
-                // rest so the on-state reads at a glance; the hover
-                // color takes over with the rest of the row.
-                if item.checked == Some(true) {
+                // Reserve a proper trailing column for shortcuts. Clip long
+                // labels before that column so
+                // localized copy can never draw through the key equivalent.
+                let trailing_edge = row.x + row.width - self.item_padding.right;
+                let label_right = if item.shortcut.is_some() {
+                    trailing_edge - SHORTCUT_COLUMN_WIDTH - SHORTCUT_GAP
+                } else {
+                    trailing_edge
+                };
+                let label_layer = Rectangle {
+                    x: label_x,
+                    y: row.y,
+                    width: (label_right - label_x).max(0.0),
+                    height: row.height,
+                };
+                renderer.with_layer(label_layer, |renderer| {
                     renderer.fill_text(
-                        text_at(
-                            char::from(Icon::Check).to_string(),
-                            iced::Font::with_name("lucide"),
-                            text::Shaping::Basic,
-                        ),
-                        Point::new(
-                            row.x + row.width - self.item_padding.right - f32::from(text_size),
-                            row.center_y(),
-                        ),
-                        if hovered { style.selected_text_color } else { primary },
+                        text_at(item.label.clone(), renderer.default_font(), text::Shaping::Advanced),
+                        Point::new(label_x, row.center_y()),
+                        color,
+                        bounds,
+                    );
+                });
+                if let Some(shortcut) = item.shortcut.as_ref() {
+                    let mut shortcut_text = text_at(
+                        shortcut.clone(),
+                        renderer.default_font(),
+                        text::Shaping::Advanced,
+                    );
+                    shortcut_text.bounds = Size::new(SHORTCUT_COLUMN_WIDTH, row.height);
+                    shortcut_text.align_x = text::Alignment::Right;
+                    shortcut_text.wrapping = text::Wrapping::None;
+                    renderer.fill_text(
+                        shortcut_text,
+                        Point::new(trailing_edge, row.center_y()),
+                        if hovered {
+                            style.selected_text_color
+                        } else {
+                            super::muted_color(theme)
+                        },
                         bounds,
                     );
                 }

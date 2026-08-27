@@ -29,6 +29,8 @@ pub enum Message {
     /// Move the playhead by a signed number of recorded frames. Keyboard
     /// frame-step and skip shortcuts both use this transport command.
     SeekRelative(i32),
+    /// Seek directly to the replay's first frame (`Home`, or `⌘←` on macOS).
+    SeekToStart,
     /// Scrub-bar drag in progress — fires per tick change while the
     /// button is held. Pauses playback and blits the nearest prefetched
     /// snapshot's framebuffer as an instant preview; the exact seek
@@ -94,11 +96,7 @@ pub enum Message {
 /// Map a raw keyboard press to a replay transport command. This stays
 /// beside the replay view and its message handler so every replay-only
 /// key—including modifier and repeat semantics—has one owner.
-pub(crate) fn keyboard_shortcut(
-    event: &iced::keyboard::Event,
-    speed: f32,
-    opponent_view: crate::config::OpponentView,
-) -> Option<Message> {
+pub(crate) fn keyboard_shortcut(event: &iced::keyboard::Event, speed: f32) -> Option<Message> {
     use iced::keyboard::key::{Code, Physical};
     use iced::keyboard::{Event, Modifiers};
 
@@ -113,8 +111,11 @@ pub(crate) fn keyboard_shortcut(
     };
 
     match (*code, *modifiers, *repeat) {
+        #[cfg(target_os = "macos")]
+        (Code::ArrowLeft, Modifiers::LOGO, false) => Some(Message::SeekToStart),
         (Code::ArrowLeft, Modifiers::NONE, _) => Some(Message::SeekRelative(-SEEK_JUMP)),
         (Code::ArrowRight, Modifiers::NONE, _) => Some(Message::SeekRelative(SEEK_JUMP)),
+        (Code::Home, Modifiers::NONE, false) => Some(Message::SeekToStart),
         (Code::Comma, Modifiers::NONE, _) => Some(Message::SeekRelative(-1)),
         (Code::Period, Modifiers::NONE, _) => Some(Message::SeekRelative(1)),
         (Code::Comma, Modifiers::SHIFT, _) => Some(Message::SetSpeed(
@@ -135,14 +136,17 @@ pub(crate) fn keyboard_shortcut(
         (Code::Space, Modifiers::NONE, false) => Some(Message::TogglePlay),
         (Code::KeyI, Modifiers::NONE, false) => Some(Message::ToggleInputDisplay),
         (Code::Tab, Modifiers::NONE, false) => Some(Message::ToggleSwapPerspective),
-        (Code::KeyP, Modifiers::NONE, false) => {
-            use crate::config::OpponentView::{Off, PictureInPicture, StackHorizontally, StackVertically};
-            Some(Message::SetOpponentView(match opponent_view {
-                Off => PictureInPicture,
-                PictureInPicture => StackHorizontally,
-                StackHorizontally => StackVertically,
-                StackVertically => Off,
-            }))
+        // Option reports as Alt on macOS. Keep bare digits free for
+        // conventional timeline seeking and make each view a direct preset.
+        (Code::Digit1, Modifiers::ALT, false) => Some(Message::SetOpponentView(crate::config::OpponentView::Off)),
+        (Code::Digit2, Modifiers::ALT, false) => {
+            Some(Message::SetOpponentView(crate::config::OpponentView::PictureInPicture))
+        }
+        (Code::Digit3, Modifiers::ALT, false) => {
+            Some(Message::SetOpponentView(crate::config::OpponentView::StackHorizontally))
+        }
+        (Code::Digit4, Modifiers::ALT, false) => {
+            Some(Message::SetOpponentView(crate::config::OpponentView::StackVertically))
         }
         _ => None,
     }
@@ -163,6 +167,14 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
                 // seek (the playback thread pauses for the chase either way).
                 let playing = !s.is_paused() || s.seek_will_resume();
                 s.seek_to(target, playing);
+            }
+        }
+        Message::SeekToStart => {
+            if let Some(s) = state.active_as::<ReplaySession>() {
+                // Seeking is a transport move, not a pause command: preserve
+                // whether playback should resume after the asynchronous chase.
+                let playing = !s.is_paused() || s.seek_will_resume();
+                s.seek_to(0, playing);
             }
         }
         Message::ScrubPreview(target) => {
@@ -340,6 +352,8 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
 /// commands. It rides the controls' auto-hide transition: visible while the
 /// viewer is being operated, then clear of the game once the cursor rests.
 /// The filename leads; the denser replay header is one muted line beneath it.
+/// The plate may use all room left of the corner commands, wrapping only when
+/// the window genuinely cannot fit the name on one line.
 fn replay_info_overlay<'a>(
     lang: &'a LanguageIdentifier,
     r: &'a ReplaySession,
@@ -379,11 +393,13 @@ fn replay_info_overlay<'a>(
         .join(" · ");
 
     let copy = column![
-        text(filename).size(TEXT_BODY),
+        text(filename)
+            .size(TEXT_BODY)
+            .wrapping(iced::advanced::text::Wrapping::WordOrGlyph),
         text(detail).size(TEXT_CAPTION).style(widgets::muted_text_style),
     ]
     .spacing(2);
-    let plate = container(copy).padding([8, 12]).max_width(520).style(hud_chip_plate);
+    let plate = container(copy).padding([8, 12]).style(hud_chip_plate);
     let slid = anim::slide_in(
         plate,
         state.controls_anim.progress(iced::time::Instant::now()),
@@ -395,7 +411,14 @@ fn replay_info_overlay<'a>(
             .height(Fill)
             .align_x(iced::alignment::Horizontal::Left)
             .align_y(iced::alignment::Vertical::Top)
-            .padding(12)
+            .padding(iced::Padding {
+                top: 12.0,
+                // Two 32 px command buttons, their 6 px gap, and breathing
+                // room: the title can grow across the rest without colliding.
+                right: 94.0,
+                bottom: 12.0,
+                left: 12.0,
+            })
             .into(),
     )
 }
@@ -577,17 +600,18 @@ fn replay_bar<'a>(
                 .width(iced::Length::Fixed(18.0))
                 .height(iced::Length::Fixed(18.0))
                 .center(Fill),
-            opponent_view_items(lang, opponent_view, Message::SetOpponentView),
+            opponent_view_items(lang, opponent_view, Message::SetOpponentView, true),
             true,
             [7.0, 7.0],
             crate::ui::style::STANDARD_PADDING,
             opponent_view_style,
         )
-        .menu_width(260.0)
+        .menu_width(320.0)
         .on_toggle(Message::BarMenuToggled),
         widgets::tooltip_bubble(format!(
-            "{}: {}",
+            "{} ({}): {}",
             t!(lang, "playback-opponent-view"),
+            opponent_view_shortcut(opponent_view),
             opponent_view_label(lang, opponent_view)
         )),
         iced::widget::tooltip::Position::Top,
@@ -1304,62 +1328,51 @@ mod tests {
     #[test]
     fn keyboard_shortcuts_keep_transport_semantics_together() {
         assert!(matches!(
-            keyboard_shortcut(
-                &key_press(Code::Period, Modifiers::NONE, true),
-                1.0,
-                crate::config::OpponentView::Off,
-            ),
+            keyboard_shortcut(&key_press(Code::Period, Modifiers::NONE, true), 1.0,),
             Some(Message::SeekRelative(1))
         ));
         assert!(matches!(
-            keyboard_shortcut(
-                &key_press(Code::Period, Modifiers::SHIFT, false),
-                1.0,
-                crate::config::OpponentView::Off,
-            ),
+            keyboard_shortcut(&key_press(Code::Home, Modifiers::NONE, false), 1.0),
+            Some(Message::SeekToStart)
+        ));
+        #[cfg(target_os = "macos")]
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::ArrowLeft, Modifiers::LOGO, false), 1.0),
+            Some(Message::SeekToStart)
+        ));
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::Period, Modifiers::SHIFT, false), 1.0,),
             Some(Message::SetSpeed(2.0))
         ));
         assert!(matches!(
-            keyboard_shortcut(
-                &key_press(Code::Tab, Modifiers::NONE, false),
-                1.0,
-                crate::config::OpponentView::Off,
-            ),
+            keyboard_shortcut(&key_press(Code::Tab, Modifiers::NONE, false), 1.0,),
             Some(Message::ToggleSwapPerspective)
         ));
         assert!(matches!(
-            keyboard_shortcut(
-                &key_press(Code::KeyI, Modifiers::NONE, false),
-                1.0,
-                crate::config::OpponentView::Off,
-            ),
+            keyboard_shortcut(&key_press(Code::KeyI, Modifiers::NONE, false), 1.0,),
             Some(Message::ToggleInputDisplay)
         ));
         assert!(matches!(
-            keyboard_shortcut(
-                &key_press(Code::KeyP, Modifiers::NONE, false),
-                1.0,
-                crate::config::OpponentView::StackVertically,
-            ),
-            Some(Message::SetOpponentView(crate::config::OpponentView::Off))
+            keyboard_shortcut(&key_press(Code::Digit1, Modifiers::ALT, false), 1.0),
+            Some(Message::SetOpponentView(crate::config::OpponentView::Off)),
         ));
-        assert!(keyboard_shortcut(
-            &key_press(Code::Tab, Modifiers::NONE, true),
-            1.0,
-            crate::config::OpponentView::Off,
-        )
-        .is_none());
-        assert!(keyboard_shortcut(
-            &key_press(Code::KeyI, Modifiers::NONE, true),
-            1.0,
-            crate::config::OpponentView::Off,
-        )
-        .is_none());
-        assert!(keyboard_shortcut(
-            &key_press(Code::KeyF, Modifiers::NONE, false),
-            1.0,
-            crate::config::OpponentView::Off,
-        )
-        .is_none());
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::Digit2, Modifiers::ALT, false), 1.0),
+            Some(Message::SetOpponentView(crate::config::OpponentView::PictureInPicture)),
+        ));
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::Digit3, Modifiers::ALT, false), 1.0),
+            Some(Message::SetOpponentView(crate::config::OpponentView::StackHorizontally)),
+        ));
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::Digit4, Modifiers::ALT, false), 1.0),
+            Some(Message::SetOpponentView(crate::config::OpponentView::StackVertically)),
+        ));
+        assert!(keyboard_shortcut(&key_press(Code::Tab, Modifiers::NONE, true), 1.0,).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::KeyI, Modifiers::NONE, true), 1.0,).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::KeyP, Modifiers::NONE, false), 1.0,).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::Digit1, Modifiers::NONE, false), 1.0,).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::Digit1, Modifiers::ALT, true), 1.0,).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::Home, Modifiers::NONE, true), 1.0).is_none());
     }
 }

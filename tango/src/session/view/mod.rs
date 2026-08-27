@@ -247,16 +247,41 @@ fn opponent_view_label(lang: &LanguageIdentifier, view: crate::config::OpponentV
     }
 }
 
-/// The four checked rows used by each opponent-view dropdown.
+/// Platform-native chord for one replay opponent-view preset.
+fn opponent_view_shortcut(view: crate::config::OpponentView) -> String {
+    let digit = match view {
+        crate::config::OpponentView::Off => "1",
+        crate::config::OpponentView::PictureInPicture => "2",
+        crate::config::OpponentView::StackHorizontally => "3",
+        crate::config::OpponentView::StackVertically => "4",
+    };
+    if cfg!(target_os = "macos") {
+        format!("⌥{digit}")
+    } else {
+        format!("Alt+{digit}")
+    }
+}
+
+/// The four checked rows used by each opponent-view dropdown. Replay
+/// menus show their direct preset shortcuts; training shares the choices
+/// but not the replay-only keyboard handler, so its rows omit them.
 fn opponent_view_items<M>(
     lang: &LanguageIdentifier,
     selected: crate::config::OpponentView,
     message: impl Fn(crate::config::OpponentView) -> M,
+    show_shortcuts: bool,
 ) -> Vec<widgets::MenuItem<M>> {
     use crate::config::OpponentView::{Off, PictureInPicture, StackHorizontally, StackVertically};
     [Off, PictureInPicture, StackHorizontally, StackVertically]
         .into_iter()
-        .map(|view| widgets::MenuItem::toggle(opponent_view_label(lang, view), message(view), view == selected))
+        .map(|view| {
+            let item = widgets::MenuItem::toggle(opponent_view_label(lang, view), message(view), view == selected);
+            if show_shortcuts {
+                item.shortcut(opponent_view_shortcut(view))
+            } else {
+                item
+            }
+        })
         .collect()
 }
 
