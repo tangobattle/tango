@@ -1,6 +1,6 @@
 //! Turning a recorded replay back into video: re-simulates it through
 //! the seam's replay path ([`tango_match::ReplaySet`]) and feeds the
-//! frames and audio to [`encoder_facade`], which muxes the lossless
+//! frames and audio to [`encoder_facade`], which muxes the raw
 //! streams directly or encodes the shareable ones into a video file.
 //!
 //! Engine-neutral on purpose: the boot comes from the game's own
@@ -10,7 +10,7 @@
 //! so a GBA replay and a DS replay render through the same pipeline.
 //!
 //! Nothing here picks a backend or opens a file. [`encoder_facade`]
-//! copies raw lossless media itself, or starts whichever encoder the
+//! copies raw media itself, or starts whichever encoder the
 //! target has (ffmpeg subprocesses natively, WebCodecs in a browser).
 //! The host passes in something seekable to write to — a `File`, a
 //! `Cursor<Vec<u8>>`, a shim over an OPFS sync handle — so the same
@@ -63,10 +63,10 @@ pub trait Writer: std::io::Read + std::io::Write + std::io::Seek {}
 impl<W: std::io::Read + std::io::Write + std::io::Seek> Writer for W {}
 
 /// Which container a render lands in, and so which extension a save
-/// dialog should offer. Lossless is uncompressed RGB24 with PCM, which
+/// dialog should offer. Raw output is uncompressed RGB24 with PCM, which
 /// goes to Matroska; the shareable export is H.264/AAC in MP4.
-pub fn container(lossless: bool) -> encoder_facade::Container {
-    if lossless {
+pub fn container(raw_output: bool) -> encoder_facade::Container {
+    if raw_output {
         encoder_facade::Container::Matroska
     } else {
         encoder_facade::Container::Mp4
@@ -85,14 +85,14 @@ fn encoder_settings(
     audio_sample_rate: encoder_facade::SampleRate,
     audio_tracks: usize,
 ) -> encoder_facade::Settings {
-    let lossless = scale.is_none();
+    let raw_output = scale.is_none();
     encoder_facade::Settings {
         video: encoder_facade::VideoSettings {
             // The archival path copies RGB channels into Matroska
             // without an encoder. The shareable path is CRF-rated,
             // which at this frame size is predictable where a bitrate
             // target would swing with the content.
-            codec: if lossless {
+            codec: if raw_output {
                 encoder_facade::VideoCodec::RawRgb24
             } else {
                 encoder_facade::VideoCodec::H264 {
@@ -105,14 +105,14 @@ fn encoder_settings(
             keyframe_interval: KEYFRAME_INTERVAL,
             timescale: timing.timescale,
             frame_duration: timing.frame_duration,
-            color: Some(if lossless {
+            color: Some(if raw_output {
                 encoder_facade::ColorInfo::SRGB_RGB_FULL
             } else {
                 encoder_facade::ColorInfo::SRGB_FULL
             }),
         },
         audio: encoder_facade::AudioSettings {
-            codec: if lossless {
+            codec: if raw_output {
                 encoder_facade::AudioCodec::PcmS16Le
             } else {
                 encoder_facade::AudioCodec::Aac { bitrate: 384_000 }
@@ -120,18 +120,18 @@ fn encoder_settings(
             sample_rate: audio_sample_rate,
             channels: AUDIO_CHANNELS as u8,
         },
-        container: container(lossless),
+        container: container(raw_output),
         audio_tracks,
         // What the old pipeline's `-movflags +faststart` did: the
         // index goes in front of the media, so a player reading the
         // file in order can start before it has all of it. Matroska
         // ignores it.
-        faststart: !lossless,
+        faststart: !raw_output,
     }
 }
 
-/// AAC exports stay at the broadly-supported 48 kHz rate. Lossless
-/// exports use the rate reported by the emulator instead.
+/// AAC exports stay at the broadly-supported 48 kHz rate. Raw exports
+/// use the rate reported by the emulator instead.
 const LOSSY_SAMPLE_RATE: f64 = 48_000.0;
 
 const AUDIO_CHANNELS: usize = 2;
@@ -229,8 +229,8 @@ pub struct Request<'a> {
     /// recorded.
     pub swap_sides: bool,
     /// The scale doubles as the quality choice, which is how the form
-    /// presents it: one slider whose leftmost stop is lossless.
-    /// `None` renders losslessly at native size; `Some(n)` renders an
+    /// presents it: one slider whose leftmost stop is raw output.
+    /// `None` renders raw media at native size; `Some(n)` renders an
     /// `n`-times nearest-neighbor upscale.
     pub scale: Option<usize>,
 }
@@ -256,8 +256,8 @@ enum Phase {
     Finished,
 }
 
-/// One audio track's path from emulator PCM to encoder PCM. Lossless
-/// rendering uses [`Passthrough`]; lossy rendering uses [`Resampler`].
+/// One audio track's path from emulator PCM to encoder PCM. Raw output
+/// uses [`Passthrough`]; encoded output uses [`Resampler`].
 /// The render loop doesn't need to know which one it owns.
 trait AudioConverter: Send {
     /// Convert interleaved stereo `samples`, using `out` when conversion
@@ -341,8 +341,8 @@ impl AudioConverter for Resampler {
     }
 }
 
-fn audio_converter(lossless: bool) -> Box<dyn AudioConverter> {
-    if lossless {
+fn audio_converter(raw_output: bool) -> Box<dyn AudioConverter> {
+    if raw_output {
         Box::new(Passthrough)
     } else {
         Box::new(Resampler::default())
@@ -413,7 +413,7 @@ impl<W: Writer> Render<W> {
     /// Boot the re-simulation and open the media backend.
     ///
     /// `open_output` opens the destination. The pair boots first so its
-    /// audio rate can configure the lossless stream; the output opens
+    /// audio rate can configure the raw stream; the output opens
     /// after the backend, so neither kind of failure can truncate a file
     /// it will never fill.
     pub fn new(
@@ -458,7 +458,7 @@ impl<W: Writer> Render<W> {
             side_size
         };
 
-        let lossless = scale.is_none();
+        let raw_output = scale.is_none();
         let audio_tracks = if twosided { 2 } else { 1 };
 
         // Jump-start a clip from its capture: the pair starts at the
@@ -477,11 +477,11 @@ impl<W: Writer> Render<W> {
         // Drop the audio the boot piled up (nothing drained during it).
         playback.discard_audio();
 
-        // A lossless render copies the emulator's PCM into Matroska and
-        // describes its hardware clock exactly. Lossy AAC stays at
+        // A raw render copies the emulator's PCM into Matroska and
+        // describes its hardware clock exactly. Encoded AAC stays at
         // 48 kHz, with the offline converter below bridging any source
         // rate.
-        let audio_sample_rate = if lossless {
+        let audio_sample_rate = if raw_output {
             let rate = playback.side(first_seat).audio_sample_rate();
             encoder_facade::SampleRate::new(rate.numerator, rate.denominator)
         } else {
@@ -534,7 +534,7 @@ impl<W: Writer> Render<W> {
             frame: vec![0u8; (width * height * 4) as usize],
             scratch: vec![0i16; 16384 * AUDIO_CHANNELS],
             samples: Vec::new(),
-            audio_converters: std::array::from_fn(|_| audio_converter(lossless)),
+            audio_converters: std::array::from_fn(|_| audio_converter(raw_output)),
             prev_should_write: false,
             frames_written: 0,
             chapters: vec![],
@@ -625,8 +625,8 @@ impl<W: Writer> Render<W> {
         }
         self.prev_should_write = should_write;
 
-        // Drain each seat's tick of audio; lossless PCM goes straight
-        // through at the emulator's rate, while lossy audio is
+        // Drain each seat's tick of audio; raw PCM goes straight
+        // through at the emulator's rate, while encoded audio is
         // converted to 48 kHz. Then blit the seat's frame.
         // Track/screen order: shown perspective first. An unwritten
         // tick still drains — the consoles' own rings are small, and

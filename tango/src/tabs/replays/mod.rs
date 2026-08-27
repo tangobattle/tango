@@ -164,7 +164,7 @@ pub struct ReplaysState {
     /// no in-flight render.
     pub per: std::collections::HashMap<std::path::PathBuf, PerReplay>,
     /// Export form defaults — these are *global* user preferences
-    /// (scale, lossless, mute), not per-replay choices, so they
+    /// (scale, raw output, mute), not per-replay choices, so they
     /// live outside `per`.
     pub export_settings: ExportSettings,
     /// Lazy-loaded duration/round/completion stats keyed by replay
@@ -259,10 +259,13 @@ pub enum Effect {
     CopyImage(image::RgbaImage),
     /// Open the native Save-File dialog for the given replay's
     /// rendered video. App picks a path async and dispatches
-    /// `Message::ExportStart`. `lossless` selects the default
-    /// extension/filter: .mkv for lossless raw RGB24 + PCM, .mp4 for
+    /// `Message::ExportStart`. `raw_output` selects the default
+    /// extension/filter: .mkv for raw RGB24 + PCM, .mp4 for
     /// scaled exports.
-    OpenExportSaveDialog { replay: std::path::PathBuf, lossless: bool },
+    OpenExportSaveDialog {
+        replay: std::path::PathBuf,
+        raw_output: bool,
+    },
     /// User confirmed an export. App decodes the replay, resolves
     /// hooks + ROMs, spawns the crate::replay_render task,
     /// and streams `Message::ExportProgress` / `ExportFinished`

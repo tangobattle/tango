@@ -52,7 +52,7 @@ pub fn menu_button<'a, M: Clone + 'a>(
 
 /// The replay renderer's shared quality/scale picker. Full replay
 /// exports and marked clips both edit the same setting, so they use
-/// this one control too: `0` is lossless at native resolution and
+/// this one control too: `0` is raw output at native resolution and
 /// `1..=10` is a lossy integer upscale.
 pub fn replay_export_scale_picker<'a, M: Clone + 'a>(
     lang: &'a unic_langid::LanguageIdentifier,
@@ -63,7 +63,7 @@ pub fn replay_export_scale_picker<'a, M: Clone + 'a>(
     let scale = scale.min(10);
     let value_label = |scale: u8| {
         if scale == 0 {
-            crate::i18n::t!(lang, "replays-export-scale-lossless").to_string()
+            crate::i18n::t!(lang, "replays-export-scale-raw").to_string()
         } else {
             format!("{scale}×")
         }

@@ -53,7 +53,7 @@ pub enum ExportMessage {
     Cancel(std::path::PathBuf),
     /// Open the rendered video with the OS's default handler.
     OpenFile(std::path::PathBuf),
-    /// Export settings widgets. `scale = 0` is the lossless stop.
+    /// Export settings widgets. `scale = 0` is the raw-output stop.
     SetScale(u8),
     SetDisableBgm(bool),
     SetTwosided(bool),
@@ -88,7 +88,7 @@ impl ReplaysState {
         match msg {
             ExportMessage::SaveAs(replay_path) => Some(Effect::OpenExportSaveDialog {
                 replay: replay_path,
-                lossless: self.export_settings.scale == 0,
+                raw_output: self.export_settings.scale == 0,
             }),
             ExportMessage::Start { replay, output } => {
                 // Snapshot the form + round mask exactly as the
@@ -311,9 +311,9 @@ pub struct PerReplay {
 /// legacy replay-dump window.
 #[derive(Clone, Copy, Debug)]
 pub struct ExportSettings {
-    /// 0 = lossless (raw RGB24 + PCM, no upscale). 1..=10 = lossy
+    /// 0 = raw output (RGB24 + PCM, no upscale). 1..=10 = lossy
     /// `scale`× nearest-neighbor upscale. The form surfaces this as a
-    /// single 0..=10 slider with "lossless" as the leftmost stop.
+    /// single 0..=10 slider with "raw" as the leftmost stop.
     pub scale: u8,
     pub disable_bgm: bool,
     /// Render both players' screens side-by-side (480x160 frame)
@@ -383,7 +383,7 @@ impl ReplaysState {
 /// Floating render popover. Three-state body inside one shared
 /// popover shell:
 ///
-///   * No job: the form (scale / lossless / mute / round mask +
+///   * No job: the form (scale / raw output / mute / round mask +
 ///     Save As…).
 ///   * In-flight job: progress bar + percentage.
 ///   * Finished job: success/error line + Open Replay + Reset

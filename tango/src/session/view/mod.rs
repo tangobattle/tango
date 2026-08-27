@@ -152,7 +152,7 @@ pub struct Ctx<'a> {
     /// Which DS screen leads the arrangement — live from config, like
     /// the stacking.
     pub ds_primary_screen: crate::config::DsPrimaryScreen,
-    /// Quality mode used by replay exports: `0` is lossless at native
+    /// Quality mode used by replay exports: `0` is raw output at native
     /// resolution; `1..=10` is lossy at that integer upscale. Owned by
     /// the replays tab, but surfaced in the replay clip strip too.
     pub clip_export_scale: u8,

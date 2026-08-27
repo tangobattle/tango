@@ -670,10 +670,10 @@ impl App {
             }
             E::OpenExportSaveDialog {
                 replay: replay_path,
-                lossless,
+                raw_output,
             } => {
                 let replay_for_msg = replay_path.clone();
-                self.export_save_dialog(replay_path, lossless, "", move |output| {
+                self.export_save_dialog(replay_path, raw_output, "", move |output| {
                     tabs::replays::Message::Export(tabs::replays::ExportMessage::Start {
                         replay: replay_for_msg.clone(),
                         output,
@@ -769,7 +769,7 @@ impl App {
     /// Open the native Save-File dialog for a replay's rendered
     /// video and dispatch `make_msg(picked_path)` into the replays-tab
     /// message stream — or NoOp on dismissal, keeping any open form
-    /// untouched since no job ever started. `lossless` selects the
+    /// untouched since no job ever started. `raw_output` selects the
     /// default extension and filter, by asking the exporter which
     /// container that setting writes rather than restating the mapping.
     /// `stem_suffix` is appended to the replay's file stem (the clip
@@ -778,11 +778,11 @@ impl App {
     pub(super) fn export_save_dialog(
         &self,
         replay_path: std::path::PathBuf,
-        lossless: bool,
+        raw_output: bool,
         stem_suffix: &str,
         make_msg: impl Fn(std::path::PathBuf) -> tabs::replays::Message + Send + Sync + 'static,
     ) -> iced::Task<Message> {
-        let container = crate::replay_render::container(lossless);
+        let container = crate::replay_render::container(raw_output);
         let ext = container.extension();
         let filter_name = match container {
             encoder_facade::Container::Mp4 => "MP4",
@@ -946,7 +946,7 @@ impl App {
             .name("replay-export".to_string())
             .spawn(move || {
                 let ExportPrep { games, roms, replay } = prep;
-                // scale == 0 is the slider's lossless stop (raw RGB24
+                // scale == 0 is the slider's raw-output stop (RGB24
                 // + PCM, no upscale); 1..=10 is a lossy render at that
                 // nearest-neighbor upscale. The exporter picks the
                 // codecs and container to match.

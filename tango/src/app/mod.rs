@@ -1350,9 +1350,9 @@ impl App {
                         snapshot,
                         round_marks,
                     };
-                    let lossless = self.replays.export_settings.scale == 0;
+                    let raw_output = self.replays.export_settings.scale == 0;
                     let replay_for_msg = path.clone();
-                    return self.export_save_dialog(path, lossless, "-clip", move |output| {
+                    return self.export_save_dialog(path, raw_output, "-clip", move |output| {
                         tabs::replays::Message::Export(tabs::replays::ExportMessage::StartClip {
                             replay: replay_for_msg.clone(),
                             output,
