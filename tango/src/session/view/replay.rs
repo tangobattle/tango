@@ -321,7 +321,9 @@ fn round_skip_target(
             .take_while(|&&tick| tick <= current)
             .count();
         match passed {
-            0 => None,
+            // There is no earlier round to select from round 1, so restart
+            // it instead. At tick zero the shortcut is already satisfied.
+            0 => (current > 0).then_some(0),
             1 => Some(0),
             n => Some(round_boundaries[n - 2]),
         }
@@ -1478,7 +1480,7 @@ mod tests {
         assert_eq!(round_skip_target(600, &boundaries, false, 0), Some(300));
         assert_eq!(round_skip_target(450, &boundaries, false, 0), Some(0));
         assert_eq!(round_skip_target(300, &boundaries, false, 0), Some(0));
-        assert_eq!(round_skip_target(1, &boundaries, false, 0), None);
+        assert_eq!(round_skip_target(1, &boundaries, false, 0), Some(0));
         assert_eq!(round_skip_target(0, &boundaries, false, 0), None);
     }
 }
