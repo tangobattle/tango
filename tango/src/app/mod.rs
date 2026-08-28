@@ -1303,6 +1303,13 @@ impl App {
                     self.config.show_replay_inputs = !self.config.show_replay_inputs;
                     self.persist_config();
                 }
+                // Custom-screen fast-forwarding is a replay-viewer
+                // preference, so the toggle applies live through the session
+                // handler and remains selected for the next replay too.
+                if let session::Message::Replay(session::view::replay::Message::ToggleCustomScreenSpeedup) = &m {
+                    self.config.replay_custom_screen_speedup = !self.config.replay_custom_screen_speedup;
+                    self.persist_config();
+                }
                 // Clip exports share the replay tab's quality setting, so a
                 // choice made in the player's clip strip also appears in the
                 // full export form and feeds the same renderer snapshot.

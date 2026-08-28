@@ -41,8 +41,6 @@ pub struct ReplaySession {
     /// to identify the replay without reopening the file or reaching back
     /// into its library index.
     metadata: tango_replay::Metadata,
-    /// The engine's native frame rate — what the speed dial's 1.0× means.
-    expected_fps: f32,
     /// Inter-round seek-bar marks (see [`Self::round_boundaries`]):
     /// either handed in by a host that already had the recording's
     /// analysis, or discovered from telemetry by the prefetch pass as it
@@ -75,8 +73,95 @@ pub struct ReplaySession {
     /// Whether `pip` holds a frame from the current PiP activation
     /// (cleared while off, so a stale capture never flashes on re-toggle).
     pip_fresh: Arc<AtomicBool>,
+    /// The selected transport rate plus the custom-screen override that
+    /// derives the effective drive/audio rate from it.
+    speed: Arc<SpeedControl>,
     /// The playback machinery (pair, workers, seek state).
     engine: Engine,
+}
+
+/// Replay speed has two layers: the base preset selected in the transport,
+/// and the effective rate used by the drive loop and audio stream. With the
+/// custom-screen option on, an open custom screen raises that effective rate
+/// to at least 2× without replacing the user's preset.
+struct SpeedControl {
+    expected_fps: f32,
+    /// Source settings are kept together so every effective-rate update is
+    /// derived from one coherent state.
+    state: Mutex<SpeedState>,
+    /// Derived snapshot for the drive loop and real-time audio callback.
+    effective_fps_bits: Arc<AtomicU32>,
+}
+
+struct SpeedState {
+    base_fps: f32,
+    custom_screen_speedup: bool,
+    custom_screen_active: bool,
+}
+
+impl SpeedControl {
+    fn new(expected_fps: f32) -> Self {
+        Self {
+            expected_fps,
+            state: Mutex::new(SpeedState {
+                base_fps: expected_fps,
+                custom_screen_speedup: false,
+                custom_screen_active: false,
+            }),
+            effective_fps_bits: Arc::new(AtomicU32::new(expected_fps.to_bits())),
+        }
+    }
+
+    fn factor(&self) -> f32 {
+        self.state.lock().unwrap().base_fps / self.expected_fps
+    }
+
+    fn set_factor(&self, factor: f32) {
+        let mut state = self.state.lock().unwrap();
+        state.base_fps = (self.expected_fps * factor).max(1.0);
+        self.refresh_locked(&state);
+    }
+
+    fn custom_screen_speedup(&self) -> bool {
+        self.state.lock().unwrap().custom_screen_speedup
+    }
+
+    fn set_custom_screen_speedup(&self, enabled: bool) {
+        let mut state = self.state.lock().unwrap();
+        state.custom_screen_speedup = enabled;
+        self.refresh_locked(&state);
+    }
+
+    fn set_custom_screen_active(&self, active: bool) {
+        let mut state = self.state.lock().unwrap();
+        if state.custom_screen_active == active {
+            return;
+        }
+        state.custom_screen_active = active;
+        self.refresh_locked(&state);
+    }
+
+    fn refresh_locked(&self, state: &SpeedState) {
+        let effective = effective_replay_fps(
+            state.base_fps,
+            self.expected_fps,
+            state.custom_screen_speedup,
+            state.custom_screen_active,
+        );
+        self.effective_fps_bits.store(effective.to_bits(), Ordering::Relaxed);
+    }
+
+    fn fps_target(&self) -> f32 {
+        f32::from_bits(self.effective_fps_bits.load(Ordering::Relaxed)).max(1.0)
+    }
+}
+
+fn effective_replay_fps(base_fps: f32, expected_fps: f32, speedup_enabled: bool, custom_open: bool) -> f32 {
+    if speedup_enabled && custom_open {
+        base_fps.max(expected_fps * 2.0)
+    } else {
+        base_fps
+    }
 }
 
 /// Playback: the recording's pair behind a mutex, paced by a host
@@ -89,8 +174,6 @@ struct Engine {
     /// Lock-free playhead mirror for UI reads.
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
-    /// Pacing target, f32 bits (60 × speed factor).
-    fps_bits: Arc<AtomicU32>,
     /// The recording as the game's engine offers it: the pair below and
     /// the statistics pass share the captures they lay down.
     set: Arc<tango_match::ReplaySet>,
@@ -224,7 +307,7 @@ impl ReplaySession {
         let playback: SharedPlayback = Arc::new(Mutex::new(None));
         let cursor = Arc::new(AtomicU32::new(0));
         let paused = Arc::new(crate::PauseGate::new(false));
-        let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
+        let speed = Arc::new(SpeedControl::new(expected_fps));
         let prefetch_progress = Arc::new(AtomicU32::new(0));
         // Inter-round marks. The recording holds none — where the rounds
         // fall is what the games' telemetry says on re-simulation — so
@@ -292,7 +375,7 @@ impl ReplaySession {
         let audio = crate::audio::Stream::new(
             audio_out,
             expected_fps,
-            crate::audio::Stream::fps_from_bits(fps_bits.clone()),
+            crate::audio::Stream::fps_from_bits(speed.effective_fps_bits.clone()),
             sample_rate,
         );
 
@@ -313,8 +396,9 @@ impl ReplaySession {
                     seat: shown_seat.clone(),
                     booted: booted.clone(),
                     prime_error: prime_error.clone(),
+                    speed: speed.clone(),
                 },
-                fps_bits: fps_bits.clone(),
+                speed: speed.clone(),
                 paused: paused.clone(),
                 cancel: cancel.clone(),
                 booted: false,
@@ -326,6 +410,7 @@ impl ReplaySession {
                 cursor: cursor.clone(),
                 paused: paused.clone(),
                 surfaces: surfaces.clone(),
+                speed: speed.clone(),
             },
             prefetch: PrefetchWorker {
                 set: set.clone(),
@@ -342,7 +427,6 @@ impl ReplaySession {
         let session = Self {
             game: games[local_player],
             metadata: replay.metadata.clone(),
-            expected_fps,
             round_boundaries: round_marks,
             total_ticks,
             input_display,
@@ -353,11 +437,11 @@ impl ReplaySession {
             swap_perspective,
             pip,
             pip_fresh,
+            speed,
             engine: Engine {
                 local_player,
                 cursor,
                 paused,
-                fps_bits,
                 set,
                 playback,
                 prefetch_progress,
@@ -442,9 +526,21 @@ impl ReplaySession {
         self.engine.prime_error.lock().unwrap().as_ref().map(|e| e.to_string())
     }
 
-    /// Current factor (current fps / 60).
+    /// The transport's selected base factor (1.0 = realtime). The
+    /// effective rate may temporarily be higher while custom-screen
+    /// fast-forwarding is active.
     pub fn speed(&self) -> f32 {
-        f32::from_bits(self.engine.fps_bits.load(Ordering::Relaxed)) / self.expected_fps
+        self.speed.factor()
+    }
+
+    /// Whether the replay temporarily runs at least 2× while either
+    /// player's custom screen is open.
+    pub fn custom_screen_speedup(&self) -> bool {
+        self.speed.custom_screen_speedup()
+    }
+
+    pub fn set_custom_screen_speedup(&self, enabled: bool) {
+        self.speed.set_custom_screen_speedup(enabled);
     }
 
     /// Toggle playback between paused and running.
@@ -667,11 +763,10 @@ impl crate::Session for ReplaySession {
         (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed)).then(|| self.pip.read())
     }
 
-    /// 0.5 = slow-mo. The SIO drive loop paces itself and publishes
-    /// the target for its audio stream.
+    /// 0.5 = slow-mo. This changes the selected base rate; an enabled
+    /// custom-screen override can temporarily raise the effective rate.
     fn set_speed(&self, factor: f32) {
-        let fps = (self.expected_fps * factor).max(1.0);
-        self.engine.fps_bits.store(fps.to_bits(), Ordering::Relaxed);
+        self.speed.set_factor(factor);
     }
 }
 
@@ -794,6 +889,7 @@ struct Playhead {
     booted: Arc<AtomicBool>,
     /// Why the boot failed, if it did (see [`Engine::prime_error`]).
     prime_error: Arc<Mutex<Option<tango_match::Error>>>,
+    speed: Arc<SpeedControl>,
 }
 
 impl Playhead {
@@ -842,6 +938,8 @@ impl Playhead {
         }
         pb.step();
         self.cursor.store(pb.cursor(), Ordering::Relaxed);
+        self.speed
+            .set_custom_screen_active(pb.either_player_in_custom_screen());
         self.surfaces.publish_frames(&pb.frames());
         true
     }
@@ -856,7 +954,7 @@ impl Playhead {
 /// back later.
 pub struct DriveWorker {
     playhead: Playhead,
-    fps_bits: Arc<AtomicU32>,
+    speed: Arc<SpeedControl>,
     paused: Arc<crate::PauseGate>,
     cancel: Arc<AtomicBool>,
     booted: bool,
@@ -918,7 +1016,7 @@ impl crate::Drive for DriveWorker {
     }
 
     fn fps_target(&self) -> f32 {
-        f32::from_bits(self.fps_bits.load(Ordering::Relaxed)).max(1.0)
+        self.speed.fps_target()
     }
 }
 
@@ -929,6 +1027,7 @@ pub struct SeekWorker {
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
     surfaces: Surfaces,
+    speed: Arc<SpeedControl>,
 }
 
 impl SeekWorker {
@@ -939,13 +1038,16 @@ impl SeekWorker {
     pub fn step(&self, budget: u32) -> bool {
         let mut guard = self.playback.lock().unwrap();
         let Some(pb) = guard.as_mut() else { return false };
-        pb.seek_step(
+        let working = pb.seek_step(
             &self.seek,
             budget,
             &mut |tick| self.cursor.store(tick, Ordering::Relaxed),
             &mut |frames| self.surfaces.publish_frames(frames),
             &mut || self.paused.set(false),
-        ) == tango_match::SeekStep::Working
+        ) == tango_match::SeekStep::Working;
+        self.speed
+            .set_custom_screen_active(pb.either_player_in_custom_screen());
+        working
     }
 
     /// Park until a seek is requested, or the session shuts down
@@ -1166,4 +1268,29 @@ pub struct PrefetchStatsJob {
     pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_match::analysis::MatchStats>,
     pub done: Arc<Mutex<Option<tango_match::analysis::MatchStats>>>,
     pub stats_file: std::path::PathBuf,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{effective_replay_fps, SpeedControl};
+
+    #[test]
+    fn custom_screen_speedup_is_a_two_x_floor() {
+        const NATIVE: f32 = 59.7275;
+
+        assert_eq!(effective_replay_fps(NATIVE, NATIVE, true, true), NATIVE * 2.0);
+        assert_eq!(effective_replay_fps(NATIVE * 0.5, NATIVE, true, true), NATIVE * 2.0);
+        assert_eq!(effective_replay_fps(NATIVE * 4.0, NATIVE, true, true), NATIVE * 4.0);
+        assert_eq!(effective_replay_fps(NATIVE, NATIVE, false, true), NATIVE);
+        assert_eq!(effective_replay_fps(NATIVE, NATIVE, true, false), NATIVE);
+
+        let speed = SpeedControl::new(NATIVE);
+        speed.set_factor(0.5);
+        speed.set_custom_screen_speedup(true);
+        speed.set_custom_screen_active(true);
+        assert_eq!(speed.factor(), 0.5);
+        assert_eq!(speed.fps_target(), NATIVE * 2.0);
+        speed.set_custom_screen_active(false);
+        assert_eq!(speed.fps_target(), NATIVE * 0.5);
+    }
 }

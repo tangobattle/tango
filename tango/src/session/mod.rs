@@ -1409,6 +1409,7 @@ pub fn build_playback(
         stats_job,
         round_boundaries,
     )?;
+    session.set_custom_screen_speedup(config.replay_custom_screen_speedup);
     // Three loops, three threads — ours to spawn, and ours to pace: the
     // playhead runs at the transport's speed, while the seek chase and
     // the prefetch pass run flat out.

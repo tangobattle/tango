@@ -217,6 +217,7 @@ playback-play = Play
 playback-pause = Pause
 playback-options = Options
 playback-speed = Speed
+playback-speed-custom-screen = 2× during either custom screen
 playback-input-display = Input display (I)
 playback-pip = Opponent screen
 playback-opponent-view = Opponent view

@@ -31,6 +31,10 @@ pub enum Message {
     SeekRelative(i32),
     /// Seek directly to the replay's first frame (`Home`, or `⌘←` on macOS).
     SeekToStart,
+    /// Seek to the start of the next round (`Alt+Right`).
+    SeekToNextRound,
+    /// Seek to the start of the previous round (`Alt+Left`).
+    SeekToPreviousRound,
     /// Scrub-bar drag in progress — fires per tick change while the
     /// button is held. Pauses playback and blits the nearest prefetched
     /// snapshot's framebuffer as an instant preview; the exact seek
@@ -47,6 +51,10 @@ pub enum Message {
     /// Set the playback speed factor (1.0 = realtime) — the bar's
     /// speed menu.
     SetSpeed(f32),
+    /// Temporarily raise playback to at least 2× while either player's
+    /// custom screen is open. The preference is persisted by the App;
+    /// the session owns the live speed change.
+    ToggleCustomScreenSpeedup,
     /// Toggle the input display overlay (the recorded pad state of
     /// both sides, drawn over playback). The flag lives in config —
     /// the App's wrapper flips + persists it; nothing to do here.
@@ -113,6 +121,8 @@ pub(crate) fn keyboard_shortcut(event: &iced::keyboard::Event, speed: f32) -> Op
     match (*code, *modifiers, *repeat) {
         #[cfg(target_os = "macos")]
         (Code::ArrowLeft, Modifiers::LOGO, false) => Some(Message::SeekToStart),
+        (Code::ArrowLeft, Modifiers::ALT, false) => Some(Message::SeekToPreviousRound),
+        (Code::ArrowRight, Modifiers::ALT, false) => Some(Message::SeekToNextRound),
         (Code::ArrowLeft, Modifiers::NONE, _) => Some(Message::SeekRelative(-SEEK_JUMP)),
         (Code::ArrowRight, Modifiers::NONE, _) => Some(Message::SeekRelative(SEEK_JUMP)),
         (Code::Home, Modifiers::NONE, false) => Some(Message::SeekToStart),
@@ -177,6 +187,21 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
                 s.seek_to(0, playing);
             }
         }
+        round_message @ (Message::SeekToNextRound | Message::SeekToPreviousRound) => {
+            if let Some(s) = state.active_as::<ReplaySession>() {
+                // Chain off an in-flight target so quick repeated presses
+                // can traverse several rounds without waiting for each seek.
+                let base = s.pending_seek_target().unwrap_or_else(|| s.current_tick());
+                let boundaries = s.round_boundaries();
+                let forward = matches!(round_message, Message::SeekToNextRound);
+                if let Some(target) =
+                    round_skip_target(base, &boundaries, forward, s.prefetch_progress())
+                {
+                    let playing = !s.is_paused() || s.seek_will_resume();
+                    s.seek_to(target, playing);
+                }
+            }
+        }
         Message::ScrubPreview(target) => {
             // Field-level borrow (not `active_as`): `scrub` is
             // mutated while the session ref is live.
@@ -204,6 +229,11 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         Message::SetSpeed(factor) => {
             if let Some(s) = state.active.as_ref() {
                 s.set_speed(factor);
+            }
+        }
+        Message::ToggleCustomScreenSpeedup => {
+            if let Some(s) = state.active_as::<ReplaySession>() {
+                s.set_custom_screen_speedup(!s.custom_screen_speedup());
             }
         }
         Message::ToggleInputDisplay => {
@@ -266,6 +296,36 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
         }
     }
     iced::Task::none()
+}
+
+/// Find the round start in `direction` from the section containing `current`.
+/// Tick zero is the implicit start of the replay's first section. Forward
+/// skips are only safe through the prefetch frontier: later boundaries may be
+/// known from a cached analysis even though no seek capture has reached them.
+fn round_skip_target(
+    current: u32,
+    round_boundaries: &[u32],
+    forward: bool,
+    prefetched_through: u32,
+) -> Option<u32> {
+    if forward {
+        round_boundaries
+            .iter()
+            .copied()
+            .find(|&tick| tick > current && tick <= prefetched_through)
+    } else {
+        // Boundaries at or before the playhead identify the current
+        // section's start. Skip over that one to reach the prior section.
+        let passed = round_boundaries
+            .iter()
+            .take_while(|&&tick| tick <= current)
+            .count();
+        match passed {
+            0 => None,
+            1 => Some(0),
+            n => Some(round_boundaries[n - 2]),
+        }
+    }
 }
 
 /// Vertical clearance that floats a bottom-anchored popover just
@@ -508,7 +568,8 @@ fn replay_bar<'a>(
             format!("{:.1}×", v)
         }
     };
-    let speed_engaged = speed_idx != 1;
+    let custom_screen_speedup = r.custom_screen_speedup();
+    let speed_engaged = speed_idx != 1 || custom_screen_speedup;
     let speed_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
         let mut st = telemetry_plate_button(theme, status);
         if speed_engaged {
@@ -518,11 +579,31 @@ fn replay_bar<'a>(
         }
         st
     };
-    let speed_items: Vec<widgets::MenuItem<Message>> = SPEED_STEPS
+    let mut speed_items: Vec<widgets::MenuItem<Message>> = SPEED_STEPS
         .iter()
         .enumerate()
         .map(|(i, &v)| widgets::MenuItem::toggle(speed_step_label(v), Message::SetSpeed(v), i == speed_idx))
         .collect();
+    let custom_screen_speedup_label = t!(lang, "playback-speed-custom-screen");
+    speed_items.push(widgets::MenuItem::toggle(
+        custom_screen_speedup_label.clone(),
+        Message::ToggleCustomScreenSpeedup,
+        custom_screen_speedup,
+    ));
+    let speed_tooltip = if custom_screen_speedup {
+        format!(
+            "{}: {} · {}",
+            t!(lang, "playback-speed"),
+            speed_step_label(SPEED_STEPS[speed_idx]),
+            custom_screen_speedup_label,
+        )
+    } else {
+        format!(
+            "{}: {}",
+            t!(lang, "playback-speed"),
+            speed_step_label(SPEED_STEPS[speed_idx]),
+        )
+    };
     let speed_menu = iced::widget::tooltip(
         widgets::MenuButton::new(
             container(Icon::Gauge.widget().size(16.0))
@@ -536,18 +617,14 @@ fn replay_bar<'a>(
             speed_style,
         )
         // Short labels + a check: the default pane would be mostly air.
-        .menu_width(88.0)
+        .menu_width(240.0)
         // Pin the bar + keep the strip expanded while the pane is up:
         // iced hides the cursor from the base tree while any overlay
         // is open (Cursor::Unavailable), so the hover pin goes blind —
         // and gets actively cleared by its own on_exit — exactly when
         // the chrome must not hide or collapse under the open menu.
         .on_toggle(Message::BarMenuToggled),
-        widgets::tooltip_bubble(format!(
-            "{}: {}",
-            t!(lang, "playback-speed"),
-            speed_step_label(SPEED_STEPS[speed_idx])
-        )),
+        widgets::tooltip_bubble(speed_tooltip),
         iced::widget::tooltip::Position::Top,
     )
     .gap(4);
@@ -1341,6 +1418,14 @@ mod tests {
             Some(Message::SeekToStart)
         ));
         assert!(matches!(
+            keyboard_shortcut(&key_press(Code::ArrowLeft, Modifiers::ALT, false), 1.0),
+            Some(Message::SeekToPreviousRound)
+        ));
+        assert!(matches!(
+            keyboard_shortcut(&key_press(Code::ArrowRight, Modifiers::ALT, false), 1.0),
+            Some(Message::SeekToNextRound)
+        ));
+        assert!(matches!(
             keyboard_shortcut(&key_press(Code::Period, Modifiers::SHIFT, false), 1.0,),
             Some(Message::SetSpeed(2.0))
         ));
@@ -1373,6 +1458,27 @@ mod tests {
         assert!(keyboard_shortcut(&key_press(Code::KeyP, Modifiers::NONE, false), 1.0,).is_none());
         assert!(keyboard_shortcut(&key_press(Code::Digit1, Modifiers::NONE, false), 1.0,).is_none());
         assert!(keyboard_shortcut(&key_press(Code::Digit1, Modifiers::ALT, true), 1.0,).is_none());
+        assert!(keyboard_shortcut(&key_press(Code::ArrowRight, Modifiers::ALT, true), 1.0).is_none());
         assert!(keyboard_shortcut(&key_press(Code::Home, Modifiers::NONE, true), 1.0).is_none());
+    }
+
+    #[test]
+    fn round_shortcuts_move_between_rounds_within_the_prefetch_frontier() {
+        let boundaries = [300, 600, 900];
+
+        assert_eq!(round_skip_target(0, &boundaries, true, 299), None);
+        assert_eq!(round_skip_target(0, &boundaries, true, 300), Some(300));
+        assert_eq!(round_skip_target(450, &boundaries, true, 599), None);
+        assert_eq!(round_skip_target(450, &boundaries, true, 600), Some(600));
+        assert_eq!(round_skip_target(600, &boundaries, true, 899), None);
+        assert_eq!(round_skip_target(600, &boundaries, true, 900), Some(900));
+        assert_eq!(round_skip_target(900, &boundaries, true, u32::MAX), None);
+
+        assert_eq!(round_skip_target(750, &boundaries, false, 0), Some(300));
+        assert_eq!(round_skip_target(600, &boundaries, false, 0), Some(300));
+        assert_eq!(round_skip_target(450, &boundaries, false, 0), Some(0));
+        assert_eq!(round_skip_target(300, &boundaries, false, 0), Some(0));
+        assert_eq!(round_skip_target(1, &boundaries, false, 0), None);
+        assert_eq!(round_skip_target(0, &boundaries, false, 0), None);
     }
 }

@@ -30,6 +30,10 @@ pub struct Config {
     /// [`crate::platform::input::Mapping::default`] for the
     /// out-of-the-box layout. Each GBA key can have multiple bindings.
     pub input_mapping: crate::platform::input::Mapping,
+
+    /// Replay-viewer preference: temporarily run at least 2× while either
+    /// player is in the custom screen.
+    pub replay_custom_screen_speedup: bool,
 }
 
 impl std::ops::Deref for Config {
@@ -102,6 +106,7 @@ impl Config {
                 ..tango_library::config::Config::with_data_path(default_data_path())
             },
             input_mapping: crate::platform::input::Mapping::default(),
+            replay_custom_screen_speedup: false,
         }
     }
 
@@ -224,6 +229,7 @@ mod tests {
         assert!(obj.contains_key("patch_repo"), "{obj:#?}");
         // As does the frontend-owned half.
         assert!(obj.contains_key("input_mapping"), "{obj:#?}");
+        assert!(obj.contains_key("replay_custom_screen_speedup"), "{obj:#?}");
         assert!(
             !obj.contains_key("library"),
             "the split leaked into the format: {obj:#?}"
@@ -260,10 +266,12 @@ mod tests {
         config.nickname = Some("player".into());
         config.frame_delay = 4;
         config.input_mapping.speed_up.clear();
+        config.replay_custom_screen_speedup = true;
 
         let back: Config = serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
         assert_eq!(back.nickname.as_deref(), Some("player"));
         assert_eq!(back.frame_delay, 4);
         assert!(back.input_mapping.speed_up.is_empty());
+        assert!(back.replay_custom_screen_speedup);
     }
 }

@@ -232,6 +232,12 @@ pub struct Playback {
     link: Box<dyn Link>,
     inputs: Arc<Vec<[crate::HostInput; 2]>>,
     cursor: u32,
+    /// Optional reading end of the link's per-tick observations. Replay
+    /// viewers attach it so presentation can react to live game state.
+    telemetry: Option<TelemetryHandle>,
+    /// Backend tick convention, learned from the first observation. See
+    /// [`Self::either_player_in_custom_screen`].
+    telemetry_cursor_offset: Option<u32>,
     /// Where the played seat's sound goes, once a host has asked for
     /// any ([`Replay::play_audio`]). Pumped at the end of every step,
     /// while the pair is still in hand — a seek chase holds this lock
@@ -247,8 +253,15 @@ impl Playback {
             link,
             inputs,
             cursor: 0,
+            telemetry: None,
+            telemetry_cursor_offset: None,
             audio: None,
         }
+    }
+
+    fn with_telemetry(mut self, telemetry: Option<TelemetryHandle>) -> Self {
+        self.telemetry = telemetry;
+        self
     }
 
     /// Play `seat` into `into` from here on — the producing end of a
@@ -275,6 +288,34 @@ impl Playback {
 
     pub fn at_end(&self) -> bool {
         self.cursor >= self.total()
+    }
+
+    /// Whether either seat's custom screen was open on the current tick.
+    ///
+    /// GBA observations use the consumed-input count while DS observations
+    /// use that count minus one. Learning the offset from the first sample
+    /// also lets this reject a stale last sample during result/inter-round
+    /// screens, when no current battle observation exists.
+    pub fn either_player_in_custom_screen(&mut self) -> bool {
+        let Some(telemetry) = self.telemetry.as_ref() else {
+            return false;
+        };
+        let telemetry = telemetry.lock().unwrap();
+        let Some((sample_tick, obs)) = telemetry.samples().last() else {
+            return false;
+        };
+        let offset = match self.telemetry_cursor_offset {
+            Some(offset) => offset,
+            None => {
+                let offset = self.cursor.saturating_sub(*sample_tick);
+                if offset > 1 {
+                    return false;
+                }
+                self.telemetry_cursor_offset = Some(offset);
+                offset
+            }
+        };
+        sample_tick.checked_add(offset) == Some(self.cursor) && obs.custom.iter().any(|&open| open)
     }
 
     /// Feed the next recorded input pair. Returns false at end-of-stream.
@@ -613,6 +654,17 @@ impl Replay {
         self.cursor() >= self.len()
     }
 
+    /// Whether either seat's custom screen was open on the current tick.
+    ///
+    /// A sample must match the playhead after accounting for its backend's
+    /// tick convention: outside a battle the telemetry store may still end in
+    /// the previous round's last sample, which must not keep a viewer's
+    /// custom-screen behavior engaged through the result and inter-round
+    /// screens.
+    pub fn either_player_in_custom_screen(&mut self) -> bool {
+        self.playback.lock().unwrap().either_player_in_custom_screen()
+    }
+
     /// Advance a pending seek by at most `budget` ticks, planning one
     /// first if a request is waiting on `ctrl`.
     ///
@@ -789,11 +841,11 @@ pub trait ReplayBoot: Send + Sync {
     /// which is what keeps those boots concurrent (unless the stats
     /// pass reuses the display pair's primed state — see
     /// [`Self::boot_unprimed`]). With `observe`, wire the game's
-    /// telemetry and hand back its store — the stats pass asks for it,
-    /// the display pair doesn't pay for it. Flipping `cancel` mid-prime
-    /// fails the boot with
+    /// telemetry and hand back its store — the stats pass folds it, while
+    /// the viewer's display pair reads the current battle state. Flipping
+    /// `cancel` mid-prime fails the boot with
     /// [`Error::Cancelled`](crate::Error::Cancelled) instead of
-    /// finishing the walk.
+    /// finishing the walk. Bare linear/export passes do not observe.
     fn boot(&self, observe: bool, cancel: &AtomicBool) -> Result<BootedReplay, crate::Error>;
 
     /// Boot one pair *without* the priming walk, for a caller about to
@@ -875,7 +927,11 @@ impl ReplaySet {
 
     /// Boot the display pair. Blocks for the priming walk.
     pub fn playback(&self) -> Result<Replay, crate::Error> {
-        let booted = match self.boot.boot(false, &self.cancel) {
+        // The display pair is observed too: unlike the stats pass, it does
+        // not fold or drain those readings, but replay presentation can react
+        // to live state (for example, custom-screen fast-forwarding) without
+        // inferring game state from inputs or frames.
+        let booted = match self.boot.boot(true, &self.cancel) {
             Ok(booted) => booted,
             Err(e) => {
                 // A stats pass parked on this boot reprimes for itself.
@@ -883,7 +939,7 @@ impl ReplaySet {
                 return Err(e);
             }
         };
-        let mut playback = Playback::new(booted.link, self.inputs.clone());
+        let mut playback = Playback::new(booted.link, self.inputs.clone()).with_telemetry(booted.telemetry);
         // The primed pre-battle state, captured before the first input:
         // the keyframe every backward seek bottoms out on, and the
         // state the stats pass lands its own pair on instead of walking
