@@ -125,6 +125,16 @@ pub enum ReconnectRecipe {
     },
 }
 
+fn reconnect_timeout(recipe: &ReconnectRecipe, cause: ReconnectCause) -> std::time::Duration {
+    match cause {
+        ReconnectCause::CleanClose => RECONNECT_CLEAN_CLOSE_TIMEOUT,
+        ReconnectCause::Stall => match recipe {
+            ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
+            ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
+        },
+    }
+}
+
 // The reconnect session id is determinism-critical between peers, so
 // its construction (and full security rationale) lives in the shared
 // protocol crate.
@@ -327,6 +337,17 @@ impl Link {
         *self.health.borrow()
     }
 
+    /// Wall-clock budget the supervisor's independent give-up watchdog uses.
+    /// `reconnect` uses the same helper, so the dialog and the watchdog cannot
+    /// drift onto different timeout values.
+    pub(crate) fn reconnect_timeout(&self, cause: ReconnectCause) -> Option<std::time::Duration> {
+        self.recipe
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|recipe| reconnect_timeout(recipe, cause))
+    }
+
     /// Watch the control channel mid-match. Only two things legitimately
     /// happen here: the peer's deliberate-quit `Goodbye`, and the close (a
     /// recv error). Either way the peer *told* us something — a goodbye means
@@ -422,13 +443,7 @@ impl Link {
         // drop's peer is already at the rendezvous). Retire the latency
         // readout for the duration.
         let started = web_time::Instant::now();
-        let timeout = match cause {
-            ReconnectCause::CleanClose => RECONNECT_CLEAN_CLOSE_TIMEOUT,
-            ReconnectCause::Stall => match recipe {
-                ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
-                ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
-            },
-        };
+        let timeout = reconnect_timeout(&recipe, cause);
         let give_up_at = started + timeout;
         self.health
             .send_replace(LinkHealth::Reconnecting { started, give_up_at });

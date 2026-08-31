@@ -1302,10 +1302,38 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                 } else {
                     crate::net::link::ReconnectCause::Stall
                 };
-                tokio::select! {
+                let timeout = link.reconnect_timeout(cause).unwrap_or_default();
+                let watchdog_done = tokio_util::sync::CancellationToken::new();
+                {
+                    let end = end.clone();
+                    let cancel = cancel.clone();
+                    let drive_paused = drive_paused.clone();
+                    let wake = wake.clone();
+                    let watchdog_done = watchdog_done.clone();
+                    // This task is deliberately independent of the reconnect
+                    // future: when the displayed budget runs out, end the
+                    // session even if WebRTC cleanup is still stuck.
+                    crate::platform::spawn(async move {
+                        tokio::select! {
+                            biased;
+                            _ = watchdog_done.cancelled() => {}
+                            _ = cancel.cancelled() => {}
+                            _ = crate::platform::sleep(timeout) => {
+                                end.remote_disconnected.store(true, Ordering::Release);
+                                drive_paused.set(false);
+                                cancel.cancel();
+                                wake.notify_one();
+                            }
+                        }
+                    });
+                }
+
+                let restored = tokio::select! {
                     restored = link.reconnect(cause) => restored,
                     _ = ui_tick => unreachable!(),
-                }
+                };
+                watchdog_done.cancel();
+                restored
             };
 
             if !restored {
