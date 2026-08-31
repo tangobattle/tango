@@ -46,9 +46,7 @@ pub const EXTENSION: &str = "tangoreplay";
 /// yields the other player's recording of the same match.
 ///
 /// 0x1E widened the stream's rows to the DS's inputs (12-bit pad plus
-/// the stylus); the container around them is unchanged, so its 0x1D
-/// predecessor stays readable ([`stream::Stream::read_v1`]) and only
-/// the current schema is written.
+/// the stylus). Older stream revisions are not supported.
 ///
 /// Dropping the round marks did NOT bump this. A mark was a tag bit
 /// with no bytes of its own, so a recording made while they were live
@@ -57,10 +55,6 @@ pub const EXTENSION: &str = "tangoreplay";
 /// round. A bump would instead have [`read_metadata`] reject every
 /// replay already on disk.
 pub const VERSION: u8 = 0x1E;
-
-/// The touchless predecessor, still accepted by [`read_metadata`] and
-/// [`Replay::decode`].
-const VERSION_V1: u8 = 0x1D;
 
 pub struct Writer {
     /// Everything after the header framing is the shared stream
@@ -113,7 +107,7 @@ fn unsupported_version(version: u8) -> std::io::Error {
 
 pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
     Ok(match version {
-        VERSION | VERSION_V1 => protos::replay11::Metadata::decode(raw)?,
+        VERSION => protos::replay11::Metadata::decode(raw)?,
         _ => return Err(unsupported_version(version)),
     })
 }
@@ -135,7 +129,7 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(u8, u8, Metadata), s
     // proto's leading field tag as its high byte and asks for ~128 MiB
     // per file, which is what made scanning a library carried across
     // the 0x1D bump take minutes.
-    if version != VERSION && version != VERSION_V1 {
+    if version != VERSION {
         return Err(unsupported_version(version));
     }
     let local_player_index = r.read_u8()?;
@@ -194,8 +188,8 @@ impl Replay {
 
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut r = std::io::BufReader::new(r);
-        // Rejects anything but the readable schemas.
-        let (version, local_player_index, metadata) = read_metadata(&mut r)?;
+        // Rejects anything but the current schema.
+        let (_, local_player_index, metadata) = read_metadata(&mut r)?;
 
         let mut rng_seed = [0u8; 16];
         r.read_exact(&mut rng_seed)?;
@@ -205,11 +199,7 @@ impl Replay {
         // The rest of the file is the shared stream encoding; a
         // truncated tail comes back as is_complete = false with the
         // partial record dropped.
-        let stream = if version == VERSION_V1 {
-            stream::Stream::read_v1(&mut r)?
-        } else {
-            stream::Stream::read(&mut r)?
-        };
+        let stream = stream::Stream::read(&mut r)?;
         Ok(Self {
             is_complete: stream.is_complete,
             metadata,
@@ -363,43 +353,14 @@ mod tests {
         assert_eq!(replay.local_side().unwrap().game_info.as_ref().unwrap().sim_version, 7);
     }
 
-    /// A 0x1D container — the touchless predecessor — still decodes:
-    /// same framing, v1 stream body.
     #[test]
-    fn v1_replay_still_decodes() {
-        // Reuse the current writer for the framing (it is byte-identical
-        // through the SRAM frames), then splice in the old version byte
-        // and a hand-laid v1 stream.
-        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let w = Writer::new(
-            SharedVec(buf.clone()),
-            VERSION,
-            0,
-            Metadata {
-                ts: 1_752_000_000_000,
-                p1_side: side("alice"),
-                p2_side: side("bob"),
-                ..Default::default()
-            },
-            [7u8; 16],
-            [&[1, 2, 3], &[4, 5]],
-        )
-        .unwrap();
-        // Framing only — no v2 records; drop the writer without its
-        // sentinel by taking the bytes as they stand.
-        drop(w);
-        let mut bytes = buf.lock().unwrap().clone();
+    fn v1_schema_is_rejected() {
+        let mut bytes = write_replay(0);
         bytes[4] = 0x1D;
-        // v1 records: an idle tick, then explicit both sides with the
-        // high bits in the tag's low nibble (and the retired mark bit
-        // set, which decode ignores), then the sentinel.
-        bytes.extend_from_slice(&[0x40 | 0x20, 0x80 | 0x10 | 0b01 | (0b10 << 2), 0x55, 0xaa, 0x00]);
 
-        let replay = Replay::decode(&bytes[..]).unwrap();
-        assert!(replay.is_complete);
-        let keys = stream::Input::keys;
-        assert_eq!(replay.inputs, vec![[keys(0), keys(0)], [keys(0x155), keys(0x2aa)]]);
-        assert_eq!(replay.srams, [vec![1, 2, 3], vec![4, 5]]);
+        let err = Replay::decode(&bytes[..]).err().unwrap();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(err.to_string().contains("unsupported replay version: 1d"), "{err}");
     }
 
     #[test]

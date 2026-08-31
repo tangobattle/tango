@@ -50,13 +50,6 @@
 //! identically (a mark carried no bytes of its own) — it is a free
 //! reserved bit now, not a schema break in either direction.
 //!
-//! The previous revision of this encoding (schema 0x1D containers)
-//! carried bare 10-bit joyflags: per-side default flags, an op bit
-//! choosing zero or previous as the default source, an explicit side's
-//! high two bits packed into the tag's low nibble, and never a stylus;
-//! [`Stream::read_v1`] still decodes it so older recordings keep
-//! playing back (its own mark bit is ignored the same way).
-
 const P0_KEY_REPEAT: u8 = 1 << 7;
 const P0_TOUCH_DOWN: u8 = 1 << 6;
 const P0_TOUCH_REPEAT: u8 = 1 << 5;
@@ -72,13 +65,6 @@ const END_OF_STREAM: u8 = 0x00;
 /// reserved zeros until the mic became an input. Bits 7..=5 are still
 /// reserved and written zero.
 const KEYS_HI: u8 = 0b0001_1111;
-
-/// The 0x1D-era tag: default source (zero vs previous) and the per-side
-/// default flags. Its bit 4 was that revision's mark, and is ignored
-/// like this one's.
-const V1_OP_PREV: u8 = 0b1000_0000;
-const V1_P0_DEFAULT: u8 = 0b0100_0000;
-const V1_P1_DEFAULT: u8 = 0b0010_0000;
 
 /// One side's input for one tick, as a replay records it.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash, Debug)]
@@ -226,8 +212,12 @@ impl Stream {
                 input.keys = if tag & key_repeat != 0 {
                     state.keys
                 } else {
-                    let Some(hi) = read_u8_opt(r)? else { return Ok(None) };
-                    let Some(lo) = read_u8_opt(r)? else { return Ok(None) };
+                    let Some(hi) = read_u8_opt(r)? else {
+                        return Ok(None);
+                    };
+                    let Some(lo) = read_u8_opt(r)? else {
+                        return Ok(None);
+                    };
                     (((hi & KEYS_HI) as u16) << 8) | lo as u16
                 };
                 input.touch = if tag & touch_down == 0 {
@@ -235,8 +225,12 @@ impl Stream {
                 } else if tag & touch_repeat != 0 {
                     Some(state.touch)
                 } else {
-                    let Some(x) = read_u8_opt(r)? else { return Ok(None) };
-                    let Some(y) = read_u8_opt(r)? else { return Ok(None) };
+                    let Some(x) = read_u8_opt(r)? else {
+                        return Ok(None);
+                    };
+                    let Some(y) = read_u8_opt(r)? else {
+                        return Ok(None);
+                    };
                     Some((x, y))
                 };
                 state.advance(*input);
@@ -245,30 +239,8 @@ impl Stream {
         })
     }
 
-    /// Decode the previous (schema 0x1D) revision: bare 10-bit
-    /// joyflags, per-side defaults, an explicit side's high two bits in
-    /// the tag's low nibble, never a stylus.
-    pub fn read_v1(r: impl std::io::Read) -> std::io::Result<Self> {
-        let mut prev = [0u16; 2];
-        Self::read_with(r, move |r, tag| {
-            for (which, side) in prev.iter_mut().enumerate() {
-                let default_bit = [V1_P0_DEFAULT, V1_P1_DEFAULT][which];
-                *side = if tag & default_bit != 0 {
-                    if tag & V1_OP_PREV != 0 { *side } else { 0 }
-                } else {
-                    let high = ((tag >> (which * 2)) & 0b11) as u16;
-                    let Some(low) = read_u8_opt(r)? else { return Ok(None) };
-                    (high << 8) | low as u16
-                };
-            }
-            Ok(Some(prev.map(Input::keys)))
-        })
-    }
-
-    /// The shared record loop: the revisions differ only in how a tag
-    /// and its bytes come back as a pair, which is what `record` decodes
-    /// (carrying its own repeat state). Both use the `0x00` sentinel,
-    /// and both leave their retired mark bit to `record` to ignore.
+    /// The record loop shared by the tag decoder and the stream's
+    /// truncation/end handling.
     fn read_with(
         mut r: impl std::io::Read,
         mut record: impl FnMut(&mut dyn std::io::Read, u8) -> std::io::Result<Option<[Input; 2]>>,
@@ -343,9 +315,9 @@ mod tests {
     fn roundtrips_touch() {
         roundtrip(&[
             [touched(0, 128, 96), keys(0)],
-            [touched(0, 128, 96), keys(0)],           // resting stylus
-            [touched(0, 129, 97), keys(0)],           // dragging
-            [touched(0x41, 130, 98), keys(0x82)],     // dragging while pressing
+            [touched(0, 128, 96), keys(0)],       // resting stylus
+            [touched(0, 129, 97), keys(0)],       // dragging
+            [touched(0x41, 130, 98), keys(0x82)], // dragging while pressing
             [keys(0), touched(0xfff, 255, 191)],
             [keys(0), keys(0)], // both lifted
             // Touch at the origin is still a touch, distinct from none.
@@ -370,7 +342,11 @@ mod tests {
     fn dragging_restates_coordinates() {
         // A moving stylus spells its coordinates out each tick: tag +
         // (x, y), with the pad still riding its repeat.
-        let bytes = roundtrip(&(0..100u8).map(|i| [touched(0, 100 + (i % 2), 50), keys(0)]).collect::<Vec<_>>());
+        let bytes = roundtrip(
+            &(0..100u8)
+                .map(|i| [touched(0, 100 + (i % 2), 50), keys(0)])
+                .collect::<Vec<_>>(),
+        );
         assert_eq!(bytes.len(), 100 * 3 + 1);
     }
 
@@ -433,31 +409,5 @@ mod tests {
         let s = Stream::read(&bytes[..]).unwrap();
         assert!(!s.is_complete);
         assert!(s.inputs.len() >= 8);
-    }
-
-    #[test]
-    fn v1_streams_still_decode() {
-        // A hand-laid 0x1D-era stream: an idle tick, an explicit pair
-        // with high bits in the tag's low nibble (and the retired mark
-        // bit set, which decode must ignore rather than misread as a
-        // flag of its own), a previous-tick repeat, then the sentinel.
-        let bytes = [
-            V1_P0_DEFAULT | V1_P1_DEFAULT,               // [0, 0]
-            V1_OP_PREV | 0b01 | (0b10 << 2) | 0b0001_0000, // explicit both, marked: p0 = 0x155, p1 = 0x2aa
-            0x55,
-            0xaa,
-            V1_OP_PREV | V1_P0_DEFAULT | V1_P1_DEFAULT, // repeat
-            END_OF_STREAM,
-        ];
-        let s = Stream::read_v1(&bytes[..]).unwrap();
-        assert!(s.is_complete);
-        assert_eq!(
-            s.inputs,
-            vec![
-                [keys(0), keys(0)],
-                [keys(0x155), keys(0x2aa)],
-                [keys(0x155), keys(0x2aa)],
-            ]
-        );
     }
 }
