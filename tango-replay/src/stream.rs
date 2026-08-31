@@ -201,54 +201,12 @@ impl Stream {
     /// `is_complete = false` (so a crashed recording still plays back
     /// everything that was flushed); any other I/O error propagates.
     pub fn read(r: impl std::io::Read) -> std::io::Result<Self> {
+        let mut r = r;
         let mut state = [SideState::default(); 2];
-        Self::read_with(r, move |r, tag| {
-            let mut pair = [Input::default(); 2];
-            for (which, (input, state)) in pair.iter_mut().zip(state.iter_mut()).enumerate() {
-                let (key_repeat, touch_down, touch_repeat) = [
-                    (P0_KEY_REPEAT, P0_TOUCH_DOWN, P0_TOUCH_REPEAT),
-                    (P1_KEY_REPEAT, P1_TOUCH_DOWN, P1_TOUCH_REPEAT),
-                ][which];
-                input.keys = if tag & key_repeat != 0 {
-                    state.keys
-                } else {
-                    let Some(hi) = read_u8_opt(r)? else {
-                        return Ok(None);
-                    };
-                    let Some(lo) = read_u8_opt(r)? else {
-                        return Ok(None);
-                    };
-                    (((hi & KEYS_HI) as u16) << 8) | lo as u16
-                };
-                input.touch = if tag & touch_down == 0 {
-                    None
-                } else if tag & touch_repeat != 0 {
-                    Some(state.touch)
-                } else {
-                    let Some(x) = read_u8_opt(r)? else {
-                        return Ok(None);
-                    };
-                    let Some(y) = read_u8_opt(r)? else {
-                        return Ok(None);
-                    };
-                    Some((x, y))
-                };
-                state.advance(*input);
-            }
-            Ok(Some(pair))
-        })
-    }
-
-    /// The record loop shared by the tag decoder and the stream's
-    /// truncation/end handling.
-    fn read_with(
-        mut r: impl std::io::Read,
-        mut record: impl FnMut(&mut dyn std::io::Read, u8) -> std::io::Result<Option<[Input; 2]>>,
-    ) -> std::io::Result<Self> {
         let mut inputs: Vec<[Input; 2]> = Vec::new();
         let mut is_complete = false;
 
-        loop {
+        'stream: loop {
             let tag = match read_u8(&mut r) {
                 Ok(tag) => tag,
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
@@ -259,9 +217,38 @@ impl Stream {
                 break;
             }
 
-            let Some(pair) = record(&mut r, tag)? else {
-                break;
-            };
+            let mut pair = [Input::default(); 2];
+            for (which, (input, state)) in pair.iter_mut().zip(state.iter_mut()).enumerate() {
+                let (key_repeat, touch_down, touch_repeat) = [
+                    (P0_KEY_REPEAT, P0_TOUCH_DOWN, P0_TOUCH_REPEAT),
+                    (P1_KEY_REPEAT, P1_TOUCH_DOWN, P1_TOUCH_REPEAT),
+                ][which];
+                input.keys = if tag & key_repeat != 0 {
+                    state.keys
+                } else {
+                    let Some(hi) = read_u8_opt(&mut r)? else {
+                        break 'stream;
+                    };
+                    let Some(lo) = read_u8_opt(&mut r)? else {
+                        break 'stream;
+                    };
+                    (((hi & KEYS_HI) as u16) << 8) | lo as u16
+                };
+                input.touch = if tag & touch_down == 0 {
+                    None
+                } else if tag & touch_repeat != 0 {
+                    Some(state.touch)
+                } else {
+                    let Some(x) = read_u8_opt(&mut r)? else {
+                        break 'stream;
+                    };
+                    let Some(y) = read_u8_opt(&mut r)? else {
+                        break 'stream;
+                    };
+                    Some((x, y))
+                };
+                state.advance(*input);
+            }
             inputs.push(pair);
         }
 
