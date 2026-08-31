@@ -7642,18 +7642,14 @@ dependencies = [
 name = "tango-gamesupport-bcc"
 version = "0.1.0"
 dependencies = [
- "env_logger",
  "image",
  "mgba",
- "mgba-rollback",
  "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bcc-dataview",
  "tango-gamesupport-bcc-ui",
  "tango-gamesupport-common-dataview",
  "tango-match",
- "tango-replay",
- "unic-langid",
 ]
 
 [[package]]
@@ -7682,10 +7678,8 @@ name = "tango-gamesupport-bn1"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "env_logger",
  "image",
  "mgba",
- "mgba-rollback",
  "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn1-dataview",
@@ -7719,10 +7713,8 @@ name = "tango-gamesupport-bn2"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "env_logger",
  "image",
  "mgba",
- "mgba-rollback",
  "rand 0.8.5",
  "tango-backend-mgba",
  "tango-gamesupport",
@@ -7758,10 +7750,8 @@ name = "tango-gamesupport-bn3"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "env_logger",
  "image",
  "mgba",
- "mgba-rollback",
  "rand 0.8.5",
  "tango-backend-mgba",
  "tango-gamesupport",
@@ -7800,10 +7790,8 @@ name = "tango-gamesupport-bn4"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "env_logger",
  "image",
  "mgba",
- "mgba-rollback",
  "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn4-dataview",
@@ -7811,7 +7799,6 @@ dependencies = [
  "tango-gamesupport-common",
  "tango-gamesupport-common-dataview",
  "tango-match",
- "unic-langid",
 ]
 
 [[package]]
@@ -7844,10 +7831,8 @@ name = "tango-gamesupport-bn5"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "env_logger",
  "image",
  "mgba",
- "mgba-rollback",
  "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn5-dataview",
@@ -7883,7 +7868,6 @@ dependencies = [
 name = "tango-gamesupport-bn5ds"
 version = "0.1.0"
 dependencies = [
- "env_logger",
  "image",
  "log",
  "tango-backend-melonds",
@@ -7893,7 +7877,6 @@ dependencies = [
  "tango-gamesupport-common",
  "tango-gamesupport-common-dataview",
  "tango-match",
- "tango-replay",
 ]
 
 [[package]]
@@ -7927,10 +7910,8 @@ name = "tango-gamesupport-bn6"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "env_logger",
  "image",
  "mgba",
- "mgba-rollback",
  "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bn6-dataview",
@@ -7938,7 +7919,6 @@ dependencies = [
  "tango-gamesupport-common",
  "tango-gamesupport-common-dataview",
  "tango-match",
- "tango-replay",
 ]
 
 [[package]]
@@ -8013,10 +7993,8 @@ name = "tango-gamesupport-exe45"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "env_logger",
  "image",
  "mgba",
- "mgba-rollback",
  "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-common",
@@ -8050,8 +8028,6 @@ dependencies = [
 name = "tango-gamesupport-exeoss"
 version = "0.1.0"
 dependencies = [
- "env_logger",
- "image",
  "log",
  "tango-backend-melonds",
  "tango-gamesupport",

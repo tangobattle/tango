@@ -56,7 +56,7 @@ mgba (emulator)
   session with the telemetry observer attached. The host calls
   `advance(local_keys)` per frame and gets the outgoing input packet +
   a report; `add_remote_input` feeds the peer's packets in tick order;
-  `drain_confirmed` hands the replay sink its final input pairs;
+  `take_confirmed_inputs` hands the replay sink its final input pairs;
   `checkpoint`/`digest_at` expose settled-state digests for cross-peer
   desync detection; `with_pair`/`pair_handle`/`local_video_buffer` are
   the video/audio readout paths.
@@ -146,7 +146,7 @@ Verification is recipe-based:
 
 | Path | Coverage |
 | --- | --- |
-| Live engine, priming, per-game support | Real-game runs via the gamesupport example harnesses (`cargo run -p tango-gamesupport-<game> --example pvp_netplay`, plus the per-game `pvp_probe`/`pvp_ko_probe` probes). Minimum smoke across families: one of bn1–3 (silent-walk priming) and one of bn4+ — through a round end and match end. |
+| Live engine, priming, per-game support | Manual matches through the app. Minimum smoke across families: one of bn1–3 (silent-walk priming) and one of bn4+ — through a round end and match end. |
 | Playback, seek, snapshots | Manual — scrub the replay viewer backward across a round boundary and forward past the prefetch frontier. |
 | Analysis / stats fold | Recompute a known replay's sidecar and compare against the Replays tab's chart; `examples/replay_inspect.rs` dumps a recording. |
 | Rollback prediction quality | `examples/predictor-eval.rs` measures rollback counts across a replay corpus — rerun it before changing the input predictor. |

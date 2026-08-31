@@ -31,11 +31,5 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 
 tango-gamesupport-bn5ds-ui = { path = "../tango-gamesupport-bn5ds-ui", optional = true }
 
-[dev-dependencies]
-# The replay-playback probe re-simulates recorded matches.
-tango-replay = { path = "../tango-replay" }
-# The probes' view of priming's own log lines.
-env_logger = "0.9"
-
 [lints]
 workspace = true

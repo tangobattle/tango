@@ -25,8 +25,8 @@ implement, and the machinery they share splits the same way:
 `tango-gamesupport-common-dataview` (the parsing substrate),
 `tango-gamesupport-common-ui` (the editor shell), and
 `tango-gamesupport-common` (the shared telemetry trackers). They
-join the workspace as path dependencies rather than as members, so a
-plain `cargo build` at the root skips their probe examples.
+join the workspace as path dependencies rather than explicit members;
+the app's features select which families a build includes.
 
 The engine is `tango-match` — a match over a pair of emulated consoles —
 on top of a backend: `tango-backend-mgba` for the Game Boy Advance games

@@ -26,10 +26,5 @@ log = "0.4"
 
 tango-gamesupport-exeoss-ui = { path = "../tango-gamesupport-exeoss-ui", optional = true }
 
-[dev-dependencies]
-# The probes' view of priming's own log lines.
-env_logger = "0.9"
-image = { version = "0.25", default-features = false, features = ["png"] }
-
 [lints]
 workspace = true

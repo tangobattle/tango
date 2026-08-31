@@ -19,12 +19,9 @@ members = [
     "tango-ui",
 ]
 # The per-game `tango-gamesupport-*` crates auto-join this workspace as
-# path dependencies rather than being listed above, which drags their
-# examples into plain `cargo build`/`test` at the root — and the games'
-# same-named probe examples then race each other linking to one shared
-# target/debug/examples/<name>.exe. Default to just the crates listed
-# here; the probes still build on demand via
-# `cargo run -p tango-gamesupport-<game> --example <probe>`.
+# path dependencies rather than being listed above. Keep a plain root
+# build scoped to the app and shared infrastructure; app features pull
+# in whichever game crates a build needs.
 default-members = [
     "tango",
     "tango-gamesupport",

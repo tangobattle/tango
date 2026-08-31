@@ -8,7 +8,7 @@ license = "GPL-3.0-or-later"
 # parsers, templates, presentation bits) plus the pvp engine support,
 # re-exporting `tango-gamesupport-bn1-dataview` as `dataview` and —
 # behind the `ui` feature, the one cfg point — the save-editor UI crate
-# as `ui`. Headless builds (probes, engine hosts) never link a UI
+# as `ui`. Headless engine builds never link a UI
 # toolkit.
 
 [dependencies]
@@ -29,8 +29,3 @@ ui = ["tango-gamesupport/ui", "dep:tango-gamesupport-bn1-ui"]
 
 [lints]
 workspace = true
-
-[dev-dependencies]
-# For the sio_probe example (headless lockstep-pair handshake probe).
-mgba-rollback.workspace = true
-env_logger = "0.9"
