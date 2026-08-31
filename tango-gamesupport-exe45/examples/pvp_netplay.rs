@@ -108,7 +108,9 @@ fn main() {
 
         // Cross-check what each peer settled this frame.
         for p in 0..2 {
-            for (tick, row) in peers[p].drain_confirmed() {
+            let confirmed_inputs = peers[p].take_confirmed_inputs();
+            let confirmed_through = confirmed_inputs.last().map_or(0, |(tick, _)| *tick);
+            for (tick, row) in confirmed_inputs {
                 let row = row.map(|input| input.keys);
                 if let Some(other) = input_rows.insert(tick, row) {
                     if other != row {
@@ -117,13 +119,12 @@ fn main() {
                     agreed += 1;
                 }
             }
-            let confirmed = peers[p].confirmed();
             let (samples, events) = peers[p]
                 .telemetry()
                 .expect("sio matches publish telemetry")
                 .lock()
                 .unwrap()
-                .drain_confirmed(confirmed);
+                .take_through(confirmed_through);
             for (tick, obs) in samples {
                 let hp = [obs.units[0].hp, obs.units[1].hp];
                 if let Some(other) = hp_rows.insert(tick, hp) {

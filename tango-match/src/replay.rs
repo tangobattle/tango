@@ -767,11 +767,11 @@ impl StatsPass {
             }
 
             if let Some(telemetry) = &self.telemetry {
-                // Drained whether or not anything is folding it: the
-                // drain is also what prunes the store, and a pass that
-                // never drains grows one entry per tick for the length
+                // Taken whether or not anything is folding it: taking
+                // also prunes the store, and a pass that never does so
+                // grows one entry per tick for the length
                 // of the recording.
-                let (samples, events) = telemetry.lock().unwrap().drain_confirmed(tick);
+                let (samples, events) = telemetry.lock().unwrap().take_through(tick);
                 if let Some(builder) = &mut self.builder {
                     // Everything is final on a linear re-sim — fold as
                     // we go.
@@ -1050,7 +1050,7 @@ impl ReplaySet {
             }
             let tick = playback.cursor();
             // Everything is final on a linear re-sim — fold as we go.
-            let (samples, events) = telemetry.lock().unwrap().drain_confirmed(tick);
+            let (samples, events) = telemetry.lock().unwrap().take_through(tick);
             crate::analysis::fold_confirmed(&mut builder, self.local_player, samples, events);
             on_progress(tick, total, &builder);
         }

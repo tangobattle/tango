@@ -6,7 +6,7 @@
 //! confirmed boundary exactly like the app's drive loop. This is the
 //! seam the linear KO probes can't see: traps must keep firing across
 //! `Pair::load`, and events must survive speculation + revocation to
-//! come out of `drain_confirmed`.
+//! come out of `take_through`.
 //!
 //! The KO poke rides `on_tick` (gated on pure state + tick number), so
 //! rollback re-simulation re-applies it identically — both peers stay
@@ -225,7 +225,7 @@ fn main() {
             wire[p].push_back((out.keys, out.tick_advantage));
 
             // Drain confirmed telemetry exactly like the app's drive loop.
-            let (samples, events) = peers[p].store.lock().unwrap().drain_confirmed(report.confirmed);
+            let (samples, events) = peers[p].store.lock().unwrap().take_through(report.confirmed);
             if p == 0 {
                 peers[p].session.drain_confirmed();
                 tango_backend_mgba::analysis::fold_confirmed(&mut stats, 0, samples.clone(), events.clone());

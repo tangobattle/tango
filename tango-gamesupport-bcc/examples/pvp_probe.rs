@@ -195,7 +195,7 @@ fn main() {
     // checked against what the poller reported.
     if std::env::var("PVP_PROBE_STATS").is_ok() {
         let mut builder = tango_backend_mgba::analysis::StatsBuilder::new();
-        let (samples, events) = store.lock().unwrap().drain_confirmed(max_ticks);
+        let (samples, events) = store.lock().unwrap().take_through(max_ticks);
         tango_backend_mgba::analysis::fold_confirmed(&mut builder, 0, samples, events);
         // The stats are flat series over the whole match with the
         // rounds marking them up, so each round's share is whatever

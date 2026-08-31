@@ -425,8 +425,12 @@ impl Driver {
             // path so the session can tear down cleanly (with a
             // do-nothing dummy the player wins and the battle ends). We
             // don't fold stats — training records nothing.
+            // Training has no replay sink; consume and drop the input
+            // log so it stays bounded. Its final tick is also the
+            // telemetry boundary, so the match is only queried once.
+            let confirmed_through = self.match_.take_confirmed_inputs().last().map_or(0, |(tick, _)| *tick);
             let (_samples, events) = match self.match_.telemetry() {
-                Some(store) => store.lock().unwrap().drain_confirmed(self.match_.confirmed()),
+                Some(store) => store.lock().unwrap().take_through(confirmed_through),
                 None => (Vec::new(), Vec::new()),
             };
             if events.iter().any(|(_, e)| matches!(e, Event::MatchEnded)) {

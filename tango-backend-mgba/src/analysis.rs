@@ -94,11 +94,10 @@ pub fn analyze(
         pair.tick(&keys);
         // Everything is final on a linear re-sim — fold as we go.
         observe_pair(&mut observer, &mut pair, tick);
-        let (samples, events) = store.lock().unwrap().drain_confirmed(tick);
+        let (samples, events) = store.lock().unwrap().take_through(tick);
         fold_confirmed(&mut builder, local_player, samples, events);
         on_progress(tick, total, &builder);
     }
 
     Ok(builder.finish())
 }
-

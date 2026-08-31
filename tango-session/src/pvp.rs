@@ -1736,6 +1736,31 @@ impl PvpDriver {
             .depth
             .store(self.match_.last_rollback_depth(), Ordering::Relaxed);
 
+        // A successful advance is the one place confirmed outputs are
+        // consumed. Nothing else settles the engine, so every early
+        // return below is already flushed and teardown has no tail path.
+        let confirmed_inputs = self.match_.take_confirmed_inputs();
+        let confirmed_through = confirmed_inputs.last().map_or(0, |(tick, _)| *tick);
+        let (samples, events) = match self.match_.telemetry() {
+            Some(telemetry) => telemetry.lock().unwrap().take_through(confirmed_through),
+            None => (Vec::new(), Vec::new()),
+        };
+        let match_ended = events
+            .iter()
+            .any(|(_, event)| matches!(event, telemetry::Event::MatchEnded));
+        if let Some(w) = self.ctx.replay_writer.as_mut() {
+            for (_tick, inputs) in &confirmed_inputs {
+                if let Err(e) = w.write_input(inputs.map(replay_input_of)) {
+                    log::warn!("pvp: replay write failed (recording stops): {e}");
+                    self.ctx.replay_writer = None;
+                    break;
+                }
+            }
+        }
+        if !samples.is_empty() || !events.is_empty() {
+            self.ctx.fold_confirmed_telemetry(samples, events);
+        }
+
         // Ship this tick's local input. Push-before-send semantics live
         // in the pump; a transport error is non-terminal (the heartbeat
         // retransmits once the reconnect swaps a live channel back in).
@@ -1762,39 +1787,6 @@ impl PvpDriver {
             self.ctx.end.aborted.store(true, Ordering::Release);
             self.ctx.cancel.cancel();
             return false;
-        }
-
-        // Confirmed telemetry. Everything at or below the confirmed
-        // boundary is final — no revocation bookkeeping needed on this
-        // side of the engine. A game whose engine reads no telemetry
-        // simply has none to fold — the match still runs.
-        let confirmed = self.match_.confirmed();
-        let (samples, events) = match self.match_.telemetry() {
-            Some(handle) => handle.lock().unwrap().drain_confirmed(confirmed),
-            None => (Vec::new(), Vec::new()),
-        };
-
-        // The match-end anchor firing means the players left the battle
-        // loop for good — the direct successor of the trap engine's
-        // match-end hook. The round lifecycle needs nothing from this
-        // loop: rounds are the stats fold's business, and the recording
-        // has no opinion about them.
-        let match_ended = events.iter().any(|(_, e)| matches!(e, telemetry::Event::MatchEnded));
-
-        // Confirmed inputs: replay sink + the buttons half of the
-        // stats merge below.
-        let confirmed_inputs = self.match_.drain_confirmed();
-        if let Some(w) = self.ctx.replay_writer.as_mut() {
-            for (_tick, inputs) in &confirmed_inputs {
-                if let Err(e) = w.write_input(inputs.map(replay_input_of)) {
-                    log::warn!("pvp: replay write failed (recording stops): {e}");
-                    self.ctx.replay_writer = None;
-                    break;
-                }
-            }
-        }
-        if !samples.is_empty() || !events.is_empty() {
-            self.ctx.fold_confirmed_telemetry(samples, events);
         }
 
         // Completion: the games' own match-end path ran (confirmed —
@@ -1863,30 +1855,13 @@ impl PvpDriver {
     /// [`crate::Drive::finish`], which is why a host must wind a driver
     /// down rather than drop it.
     pub fn finish(mut self) {
-        // Teardown: flush the replay tail. Finalize (write the EOR
-        // sentinel) only if the match completed — same policy as the trap
-        // engine, so an aborted match leaves a truncated-but-parseable
-        // recording.
-        if let Some(mut w) = self.ctx.replay_writer.take() {
-            for (_, inputs) in self.match_.drain_confirmed() {
-                let _ = w.write_input(inputs.map(replay_input_of));
-            }
+        // Finalize (write the EOR sentinel) only if the match completed
+        // — same policy as the trap engine, so an aborted match leaves
+        // a truncated-but-parseable recording.
+        if let Some(w) = self.ctx.replay_writer.take() {
             if self.ctx.completed.load(Ordering::Acquire) {
                 if let Err(e) = w.finish() {
                     log::error!("finish replay failed: {e}");
-                }
-            }
-            // The telemetry tail behind that flush: the stall-guard path
-            // ingests remote inputs without draining, so a match that
-            // died stalled — the disconnect case — can confirm final
-            // ticks no tick() ever folded. Same frontier as the input
-            // drain above, which keeps the fold covering exactly what
-            // the recording holds.
-            let confirmed = self.match_.confirmed();
-            if let Some(handle) = self.match_.telemetry() {
-                let (samples, events) = handle.lock().unwrap().drain_confirmed(confirmed);
-                if !samples.is_empty() || !events.is_empty() {
-                    self.ctx.fold_confirmed_telemetry(samples, events);
                 }
             }
             // Cache the match's stats, completed or not: the fold keeps

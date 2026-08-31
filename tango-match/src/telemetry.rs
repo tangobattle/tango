@@ -277,10 +277,10 @@ pub struct Store {
     /// handful of lifecycle entries plus its chip uses, and
     /// [`on_rewind`](Telemetry::on_rewind) re-derives the open-round
     /// state from this history, so consuming it would corrupt that
-    /// derivation. [`drain_confirmed`](Store::drain_confirmed) hands out
+    /// derivation. [`take_through`](Store::take_through) hands out
     /// clones past a cursor instead.
     events: Vec<(u32, Event)>,
-    /// How many leading `events` entries [`drain_confirmed`] has already
+    /// How many leading `events` entries [`take_through`](Store::take_through) has already
     /// handed out.
     events_drained: usize,
     /// Whether a round is open (a `RoundStarted` without a closing
@@ -339,7 +339,7 @@ impl Store {
     /// from them); events are cloned past a cursor — the event history
     /// must survive for [`on_rewind`](Telemetry::on_rewind)'s
     /// open-round re-derivation.
-    pub fn drain_confirmed(&mut self, tick: u32) -> (Vec<(u32, BattleObs)>, Vec<(u32, Event)>) {
+    pub fn take_through(&mut self, tick: u32) -> (Vec<(u32, BattleObs)>, Vec<(u32, Event)>) {
         let s = self.samples.partition_point(|(t, _)| *t <= tick);
         let e = self
             .events

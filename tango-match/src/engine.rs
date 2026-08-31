@@ -57,7 +57,7 @@ struct World {
     /// sees their frames, so nobody draws them.
     render_from: Arc<AtomicU32>,
     /// Confirmed input rows in player order, tick order, not yet handed
-    /// out by [`Match::drain_confirmed`]. Shared because the engine
+    /// out by [`Match::take_confirmed_inputs`]. Shared because the engine
     /// owns its world outright.
     confirmed: Arc<Mutex<Vec<[HostInput; 2]>>>,
     /// Where this pair's sound goes, once a host has asked for any
@@ -161,8 +161,9 @@ pub struct Match {
     /// Confirmed rows the world's `log` callback has recorded, shared
     /// with it (the engine owns its world outright).
     confirmed: Arc<Mutex<Vec<[HostInput; 2]>>>,
-    /// Ticks handed out by [`drain_confirmed`](Match::drain_confirmed).
-    drained: u32,
+    /// Tick of the last row handed out by
+    /// [`take_confirmed_inputs`](Match::take_confirmed_inputs).
+    inputs_taken_through: u32,
     /// How deep the last [`advance`](Match::advance) rolled back, kept
     /// because that is the only moment it is knowable and a host reads
     /// it on its own schedule.
@@ -234,7 +235,7 @@ impl Match {
             displayed_screens,
             render_from,
             confirmed,
-            drained: 0,
+            inputs_taken_through: 0,
             last_rollback_depth: 0,
             audio_seat,
             telemetry: None,
@@ -348,21 +349,15 @@ impl Match {
     /// replay sink. Ticks are 1-based: the row that produced simulated
     /// tick `t` is stamped `t`, so a tick's confirmed inputs and its
     /// telemetry line up exactly.
-    pub fn drain_confirmed(&mut self) -> Vec<(u32, [HostInput; 2])> {
+    pub fn take_confirmed_inputs(&mut self) -> Vec<(u32, [HostInput; 2])> {
         let mut confirmed = self.confirmed.lock().unwrap();
         let out = confirmed
             .drain(..)
             .enumerate()
-            .map(|(i, row)| (self.drained + i as u32 + 1, row))
+            .map(|(i, row)| (self.inputs_taken_through + i as u32 + 1, row))
             .collect::<Vec<_>>();
-        self.drained += out.len() as u32;
+        self.inputs_taken_through += out.len() as u32;
         out
-    }
-
-    /// Ticks below this can never be rolled back again — what
-    /// telemetry may safely be folded up to.
-    pub fn confirmed(&self) -> u32 {
-        self.inner.local_frontier() - self.inner.local_queue_length() as u32
     }
 
     /// Run `f` against the live pair — video, audio and RAM readout.
@@ -415,4 +410,3 @@ impl Match {
         self.last_rollback_depth
     }
 }
-
