@@ -1185,6 +1185,7 @@ pub fn as_html(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
     let mut out = String::from(r#"<table><tbody>"#);
     for row in rows {
         out.push_str("<tr>");
+
         if let Some(count) = row.count {
             out.push_str(r#"<td>"#);
             out.push_str(&count.to_string());
@@ -1199,26 +1200,24 @@ pub fn as_html(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
                 }
             }
             if let Some(url) = icons.get(&chip.id) {
-                out.push_str(
-                    r#"<img alt="" width="28" height="28" style="display:block;image-rendering:pixelated" src=""#,
-                );
+                out.push_str(r#"<img alt="" width="28" height="28" style="image-rendering:pixelated" src=""#);
                 out.push_str(url);
-                out.push_str(r#"">"#);
+                out.push_str(r#""> "#);
             }
         }
-        out.push_str("</td>");
-
-        out.push_str(r#"<td>"#);
         out.push_str(&html_escape(&row.name));
         out.push_str("</td>");
+
         if let Some(chip) = row.chip {
             out.push_str(r#"<td>"#);
             out.push_str(&html_escape(&chip.code.to_string()));
             out.push_str("</td>");
+
             out.push_str(r#"<td>"#);
             out.push_str(&row.suffix);
             out.push_str("</td>");
         }
+
         out.push_str("</tr>");
     }
     out.push_str("</tbody></table>");
