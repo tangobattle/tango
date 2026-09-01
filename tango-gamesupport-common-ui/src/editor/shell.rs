@@ -162,6 +162,7 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
             }
             Some(Outcome::Cancel) => Some(Out::Cancel),
             Some(Outcome::CopyText(s)) => Some(Out::CopyText(s)),
+            Some(Outcome::CopyHtml { text, html }) => Some(Out::CopyHtml { text, html }),
             Some(Outcome::CopyImage(img)) => Some(Out::CopyImage(img)),
             Some(Outcome::Play) => Some(Out::Play),
             Some(Outcome::Training) => Some(Out::Training),

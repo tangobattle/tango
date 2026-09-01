@@ -1,6 +1,7 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::HashMap, io::Cursor};
 
 use super::*;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use sweeten::widget::{column, row};
 
 pub fn render_folder<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave, grouped: bool) -> Element<'static, M> {
@@ -1057,8 +1058,17 @@ pub fn chip_tooltip_style(accent: Option<iced::Color>) -> impl Fn(&iced::Theme) 
     }
 }
 
-/// The folder tab as TSV text for clipboard "copy as text".
-pub fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+struct ClipboardRow {
+    /// Present only in grouped mode.
+    count: Option<usize>,
+    chip: Option<crate::dataview::save::Chip>,
+    name: String,
+    suffix: String,
+}
+
+/// Materialize the folder once into the rows shared by its plain-text and
+/// HTML clipboard representations.
+fn clipboard_rows(loaded: &OpenSave, opts: RenderOpts) -> Option<Vec<ClipboardRow>> {
     let assets = loaded.assets.as_ref();
     let chips_view = loaded.save.view_chips()?;
     let folder_idx = chips_view.equipped_folder_index();
@@ -1070,8 +1080,7 @@ pub fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
         .map(|i| chips_view.chip(folder_idx, i))
         .collect();
 
-    let mut out = String::new();
-    if opts.folder_grouped {
+    let rows = if opts.folder_grouped {
         let mut grouped_map: indexmap::IndexMap<Option<crate::dataview::save::Chip>, GroupedChip> =
             indexmap::IndexMap::new();
         for (i, chip) in chips.iter().enumerate() {
@@ -1089,61 +1098,188 @@ pub fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
                 }
             }
         }
-        for (chip, g) in &grouped_map {
-            let Some(c) = chip else {
-                out.push_str(&format!("{}\t---\n", g.count));
-                continue;
-            };
-            let name = assets
-                .chip(c.id)
-                .and_then(|info| info.name())
-                .unwrap_or_else(|| "???".to_string());
-            out.push_str(&format!("{}\t{name}\t{}", g.count, c.code));
-            let mut suffix = vec![];
-            if g.is_regular {
-                suffix.push("[REG]");
-            }
-            if g.has_tag1 {
-                suffix.push("[TAG1]");
-            }
-            if g.has_tag2 {
-                suffix.push("[TAG2]");
-            }
-            if !suffix.is_empty() {
-                out.push('\t');
-                out.push_str(&suffix.join(""));
-            }
-            out.push('\n');
-        }
+        grouped_map
+            .into_iter()
+            .map(|(chip, g)| clipboard_row(assets, Some(g.count), chip, &g))
+            .collect()
     } else {
-        for (i, chip) in chips.iter().enumerate() {
-            let Some(c) = chip else {
-                out.push_str("---\n");
-                continue;
-            };
-            let name = assets
-                .chip(c.id)
-                .and_then(|info| info.name())
-                .unwrap_or_else(|| "???".to_string());
-            out.push_str(&format!("{name}\t{}", c.code));
-            let mut suffix = vec![];
-            if regular_idx == Some(i) {
-                suffix.push("[REG]");
-            }
-            if let Some(ti) = tag_idxs {
-                if ti[0] == i {
-                    suffix.push("[TAG1]");
-                }
-                if ti[1] == i {
-                    suffix.push("[TAG2]");
-                }
-            }
-            if !suffix.is_empty() {
-                out.push('\t');
-                out.push_str(&suffix.join(""));
-            }
-            out.push('\n');
+        chips
+            .into_iter()
+            .enumerate()
+            .map(|(i, chip)| {
+                let [has_tag1, has_tag2] = tag_idxs.map(|t| [t[0] == i, t[1] == i]).unwrap_or([false, false]);
+                let grouped = GroupedChip {
+                    count: 1,
+                    is_regular: regular_idx == Some(i),
+                    has_tag1,
+                    has_tag2,
+                    slots: vec![],
+                };
+                clipboard_row(assets, None, chip, &grouped)
+            })
+            .collect()
+    };
+    Some(rows)
+}
+
+fn clipboard_row(
+    assets: &dyn crate::dataview::rom::Assets,
+    count: Option<usize>,
+    chip: Option<crate::dataview::save::Chip>,
+    grouped: &GroupedChip,
+) -> ClipboardRow {
+    let name = chip
+        .as_ref()
+        .and_then(|chip| assets.chip(chip.id))
+        .and_then(|info| info.name())
+        .unwrap_or_else(|| if chip.is_some() { "???" } else { "---" }.to_string());
+    let mut suffix = String::new();
+    if chip.is_some() {
+        if grouped.is_regular {
+            suffix.push_str("[REG]");
+        }
+        if grouped.has_tag1 {
+            suffix.push_str("[TAG1]");
+        }
+        if grouped.has_tag2 {
+            suffix.push_str("[TAG2]");
         }
     }
+    ClipboardRow {
+        count,
+        chip,
+        name,
+        suffix,
+    }
+}
+
+/// The folder tab as TSV text for clipboard "copy as text".
+pub fn as_text(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+    let rows = clipboard_rows(loaded, opts)?;
+    let mut out = String::new();
+    for row in rows {
+        if let Some(count) = row.count {
+            out.push_str(&count.to_string());
+            out.push('\t');
+        }
+        out.push_str(&row.name);
+        if let Some(chip) = row.chip {
+            out.push('\t');
+            out.push_str(&chip.code.to_string());
+            if !row.suffix.is_empty() {
+                out.push('\t');
+                out.push_str(&row.suffix);
+            }
+        }
+        out.push('\n');
+    }
     Some(out)
+}
+
+/// The folder tab as a rich clipboard fragment. Each chip icon is a cropped
+/// PNG embedded directly in the markup, so the clipboard does not depend on
+/// temporary files or externally reachable URLs.
+pub fn as_html(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+    let rows = clipboard_rows(loaded, opts)?;
+    let mut icons = HashMap::<usize, String>::new();
+    let mut out = String::from(r#"<table><tbody>"#);
+    for row in rows {
+        out.push_str("<tr>");
+        if let Some(count) = row.count {
+            out.push_str(r#"<td>"#);
+            out.push_str(&count.to_string());
+            out.push_str("</td>");
+        }
+
+        out.push_str(r#"<td>"#);
+        if let Some(chip) = row.chip.as_ref() {
+            if !icons.contains_key(&chip.id) {
+                if let Some(url) = chip_icon_data_url(loaded, chip.id) {
+                    icons.insert(chip.id, url);
+                }
+            }
+            if let Some(url) = icons.get(&chip.id) {
+                out.push_str(
+                    r#"<img alt="" width="28" height="28" style="display:block;image-rendering:pixelated" src=""#,
+                );
+                out.push_str(url);
+                out.push_str(r#"">"#);
+            }
+        }
+        out.push_str("</td>");
+
+        out.push_str(r#"<td>"#);
+        out.push_str(&html_escape(&row.name));
+        out.push_str("</td>");
+        if let Some(chip) = row.chip {
+            out.push_str(r#"<td>"#);
+            out.push_str(&html_escape(&chip.code.to_string()));
+            out.push_str("</td>");
+            out.push_str(r#"<td>"#);
+            out.push_str(&row.suffix);
+            out.push_str("</td>");
+        }
+        out.push_str("</tr>");
+    }
+    out.push_str("</tbody></table>");
+    Some(out)
+}
+
+fn chip_icon_data_url(loaded: &OpenSave, chip_id: usize) -> Option<String> {
+    let icon = loaded.assets.chip(chip_id)?.icon();
+    // Match the 14x14 crop used by the live folder view. Be defensive for
+    // patched ROMs that publish an unexpectedly small icon.
+    let icon = if icon.width() >= 15 && icon.height() >= 15 {
+        image::imageops::crop_imm(&icon, 1, 1, 14, 14).to_image()
+    } else {
+        icon
+    };
+    png_data_url(icon)
+}
+
+fn png_data_url(icon: image::RgbaImage) -> Option<String> {
+    let mut png = Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(icon)
+        .write_to(&mut png, image::ImageFormat::Png)
+        .ok()?;
+    let mut url = String::from("data:image/png;base64,");
+    BASE64.encode_string(png.into_inner(), &mut url);
+    Some(url)
+}
+
+fn html_escape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod clipboard_tests {
+    use super::*;
+
+    #[test]
+    fn escapes_chip_names_for_html() {
+        assert_eq!(
+            html_escape("A&B <C> \"D\" 'E'"),
+            "A&amp;B &lt;C&gt; &quot;D&quot; &#39;E&#39;"
+        );
+    }
+
+    #[test]
+    fn embeds_icons_as_png_data_urls() {
+        let icon = image::RgbaImage::from_pixel(2, 2, image::Rgba([1, 2, 3, 255]));
+        let url = png_data_url(icon).unwrap();
+        let encoded = url.strip_prefix("data:image/png;base64,").unwrap();
+        let png = BASE64.decode(encoded).unwrap();
+        assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
+    }
 }

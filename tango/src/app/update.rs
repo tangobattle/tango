@@ -148,6 +148,10 @@ impl App {
             E::OpenPath(p) => open_path(p),
             E::RevealPath(p) => reveal_path(p),
             E::CopyText(s) => iced::clipboard::write(s),
+            E::CopyHtml { text, html } => {
+                copy_html_to_clipboard(text, html);
+                iced::Task::none()
+            }
             E::CopyImage(img) => {
                 copy_image_to_clipboard(img);
                 iced::Task::none()
@@ -664,6 +668,10 @@ impl App {
             // message clears the tab's pending marker — a later
             // focus retries the analysis.
             E::CopyText(s) => iced::clipboard::write(s),
+            E::CopyHtml { text, html } => {
+                copy_html_to_clipboard(text, html);
+                iced::Task::none()
+            }
             E::CopyImage(img) => {
                 copy_image_to_clipboard(img);
                 iced::Task::none()

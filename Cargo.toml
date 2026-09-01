@@ -42,6 +42,7 @@ default-members = [
 [workspace.dependencies]
 anyhow = "1"
 async-trait = "0.1"
+base64 = "0.22"
 bincode = "1"
 bytemuck = "1"
 byteorder = "1"

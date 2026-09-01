@@ -215,6 +215,8 @@ pub enum Outcome {
     Edit(crate::model::edit::Edit),
     /// Copy plain text to the clipboard.
     CopyText(String),
+    /// Copy HTML to the clipboard with a plain-text alternative.
+    CopyHtml { text: String, html: String },
     /// Copy a raster image to the clipboard.
     CopyImage(image::RgbaImage),
     /// The embedder-defined Play button was pressed.
@@ -1842,8 +1844,17 @@ impl State {
                 // Only a copy that actually produced text earns the
                 // "Copied!" flash.
                 let text = loaded.and_then(|l| tab_as_text(lang, *tab, l, opts))?;
+                let html = if *tab == Tab::Folder {
+                    Some(loaded.and_then(|l| folder::as_html(l, opts))?)
+                } else {
+                    None
+                };
                 crate::copy_feedback::flash(&copy_flash_key(*tab, false));
-                Some(Outcome::CopyText(text))
+                if let Some(html) = html {
+                    Some(Outcome::CopyHtml { text, html })
+                } else {
+                    Some(Outcome::CopyText(text))
+                }
             }
             Action::CopyTabImage(tab) => {
                 let img = loaded.and_then(|l| tab_as_image(*tab, l))?;

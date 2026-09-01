@@ -176,6 +176,8 @@ pub enum Effect {
     RevealPath(std::path::PathBuf),
     /// Copy plain text to the clipboard.
     CopyText(String),
+    /// Copy HTML to the clipboard with a plain-text alternative.
+    CopyHtml { text: String, html: String },
     /// Copy a raster image to the clipboard.
     CopyImage(image::RgbaImage),
     /// User pressed Play → start a single-player session from the
@@ -350,6 +352,9 @@ impl State {
                 let (sv_task, outcome) = data.editor.update(&config.language, data, &*msg);
                 match outcome {
                     Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
+                    Some(tango_gamesupport::SaveEditorEvent::CopyHtml { text, html }) => {
+                        Some(Effect::CopyHtml { text, html })
+                    }
                     Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),
                     Some(tango_gamesupport::SaveEditorEvent::Play) => Some(Effect::StartSinglePlayer),
                     Some(tango_gamesupport::SaveEditorEvent::Training) => Some(Effect::StartTraining),

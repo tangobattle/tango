@@ -255,6 +255,8 @@ pub enum Effect {
     AnalyzeReplay(std::path::PathBuf),
     /// Copy plain text to the clipboard.
     CopyText(String),
+    /// Copy HTML to the clipboard with a plain-text alternative.
+    CopyHtml { text: String, html: String },
     /// Copy a raster image to the clipboard.
     CopyImage(image::RgbaImage),
     /// Open the native Save-File dialog for the given replay's
@@ -421,6 +423,9 @@ impl ReplaysState {
                 let (sv_task, outcome) = data.editor.update(&config.language, data, &*msg);
                 match outcome {
                     Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
+                    Some(tango_gamesupport::SaveEditorEvent::CopyHtml { text, html }) => {
+                        Some(Effect::CopyHtml { text, html })
+                    }
                     Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),
                     Some(_) => None,
                     None => Some(Effect::SaveEditorTask(sv_task.map(Message::SaveEditor))),

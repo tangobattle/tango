@@ -218,6 +218,22 @@ enum ScreenKey {
     Tabs(Tab),
 }
 
+fn copy_html_to_clipboard(text: String, html: String) {
+    tokio::task::spawn_blocking(move || match arboard::Clipboard::new() {
+        Ok(mut cb) => {
+            if let Err(e) = cb.set_html(html.as_str(), Some(text.as_str())) {
+                log::warn!("clipboard set_html failed: {e}");
+                // Keep the established plain-text copy useful even on a
+                // clipboard backend that cannot publish HTML.
+                if let Err(e) = cb.set_text(text) {
+                    log::warn!("clipboard set_text fallback failed: {e}");
+                }
+            }
+        }
+        Err(e) => log::warn!("clipboard open failed: {e}"),
+    });
+}
+
 fn copy_image_to_clipboard(img: image::RgbaImage) {
     let (width, height) = (img.width() as usize, img.height() as usize);
     let bytes = img.into_raw();

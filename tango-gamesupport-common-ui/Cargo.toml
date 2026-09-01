@@ -24,7 +24,8 @@ sweeten.workspace = true
 lucide-icons.workspace = true
 fluent-templates.workspace = true
 unic-langid.workspace = true
-image.workspace = true
+image = { workspace = true, features = ["png"] }
+base64.workspace = true
 indexmap = "2"
 ndarray = "0.15"
 

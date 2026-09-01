@@ -116,6 +116,10 @@ impl PreparedSave {
 pub enum SaveEditorEvent {
     /// Copy plain text to the clipboard.
     CopyText(String),
+    /// Copy HTML to the clipboard with `text` as its plain-text
+    /// alternative. Rich-text paste targets receive `html`; plain-text
+    /// targets keep the same text export as before.
+    CopyHtml { text: String, html: String },
     /// Copy a raster image to the clipboard.
     CopyImage(image::RgbaImage),
     /// The embedder-defined Play button was pressed.
