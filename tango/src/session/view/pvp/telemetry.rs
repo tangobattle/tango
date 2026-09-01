@@ -1,14 +1,10 @@
-//! PvP telemetry: the bottom-right signal indicator and the
-//! match-settings popover it expands into. The deck tags P1/P2,
-//! draws a full-width per-metric sparkline (TPS, frame skew, local
-//! lead, rollback depth, ping) over its current value colored by
-//! health (green/amber/red), and stacks the live frame-delay knob
-//! beneath.
-//! The plate is a button: clicking the instrument panel toggles the
-//! popover, which is gated on a live latency reading and retires
-//! itself the moment the remote drops. Split out of the session view
-//! so the emulator/drawer/overlay layout in `mod.rs` isn't sharing a
-//! file with ~500 lines of charting + tone math.
+//! PvP telemetry: one always-visible, single-row bottom status bar. P1/P2 sit
+//! beside five tiny inline sparklines (TPS, frame skew, local lead, rollback
+//! depth, ping), each in an equal-width lane whose value sizes naturally. A
+//! trailing frame-delay chip opens its slider in a small
+//! popover, keeping the resting bar shallow. Split out of the session view so
+//! the emulator/drawer layout in `mod.rs` isn't sharing a file with the
+//! charting + tone math.
 
 use super::super::*;
 use super::{Message, PvpSession};
@@ -66,17 +62,15 @@ fn frame_delay_control<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) ->
 
     column![heading, control]
         .spacing(3)
-        .width(Length::Fixed(PANEL_W))
+        .width(Length::Fixed(FRAME_DELAY_W))
         .into()
 }
 
-// Panel + sparkline geometry. The cards are all `PANEL_W` wide so the metrics
-// line up; each chart spans that full width with its value right-aligned on
-// its own line underneath, so the numbers still line up down the panel while
-// the trace gets every pixel of the card. The frame-delay control spans the
-// same width: a turtle-icon heading over a lobby-style slider row.
-const PANEL_W: f32 = 228.0;
-const SPARK_H: f32 = 24.0;
+// Status-bar geometry. The five metric lanes divide the available width; each
+// value takes its natural width and the sparkline flexes around it.
+const FRAME_DELAY_W: f32 = 260.0;
+const FRAME_DELAY_CLEARANCE: f32 = 52.0;
+const SPARK_H: f32 = 16.0;
 // Each metric's full-height value span (sample saturates into it). Chosen to
 // line up with the tone thresholds so a point's height roughly tracks its color.
 const TPS_SPAN: f32 = 8.0; // fps below target = floor of the chart
@@ -85,7 +79,7 @@ const LEAD_SPAN: i32 = 24; // ± about zero; saturates well before the overflow 
 const DEPTH_SPAN: u32 = 8;
 const PING_SPAN: u128 = 200;
 
-/// A compact per-metric history chart for the match-settings panel. Each
+/// A compact per-metric history chart for the persistent PvP panel. Each
 /// retained sample is `(height fraction in 0..=1, tone)`, plotted left→right
 /// (oldest→newest) as a thin line whose every segment and vertex is colored by
 /// that sample's health tone — so the trend tells the same green/amber/red
@@ -211,41 +205,36 @@ impl canvas::Program<Message> for Sparkline {
     }
 }
 
-/// One telemetry card: `icon caption` on top, the chart across the card's whole
-/// width below it, and the value on its own line under that, right-aligned.
-/// Icon + caption ride muted. The readout used to sit in a fixed column beside
-/// the chart, which cost the trace a fifth of the card for a number that only
-/// ever needs one line; underneath it still right-aligns, so the values line up
-/// down the panel exactly as they did. Fixed at [`PANEL_W`] so the cards align
-/// with one another.
+/// One telemetry lane in the compact bar: icon, tiny sparkline, naturally sized
+/// current value. The full localized caption moves to a tooltip, preserving the
+/// meaning without adding a second line to the bar.
 fn telemetry_card<'a>(
     icon: Icon,
     caption: String,
     control: Element<'a, Message>,
     value: Element<'a, Message>,
 ) -> Element<'a, Message> {
-    let caption_row = row![
-        icon.widget().size(TEXT_BODY).style(widgets::muted_text_style),
-        text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
+    let lane = row![
+        icon.widget().size(14.0).style(widgets::muted_text_style),
+        control,
+        value,
     ]
-    .spacing(6)
+    .spacing(5)
     .align_y(Alignment::Center)
     .width(Fill);
-    column![
-        caption_row,
-        control,
-        container(value).width(Fill).align_x(iced::alignment::Horizontal::Right),
-    ]
-    .spacing(3)
-    .width(Length::Fixed(PANEL_W))
+    iced::widget::tooltip(
+        lane,
+        widgets::tooltip_bubble(caption),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(5)
     .into()
 }
 
-/// A right-aligned monospace value readout, tinted by `tone` (or default text
-/// when `None`, e.g. the frame-delay number).
+/// A right-aligned monospace value readout, tinted by `tone`.
 fn value_text<'a>(s: String, tone: Option<StatTone>) -> Element<'a, Message> {
     text(s)
-        .size(TEXT_BODY)
+        .size(TEXT_CAPTION)
         .font(iced::Font::MONOSPACE)
         .style(move |theme: &iced::Theme| iced::widget::text::Style {
             color: Some(tone.map_or_else(|| theme.palette().text, |t| stat_tone_color(theme, t))),
@@ -253,24 +242,21 @@ fn value_text<'a>(s: String, tone: Option<StatTone>) -> Element<'a, Message> {
         .into()
 }
 
-/// TPS readout: current rate over its live cap, as one line. The current rate
-/// carries the health tone and the cap rides muted behind the slash, both at
-/// [`TEXT_BODY`] like every other readout — the two halves are one number, so
-/// shrinking the cap only made the fraction read as two different things.
+/// TPS readout: current rate over its live cap, compressed to fit a status lane.
 fn tps_value<'a>(tps: f32, fps_target: f32, tone: StatTone) -> Element<'a, Message> {
     row![
-        text(format!("{:.2}", tps))
-            .size(TEXT_BODY)
+        text(format!("{:5.2}", tps))
+            .size(TEXT_CAPTION)
             .font(iced::Font::MONOSPACE)
             .style(move |theme: &iced::Theme| iced::widget::text::Style {
                 color: Some(stat_tone_color(theme, tone)),
             }),
-        text(format!("/ {:.2}", fps_target))
-            .size(TEXT_BODY)
+        text(format!("/{:5.2}", fps_target))
+            .size(TEXT_CAPTION)
             .font(iced::Font::MONOSPACE)
             .style(widgets::muted_text_style),
     ]
-    .spacing(4)
+    .spacing(2)
     .align_y(Alignment::Center)
     .into()
 }
@@ -306,13 +292,10 @@ fn metric_card<'a>(
     )
 }
 
-/// Contents of the match-settings panel: a sparkline card per live metric
-/// (TPS, skew, lead, depth, ping) stacked above the frame-delay card. Each chart
-/// reads its window from `history` and its current value from the newest
-/// sample.
-fn match_settings_content<'a>(
+/// The five compact metric lanes. Each chart reads its rolling window from
+/// `history` and its current value from the newest sample.
+fn telemetry_content<'a>(
     lang: &'a LanguageIdentifier,
-    pvp: &'a PvpSession,
     history: &std::collections::VecDeque<MetricSample>,
 ) -> Element<'a, Message> {
     // `zero` is the reference line: parity (mid-height) for skew, the value-0
@@ -392,38 +375,29 @@ fn match_settings_content<'a>(
         Some(0.0),
         history,
         |s| {
-            Some((
-                s.ping_ms.min(PING_SPAN) as f32 / PING_SPAN as f32,
-                tone_for_ping(s.ping_ms),
-            ))
+            s.ping_ms
+                .map(|ping_ms| (ping_ms.min(PING_SPAN) as f32 / PING_SPAN as f32, tone_for_ping(ping_ms)))
         },
-        |s| Some(value_text(fmt_ping(s.ping_ms), Some(tone_for_ping(s.ping_ms)))),
+        |s| {
+            s.ping_ms
+                .map(|ping_ms| value_text(fmt_ping(ping_ms), Some(tone_for_ping(ping_ms))))
+        },
     );
 
-    // Faint rule separating the read-only metrics from the frame-delay knob.
-    let rule =
-        container(iced::widget::Space::new().width(Fill).height(Length::Fixed(1.0))).style(|theme: &iced::Theme| {
-            let p = theme.extended_palette();
-            iced::widget::container::Style {
-                background: Some(iced::Background::Color(Color {
-                    a: if p.is_dark { 0.16 } else { 0.13 },
-                    ..theme.palette().text
-                })),
-                ..Default::default()
-            }
-        });
-
-    column![
+    row![
         tps_card,
+        status_divider(),
         skew_card,
+        status_divider(),
         lead_card,
+        status_divider(),
         depth_card,
+        status_divider(),
         ping_card,
-        rule,
-        frame_delay_control(lang, pvp)
     ]
     .spacing(8)
-    .width(Length::Fixed(PANEL_W))
+    .align_y(Alignment::Center)
+    .width(Fill)
     .into()
 }
 
@@ -451,8 +425,8 @@ fn stat_tone_color(theme: &iced::Theme, tone: StatTone) -> iced::Color {
     }
 }
 
-// Health tone per metric. Shared by the instrument-panel cells and the
-// popover sparklines so the value readout and the chart points always agree
+// Health tone per metric. Shared by the current readout and sparkline so the
+// number and chart points always agree
 // on green/amber/red.
 
 /// TPS vs the live fps target: green at/near rate, amber as it dips, red when
@@ -514,167 +488,178 @@ fn tone_for_ping(ping_ms: u128) -> StatTone {
 /// Signed skew in a 3-wide field; bare `0` at parity reads calmer than `+0`.
 fn fmt_skew(skew: i32) -> String {
     if skew == 0 {
-        "0".to_string()
+        "  0".to_string()
     } else {
-        format!("{skew:+}")
+        format!("{skew:+3}")
     }
 }
 /// Signed local lead in ticks; bare `0` at zero reads calmer than `+0`.
 fn fmt_lead(lead: i32) -> String {
     if lead == 0 {
-        "0".to_string()
+        "  0".to_string()
     } else {
-        format!("{lead:+}")
+        format!("{lead:+3}")
     }
 }
 /// Rollback depth.
 fn fmt_depth(depth: u32) -> String {
-    format!("{depth}")
+    format!("{depth:3}")
 }
 /// Latency in ms.
 fn fmt_ping(ping_ms: u128) -> String {
-    format!("{ping_ms} ms")
+    format!("{ping_ms:3} ms")
 }
 
-/// Sync-skew band → signal-bars icon. Full bars at parity,
-/// dropping as the two sides drift apart — same bands as
-/// [`tone_for_skew`], so the bars and the tint always agree.
-fn signal_icon(skew: i32) -> Icon {
-    match skew.unsigned_abs() {
-        0..=3 => Icon::SignalHigh,
-        4..=7 => Icon::SignalMedium,
-        _ => Icon::SignalLow,
+/// Persistent player/seat legend above the charts. Red and blue describe field
+/// halves everywhere except games that color players by seat; those keep the
+/// game-native P1/P2 color assignment while You/Opponent follows the local seat.
+fn players_header<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) -> Element<'a, Message> {
+    let side = |accent: Color, seat: &'static str, name: String| -> Element<'a, Message> {
+        let dot = container(
+            iced::widget::Space::new()
+                .width(Length::Fixed(8.0))
+                .height(Length::Fixed(8.0)),
+        )
+        .style(move |_: &iced::Theme| iced::widget::container::Style {
+            background: Some(iced::Background::Color(accent)),
+            border: iced::Border {
+                radius: 999.0.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        row![
+            dot,
+            text(seat).size(TEXT_CAPTION).font(iced::Font::MONOSPACE),
+            text(name).size(TEXT_CAPTION).style(widgets::muted_text_style),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center)
+        .into()
+    };
+
+    use widgets::{FIELD_BLUE, FIELD_RED};
+    let local_is_p1 = pvp.local_player_index() == 0;
+    let (you, opponent) = (t!(lang, "play-you"), t!(lang, "play-opponent"));
+    if pvp.local_game().family.players_colored_by_seat {
+        let (p1, p2) = if local_is_p1 { (you, opponent) } else { (opponent, you) };
+        row![side(FIELD_RED, "P1", p1), side(FIELD_BLUE, "P2", p2)]
+    } else {
+        let (local_seat, remote_seat) = if local_is_p1 { ("P1", "P2") } else { ("P2", "P1") };
+        row![
+            side(FIELD_RED, local_seat, you),
+            side(FIELD_BLUE, remote_seat, opponent),
+        ]
     }
+    .spacing(12)
+    .align_y(Alignment::Center)
+    .into()
 }
 
-/// Bottom-right telemetry overlay (PvP-only). At rest it's a
-/// small, permanently-visible signal indicator — latency band as
-/// colored signal bars, deliberately outside the auto-hide group
-/// so connection health stays glanceable. Clicking it expands the
-/// full graph view above the corner (P1/P2 sides, metric
-/// sparklines, frame-delay knob); the chevron in the panel's
-/// header collapses it back (Esc works too).
-pub(super) fn telemetry_overlay<'a>(
+/// Hairline between the player legend, telemetry lanes, and frame-delay chip.
+fn status_divider<'a>() -> Element<'a, Message> {
+    container(
+        iced::widget::Space::new()
+            .width(Length::Fixed(1.0))
+            .height(Length::Fixed(20.0)),
+    )
+    .style(|theme: &iced::Theme| iced::widget::container::Style {
+        background: Some(iced::Background::Color(Color {
+            a: 0.14,
+            ..theme.palette().text
+        })),
+        ..Default::default()
+    })
+    .into()
+}
+
+/// Resting frame-delay control: current value and disclosure chevron only. The
+/// full slider is intentionally out of the bar until requested.
+fn frame_delay_chip<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession, open: bool) -> Element<'a, Message> {
+    let chip = button(
+        row![
+            Icon::Turtle.widget().size(14.0),
+            text(pvp.frame_delay().to_string())
+                .size(TEXT_CAPTION)
+                .font(iced::Font::MONOSPACE)
+                .width(Length::Fixed(14.0)),
+            if open { Icon::ChevronDown } else { Icon::ChevronUp }
+                .widget()
+                .size(11.0)
+                .style(widgets::muted_text_style),
+        ]
+        .spacing(4)
+        .align_y(Alignment::Center),
+    )
+    .padding([3.0, 6.0])
+    .style(widgets::neutral)
+    .on_press(Message::ToggleFrameDelayControl);
+    iced::widget::tooltip(
+        chip,
+        widgets::tooltip_bubble(t!(lang, "settings-netplay-frame-delay")),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(5)
+    .into()
+}
+
+/// Always-visible PvP telemetry. P1/P2 and all five tiny charts occupy one
+/// stable row; the trailing chip is the only disclosure control.
+pub(super) fn telemetry_panel<'a>(
+    lang: &'a LanguageIdentifier,
+    pvp: &'a PvpSession,
+    state: &'a State,
+) -> Element<'a, Message> {
+    let bar = row![
+        players_header(lang, pvp),
+        status_divider(),
+        telemetry_content(lang, &state.metric_history),
+        status_divider(),
+        frame_delay_chip(lang, pvp, state.frame_delay_control.shown()),
+    ]
+    .spacing(8)
+    .align_y(Alignment::Center)
+    .width(Fill);
+    let panel = container(bar).padding([6.0, 8.0]).width(Fill).style(hud_chip_plate);
+
+    container(panel)
+        .width(Fill)
+        .padding(iced::Padding {
+            top: 0.0,
+            right: 12.0,
+            bottom: 8.0,
+            left: 12.0,
+        })
+        .into()
+}
+
+/// Small frame-delay popover anchored immediately above the persistent bar.
+/// It is the only collapsible piece of telemetry; opening it never changes the
+/// bar's size or the game-region layout.
+pub(super) fn frame_delay_overlay<'a>(
     lang: &'a LanguageIdentifier,
     pvp: &'a PvpSession,
     state: &'a State,
 ) -> Option<Element<'a, Message>> {
-    // Same link-up gate as `latency()`: nothing to show before the
-    // first pong.
-    pvp.latency_raw()?;
     let now = iced::time::Instant::now();
-
-    let content: Element<'a, Message> = if state.match_settings.visible(now) {
-        // Expanded graph view. The header carries the players and
-        // the collapse chevron — no latency readout here, the ping
-        // sparkline below already shows it.
-        //
-        // The red/blue dots are FIELD sides (same coding as the
-        // setup toggles and the matchup pane: red = your half,
-        // blue = the opponent's), so your row leads with the red
-        // dot and the seat assignment rides in the P1/P2 label
-        // next to it — except where the game itself colors by
-        // seat, see below.
-        let collapse = button(Icon::ChevronDown.widget().size(14.0))
-            .padding([4.0, 8.0])
-            .style(widgets::neutral)
-            .on_press(Message::ToggleMatchSettings);
-        let side = |accent: Color, seat: &'static str, name: String| -> Element<'a, Message> {
-            let dot = container(
-                iced::widget::Space::new()
-                    .width(Length::Fixed(8.0))
-                    .height(Length::Fixed(8.0)),
-            )
-            .style(move |_: &iced::Theme| iced::widget::container::Style {
-                background: Some(iced::Background::Color(accent)),
-                border: iced::Border {
-                    radius: 999.0.into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            });
-            row![
-                dot,
-                text(seat).size(TEXT_CAPTION).font(iced::Font::MONOSPACE),
-                text(name).size(TEXT_CAPTION).style(widgets::muted_text_style),
-            ]
-            .spacing(4)
-            .align_y(Alignment::Center)
-            .into()
-        };
-        use widgets::{FIELD_BLUE, FIELD_RED};
-        let local_is_p1 = pvp.local_player_index() == 0;
-        let (you, opponent) = (t!(lang, "play-you"), t!(lang, "play-opponent"));
-        let players = if pvp.local_game().family.players_colored_by_seat {
-            let (p1, p2) = if local_is_p1 {
-                (you, opponent)
-            } else {
-                (opponent, you)
-            };
-            row![side(FIELD_RED, "P1", p1), side(FIELD_BLUE, "P2", p2)]
-        } else {
-            let (local_seat, remote_seat) = if local_is_p1 { ("P1", "P2") } else { ("P2", "P1") };
-            row![
-                side(FIELD_RED, local_seat, you),
-                side(FIELD_BLUE, remote_seat, opponent),
-            ]
-        }
-        .spacing(12)
-        .align_y(Alignment::Center);
-        let header = row![players, horizontal_space(), collapse]
-            .spacing(8)
-            .align_y(Alignment::Center);
-
-        // Pin the column to the cards' width — the Fill spacer in
-        // the header would otherwise stretch the panel out to the
-        // whole window.
-        let panel = container(
-            column![header, match_settings_content(lang, pvp, &state.metric_history)]
-                .spacing(8)
-                .width(Length::Fixed(PANEL_W)),
-        )
+    if !state.frame_delay_control.visible(now) {
+        return None;
+    }
+    let popup = container(frame_delay_control(lang, pvp))
         .padding(12)
         .style(widgets::panel);
-        anim::pop(panel, state.match_settings.progress(now), 8.0)
-    } else {
-        // Collapsed: signal bars showing the SYNC health — how far
-        // the two sides have drifted (skew) — with the live frame
-        // count as a tooltip. Between rounds there's no skew
-        // reading; ride muted full bars until the next one starts.
-        let (icon, tone, reading) = match pvp.round_stats() {
-            Some(stats) => (
-                signal_icon(stats.skew),
-                tone_for_skew(stats.skew),
-                format!("{:+}", stats.skew),
-            ),
-            None => (Icon::SignalHigh, StatTone::Muted, "—".to_string()),
-        };
-        let icon_el = icon
-            .widget()
-            .size(18.0)
-            .style(move |theme: &iced::Theme| iced::widget::text::Style {
-                color: Some(stat_tone_color(theme, tone)),
-            });
-        let chip = button(icon_el)
-            .padding([5.0, 8.0])
-            .style(telemetry_plate_button)
-            .on_press(Message::ToggleMatchSettings);
-        iced::widget::tooltip(
-            chip,
-            widgets::tooltip_bubble(reading),
-            iced::widget::tooltip::Position::Left,
-        )
-        .gap(4)
-        .into()
-    };
-
     Some(
-        container(content)
+        container(anim::pop(popup, state.frame_delay_control.progress(now), 8.0))
             .width(Fill)
             .height(Fill)
             .align_x(iced::alignment::Horizontal::Right)
             .align_y(iced::alignment::Vertical::Bottom)
-            .padding(12)
+            .padding(iced::Padding {
+                top: 0.0,
+                right: 12.0,
+                bottom: FRAME_DELAY_CLEARANCE,
+                left: 0.0,
+            })
             .into(),
     )
 }

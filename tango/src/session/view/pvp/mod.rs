@@ -11,20 +11,20 @@ use tango_gamesupport::OpaqueBuildWarnings;
 use sweeten::widget::{column, row};
 
 mod telemetry;
-use telemetry::telemetry_overlay;
+use telemetry::{frame_delay_overlay, telemetry_panel};
 
 /// Messages the PvP view emits. Wrapped as [`SessionMessage::Pvp`] on
 /// the way out; inert unless a PvP session is active.
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// The match-settings frame-delay slider moved. Live-sets this
+    /// The telemetry panel's frame-delay slider moved. Live-sets this
     /// side's local frame delay on the running session; the App also
     /// persists it to config. No peer coordination — it's purely a
     /// local display lag.
     SetFrameDelay(u32),
-    /// Open/close the match-settings popover anchored on the
-    /// telemetry plate (instrument panel).
-    ToggleMatchSettings,
+    /// Open/close the compact frame-delay popover above the persistent
+    /// telemetry bar. The charts themselves never collapse.
+    ToggleFrameDelayControl,
     /// Show the "really disconnect?" modal — the corner tear-down
     /// button while the link is live. Disconnect tears the session
     /// down mid-match (same as Close), so the confirm keeps a stray
@@ -60,8 +60,8 @@ pub enum Message {
     EndPaneResize,
 }
 
-/// Apply a PvP-view message. Takes the whole session [`State`]: the
-/// panel/popover overlays live there, beside the session slot.
+/// Apply a PvP-view message. Takes the whole session [`State`] because the
+/// setup drawers and disconnect/build-warning overlays live beside the slot.
 pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::LanguageIdentifier) -> iced::Task<Message> {
     match msg {
         Message::SetFrameDelay(d) => {
@@ -72,9 +72,9 @@ pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::Langua
                 s.set_frame_delay(d);
             }
         }
-        Message::ToggleMatchSettings => {
+        Message::ToggleFrameDelayControl => {
             if state.active_as::<PvpSession>().is_some() {
-                state.match_settings.toggle();
+                state.frame_delay_control.toggle();
             }
         }
         Message::OpenDisconnectConfirm => {
@@ -213,19 +213,15 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
             .map(|p| p.pane_widths[1]),
     ];
     let body = emulator_body(p.local_game(), frame, ctx.hide_emulator_border, slots);
-    let mut stacked = stack![body];
-    // A drawer pane mid-animation draws in iced's floating layer,
-    // above every base stack layer — so for those moments the
-    // telemetry plate is hoisted into the floating layer too, where
-    // tree order puts it back on top of the moving pane. See
-    // `keep_above_drawers` for why it isn't hoisted permanently.
-    // The top-right commands stay un-hoisted on purpose: the
-    // drawers are supposed to cover them.
+    let mut game_stack = stack![body];
+    // A drawer pane mid-animation draws in iced's floating layer, above every
+    // base stack layer. The build warning is hoisted alongside it so the
+    // warning stays explicit; the top-right commands remain below the drawer.
     let drawer_moving = state.self_panel.is_animating(now) || state.opponent_panel.is_animating(now);
     if state.controls_anim.visible(now) {
         // The setup toggles ride the screen edges as drawer handles
         // (the replay transport's slot in the layer order).
-        stacked = stacked.push(setup_handles_overlay(lang, state, state.controls_anim.progress(now)));
+        game_stack = game_stack.push(setup_handles_overlay(lang, state, state.controls_anim.progress(now)));
         // Settings + tear-down, top-right; a live link routes the
         // tear-down through the disconnect confirm (whose copy
         // carries the unplug framing); once the link is already gone
@@ -238,31 +234,39 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
         } else {
             SessionMessage::Close
         };
-        stacked = stacked.push(corner_commands_overlay(lang, state, tear_down_msg, slots[1].is_some()));
+        game_stack = game_stack.push(corner_commands_overlay(lang, state, tear_down_msg, slots[1].is_some()));
     }
-    // Setup drawers — above the corner commands, below the telemetry
-    // plate (see `setup_drawers_overlay`).
+    // Setup drawers — above the corner commands, within the game region. The
+    // telemetry panel occupies its own layout region below this whole stack.
     for pane in setup_drawers_overlay(lang, state) {
-        stacked = stacked.push(pane.map(SessionMessage::Pvp));
+        game_stack = game_stack.push(pane.map(SessionMessage::Pvp));
     }
     // Drag capture, above the drawers: a Stack takes the topmost
     // non-None mouse interaction, so this has to outrank the pane's
     // own `Idle` for the resize cursor to hold across the drawer the
     // user is sizing (see `pane_resize_capture`).
     if panes.is_some_and(|p| p.pane_drag.is_some()) {
-        stacked = stacked.push(pane_resize_capture().map(SessionMessage::Pvp));
-    }
-    // Signal indicator / expanded telemetry graph, bottom-right.
-    // Deliberately outside the floating-controls gate — connection
-    // health stays glanceable even when the controls tuck away.
-    if let Some(o) = telemetry_overlay(lang, p, state) {
-        stacked = stacked.push(keep_above_drawers(o.map(SessionMessage::Pvp), drawer_moving));
+        game_stack = game_stack.push(pane_resize_capture().map(SessionMessage::Pvp));
     }
     // Advisory only: invalid committed builds never alter the running
     // session, but remain explicit until the player dismisses this card.
     if let Some(o) = build_warning_overlay(lang, state) {
-        stacked = stacked.push(keep_above_drawers(o.map(SessionMessage::Pvp), drawer_moving));
+        game_stack = game_stack.push(keep_above_drawers(o.map(SessionMessage::Pvp), drawer_moving));
     }
+
+    // Telemetry is a real status region below the game stack, not an overlay:
+    // it is always present, never covers the emulator or setup drawers, and
+    // its fixed lanes update without moving neighboring readings.
+    let game = container(game_stack).width(Fill).height(Fill);
+    let layout = column![game, telemetry_panel(lang, p, state).map(SessionMessage::Pvp)]
+        .width(Fill)
+        .height(Fill);
+    let mut stacked = stack![layout];
+
+    if let Some(o) = frame_delay_overlay(lang, p, state) {
+        stacked = stacked.push(o.map(SessionMessage::Pvp));
+    }
+
     if let Some(o) = disconnect_overlay(lang, state) {
         stacked = stacked.push(o);
     }
@@ -405,13 +409,11 @@ fn build_warning_plate(theme: &iced::Theme) -> iced::widget::container::Style {
 /// `emulator_body`'s drawer slots reserve in the layout while it's
 /// open, and whose inner edge is the grip that resizes it (the
 /// docked outer edge never moves). Rendered as stack layers (rather
-/// than row members) so the
-/// drawers sit ABOVE the corner commands — an open drawer covers
-/// the Settings / Close buttons instead of having them intrude on
-/// its content — and BELOW the telemetry plate, which stays
-/// glanceable over an open drawer (see the layer order in [`view`]).
-/// Mid-slide the panes draw in iced's floating layer, above every
-/// base layer (see `anim::slide_in` / `keep_above_drawers`).
+/// than row members) so the drawers sit ABOVE the corner commands — an open
+/// drawer covers the Settings / Close buttons instead of having them intrude
+/// on its content. Telemetry is outside this stack in its own bottom region.
+/// Mid-slide the panes draw in iced's floating layer, above every base layer
+/// (see `anim::slide_in` / `keep_above_drawers`).
 fn setup_drawers_overlay<'a>(lang: &'a LanguageIdentifier, state: &'a State) -> Vec<Element<'a, Message>> {
     let now = iced::time::Instant::now();
     let Some(s) = state.pvp_panes.as_ref() else {
@@ -524,12 +526,10 @@ fn pane_resize_capture<'a>() -> Element<'a, Message> {
 /// Hoist a persistent chrome layer into iced's floating layer —
 /// an invisible sub-pixel translation — so it keeps drawing above
 /// a drawer pane mid-animation (which floats, and floats render
-/// above every base stack layer; among floats, tree order wins,
-/// and these layers come after the drawer). Used by the telemetry
-/// plate, the one piece of chrome that outranks the drawers — the
-/// top-right commands deliberately layer UNDER them instead. Only
-/// applied while a drawer is actually moving: hoisted permanently,
-/// the chrome would also paint over the settings/disconnect modals.
+/// above every base stack layer; among floats, tree order wins, and this layer
+/// comes after the drawer). Used by the build warning, whose advisory must not
+/// disappear during a drawer transition. Only applied while a drawer is
+/// actually moving: hoisted permanently, it would also paint over modals.
 fn keep_above_drawers(el: Element<'_, SessionMessage>, drawer_moving: bool) -> Element<'_, SessionMessage> {
     if drawer_moving {
         iced::widget::float(el)

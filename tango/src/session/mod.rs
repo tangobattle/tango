@@ -40,14 +40,18 @@ use pvp::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
 /// One per-frame snapshot of the live PvP telemetry, retained in a short ring
-/// buffer ([`State::metric_history`]) so the match-settings popover can draw a
+/// buffer ([`State::metric_history`]) so the persistent PvP panel can draw a
 /// sparkline per metric. `round` is `None` between rounds, when no
 /// skew/lead/depth reading exists; when present it is `(skew, depth, lead)`.
 #[derive(Clone, Copy)]
 pub struct MetricSample {
     pub tps: f32,
     pub fps_target: f32,
-    pub ping_ms: u128,
+    /// Latest raw RTT, absent while the link is still coming up or is
+    /// temporarily down. Keeping absence distinct from `0 ms` lets the
+    /// persistent chart show an honest gap instead of a perfect-looking sample
+    /// before the first pong.
+    pub ping_ms: Option<u128>,
     pub round: Option<(i32, u32, i32)>,
 }
 
@@ -61,7 +65,7 @@ impl MetricSample {
             // Raw latest ping (not the median) — the sparkline is a live
             // display, so it should track the true per-frame reading and
             // show spikes. The median feeds only the frame-delay suggestion.
-            ping_ms: pvp.latency_raw().map_or(0, |d| d.as_millis()),
+            ping_ms: pvp.latency_raw().map(|d| d.as_millis()),
             round: pvp.round_stats().map(|s| (s.skew, s.depth, s.lead)),
         }
     }
@@ -542,11 +546,9 @@ pub struct State {
     /// session down mid-match (same as Close), so the confirm
     /// keeps a stray click from costing the user a real game.
     pub disconnect: anim::Overlay,
-    /// PvP-only: the match-settings popover, anchored above the
-    /// telemetry plate (instrument panel) and toggled by clicking it.
-    /// Holds the live frame-delay control (moved here from the footer).
-    /// Mutually exclusive with the options menu.
-    pub match_settings: anim::Overlay,
+    /// PvP-only: compact frame-delay slider popover above the persistent
+    /// telemetry bar. The telemetry itself has no collapsed state.
+    pub frame_delay_control: anim::Overlay,
     /// Latest GBA framebuffer (post upscale filter), presented by the
     /// [`crate::platform::video::framebuffer`] shader widget. Refreshed in
     /// [`Message::UpdateFramebuffer`] (which the session subscription
@@ -567,7 +569,7 @@ pub struct State {
     pub pip_revision: u64,
     /// Rolling window of PvP telemetry snapshots (newest at the back),
     /// sampled once per frame from the [`Message::UpdateFramebuffer`] handler
-    /// and drawn as sparklines in the match-settings popover. Capped at
+    /// and drawn as sparklines in the persistent PvP status panel. Capped at
     /// [`METRIC_HISTORY_LEN`]; cleared whenever the active session is not a
     /// live PvP match.
     pub metric_history: std::collections::VecDeque<MetricSample>,
@@ -630,7 +632,7 @@ impl Default for State {
             speed_up_engaged: false,
             settings: anim::Overlay::new(false),
             disconnect: anim::Overlay::new(false),
-            match_settings: anim::Overlay::new(false),
+            frame_delay_control: anim::Overlay::new(false),
             current_frame: None,
             frame_revision: 0,
             pip_frame: None,
@@ -772,9 +774,9 @@ pub enum Message {
     /// App wrapper (building a playback session needs the scanners +
     /// config).
     Results(view::results::Message),
-    /// User pressed Esc inside a session. Dismisses whichever overlay
-    /// is on top (settings modal, disconnect confirm, match-settings
-    /// popover) if any, and arms the hold-to-quit timer — a tap never
+    /// User pressed Esc inside a session. Dismisses whichever overlay is on top
+    /// (settings, disconnect confirm, or frame-delay control), if any, and arms
+    /// the hold-to-quit timer — a tap never
     /// tears the session down, but holding Esc for [`ESC_QUIT_HOLD`]
     /// does (with the exit overlay counting down the hold). Routed
     /// here rather than from the InputCapture so the decision sees
@@ -851,7 +853,7 @@ impl State {
         let now = iced::time::Instant::now();
         self.settings.sync(now);
         self.disconnect.sync(now);
-        self.match_settings.sync(now);
+        self.frame_delay_control.sync(now);
         self.self_panel.sync(now);
         self.opponent_panel.sync(now);
         // Floating controls auto-hide. The per-frame
@@ -859,10 +861,6 @@ impl State {
         // timer expires without needing its own timer source; a
         // paused replay (no frames) pins the bar visible anyway.
         let replay_paused = self.active_as::<replay::ReplaySession>().is_some_and(|r| r.is_paused());
-        // The telemetry panel (match_settings) deliberately
-        // doesn't count: it lives in the permanently-visible
-        // top-right indicator, independent of the HUD controls,
-        // so leaving the graph open shouldn't pin the chips up.
         let overlay_open = self.settings.shown() || self.disconnect.shown();
         let show_controls = self.controls_hovered
             || self.bar_menu_open
@@ -935,7 +933,7 @@ impl State {
         self.controls_hovered = false;
         self.bar_menu_open = false;
         self.disconnect.close();
-        self.match_settings.close();
+        self.frame_delay_control.close();
         self.scrub.clear();
         self.esc_hold = None;
         self.stylus = Stylus::default();
@@ -1086,17 +1084,16 @@ impl State {
                 if self.esc_hold.is_none() {
                     self.esc_hold = Some(std::time::Instant::now());
                 }
-                // Peel overlays off top-down: the settings modal, then
-                // the disconnect confirm, then the match-settings
-                // popover. A tap stops there — tearing the session
-                // down takes an explicit button action or the full
-                // [`ESC_QUIT_HOLD`] hold.
+                // Peel overlays off top-down: settings, disconnect confirm,
+                // then the frame-delay control. A tap stops there — tearing
+                // the session down takes an explicit button action or the
+                // full [`ESC_QUIT_HOLD`] hold.
                 if self.settings.shown() {
                     self.settings.close();
                 } else if self.disconnect.shown() {
                     self.disconnect.close();
-                } else if self.match_settings.shown() {
-                    self.match_settings.close();
+                } else if self.frame_delay_control.shown() {
+                    self.frame_delay_control.close();
                 }
             }
             Message::EscReleased => {
@@ -1124,7 +1121,7 @@ impl State {
                 // Keep the user's .sav current while they play — see
                 // [`SaveBackup`]. No-op for every other session kind.
                 self.autosave_singleplayer();
-                // Telemetry snapshot for the popover sparklines, captured while
+                // Telemetry snapshot for the persistent sparklines, captured while
                 // the session is borrowed below and pushed afterward. `None`
                 // (no live PvP match) clears the history so a fresh match — or
                 // a return to SP/replay — starts the charts clean.
