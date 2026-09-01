@@ -558,6 +558,10 @@ fn run_app() -> iced::Result {
             // RGBA so decode once at startup. Best-effort —
             // a corrupt asset just leaves the OS default icon.
             icon: load_window_icon(),
+            // Let App intercept CloseRequested (including Alt-F4) so an
+            // active PvP session can finish its bounded `Goodbye` send before
+            // iced destroys the async runtime. App exits explicitly after it.
+            exit_on_close_request: false,
             ..iced::window::Settings::default()
         })
         .font(FONT_NOTO_SANS)

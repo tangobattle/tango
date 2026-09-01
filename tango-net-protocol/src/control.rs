@@ -70,7 +70,7 @@ pub enum Packet {
     /// Deliberate mid-match quit, sent just before teardown. The teardown's
     /// close_notify alone is ambiguous to the peer — its own reconnect
     /// produces the same clean EOF — so without this it burns the short
-    /// clean-close reconnect window on us; the goodbye lets it end at once.
+    /// reconnect path on us; the goodbye lets it end at once.
     /// A peer that predates this variant fails to decode it, which its
     /// mid-match watch ignores as stray traffic (hence no version bump) —
     /// it just falls back to that window.

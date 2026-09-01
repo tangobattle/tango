@@ -41,21 +41,9 @@ const RECONNECT_MATCHMAKING_ATTEMPT_TIMEOUT: std::time::Duration = std::time::Du
 /// Pause between failed rebuild attempts (e.g. dialer racing ahead of the host
 /// re-binding its port).
 const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(250);
-/// Give-up window for a reconnect triggered by a channel *close* (rather than
-/// a stalled input queue). libdatachannel tears connections down gracefully,
-/// so a close is either a deliberate quit or the peer's own reconnect dropping
-/// its old transport. A quit normally announces itself first (the control
-/// channel's `Goodbye`, see [`Link::send_goodbye`]) and ends the match without
-/// any window — so a bare close is *probably* the peer's reconnect, but the
-/// goodbye is best-effort, so we still wait only briefly: a genuine asymmetric
-/// drop has the peer already at the rendezvous and rejoins almost at once,
-/// while a quit whose goodbye was lost finds no peer and ends without a long
-/// "Reconnecting…". Applies to both transports (the cost of a needless wait is
-/// the same either way).
-const RECONNECT_CLEAN_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(8);
 /// Cap on the deliberate-quit `Goodbye` send. Best-effort by design — a
 /// wedged transport must not delay the local teardown; the peer just falls
-/// back to the clean-close reconnect window.
+/// back to treating the unannounced EOF as a recoverable link loss.
 const GOODBYE_SEND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 /// Upper bound on how long [`Link::bring_up`] waits for the lobby loop to
 /// observe its cancellation and release the control receiver. The loop
@@ -63,24 +51,9 @@ const GOODBYE_SEND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 /// hanging the PvP setup forever.
 const HANDOFF_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// What tripped the supervisor into a reconnect — sizes the give-up window.
-/// The *policy* (whether a trip reconnects at all) stays with the embedder;
-/// this only tells the mechanism how patient to be.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReconnectCause {
-    /// The input queue stalled: a quiet/dead link. Full per-transport window.
-    Stall,
-    /// A channel closed cleanly *without* a preceding `Goodbye`: the peer's
-    /// own reconnect dropping its old transport, or a quit whose goodbye was
-    /// lost. Short window — a real drop's peer is already at the rendezvous,
-    /// a quit never shows up. (An announced quit never reaches a reconnect at
-    /// all — see [`ControlEnd::Goodbye`].)
-    CleanClose,
-}
-
 /// What ended [`Link::watch_control`]'s mid-match watch. The distinction is
 /// what lets the supervisor end the match at once on a deliberate quit
-/// instead of burning the clean-close reconnect window on it.
+/// instead of entering reconnect on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ControlEnd {
     /// The peer announced a deliberate quit ([`Link::send_goodbye`]'s
@@ -125,13 +98,10 @@ pub enum ReconnectRecipe {
     },
 }
 
-fn reconnect_timeout(recipe: &ReconnectRecipe, cause: ReconnectCause) -> std::time::Duration {
-    match cause {
-        ReconnectCause::CleanClose => RECONNECT_CLEAN_CLOSE_TIMEOUT,
-        ReconnectCause::Stall => match recipe {
-            ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
-            ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
-        },
+fn reconnect_timeout(recipe: &ReconnectRecipe) -> std::time::Duration {
+    match recipe {
+        ReconnectRecipe::Direct(_) => RECONNECT_DIRECT_TIMEOUT,
+        ReconnectRecipe::Matchmaking { .. } => RECONNECT_MATCHMAKING_TIMEOUT,
     }
 }
 
@@ -209,8 +179,7 @@ pub struct Link {
     /// and its eventual graceful drop (DTLS close_notify) is what hands the
     /// peer a prompt EOF when we leave. libdatachannel has no silent teardown,
     /// so the peer also sees a clean EOF mid-reconnect — which is why a close
-    /// arms the peer's own reconnect window (see [`ReconnectCause`]) instead
-    /// of ending its match.
+    /// enters the peer's reconnect path instead of ending its match.
     peer_conn: std::sync::Mutex<Option<datachannel_wrapper::PeerConnection>>,
     /// The in-match send handle: rennet out/in streams + retransmit heartbeat.
     /// Its streams are keyed to the session cancellation token, so they (and
@@ -340,12 +309,12 @@ impl Link {
     /// Wall-clock budget the supervisor's independent give-up watchdog uses.
     /// `reconnect` uses the same helper, so the dialog and the watchdog cannot
     /// drift onto different timeout values.
-    pub(crate) fn reconnect_timeout(&self, cause: ReconnectCause) -> Option<std::time::Duration> {
+    pub(crate) fn reconnect_timeout(&self) -> Option<std::time::Duration> {
         self.recipe
             .lock()
             .unwrap()
             .as_ref()
-            .map(|recipe| reconnect_timeout(recipe, cause))
+            .map(reconnect_timeout)
     }
 
     /// Watch the control channel mid-match. Only two things legitimately
@@ -403,10 +372,10 @@ impl Link {
     /// Announce a deliberate local quit to the peer on the (otherwise idle)
     /// reliable control channel, just before teardown. Our teardown's clean
     /// EOF alone is ambiguous to the peer — its own reconnect's transport
-    /// drop looks identical — so without this it burns the clean-close
-    /// reconnect window on us; the goodbye lets its mid-match watch end the
-    /// match at once. Best-effort: on a wedged or torn-down transport the
-    /// send fails or times out and the peer falls back to that window.
+    /// drop looks identical — so without this it enters reconnect on us; the
+    /// goodbye lets its mid-match watch end the match at once. Best-effort: on
+    /// a wedged or torn-down transport the send fails or times out and the
+    /// peer falls back to ordinary reconnect.
     pub async fn send_goodbye(&self) {
         let send = async {
             let mut sender = self.control_sender.lock().await;
@@ -428,22 +397,19 @@ impl Link {
     /// first (the supervisor's `select!` arms are dropped before this is
     /// called) — the swap replaces them. The emulator freeze/unfreeze around
     /// the attempt is also the caller's job; this is transport-only.
-    pub async fn reconnect(&self, cause: ReconnectCause) -> bool {
+    pub async fn reconnect(&self) -> bool {
         let Some(recipe) = self.recipe.lock().unwrap().clone() else {
             self.health.send_replace(LinkHealth::Dead);
             return false;
         };
 
-        // Arm the give-up window the UI bar drains over (the sim is paused
-        // throughout, so a long wait costs nothing but the wait). A stall
-        // gets the full per-transport window — both peers converge on it:
-        // whoever trips first goes silent, which stall-trips the other
-        // within `RECONNECT_QUEUE_LENGTH` frames. A channel close gets the
-        // short window instead (likely a quit — don't hang on it; a real
-        // drop's peer is already at the rendezvous). Retire the latency
-        // readout for the duration.
+        // Arm the per-transport give-up window the UI bar drains over (the sim
+        // is paused throughout, so a long outage costs nothing but the wait).
+        // Both a stalled queue and an unannounced channel close are link loss;
+        // deliberate quits take the separate `Goodbye` path and never enter
+        // here. Retire the latency readout for the duration.
         let started = web_time::Instant::now();
-        let timeout = reconnect_timeout(&recipe, cause);
+        let timeout = reconnect_timeout(&recipe);
         let give_up_at = started + timeout;
         self.health
             .send_replace(LinkHealth::Reconnecting { started, give_up_at });
@@ -453,9 +419,9 @@ impl Link {
         // pinned UDP port frees up for the re-bind. libdatachannel has no
         // silent teardown — the drop closes gracefully, handing the peer a
         // clean EOF mid-rebuild — which is exactly why the peer's supervisor
-        // treats a close as reconnectable (short window) rather than "the
-        // peer left". The socket is released asynchronously as the stack
-        // tears down, so a rebuild attempt can race it and see AddrInUse —
+        // treats an unannounced close as reconnectable rather than "the peer
+        // left". The socket is released asynchronously as the stack tears
+        // down, so a rebuild attempt can race it and see AddrInUse —
         // `rebuild_connection` retries, absorbing that.
         drop(self.peer_conn.lock().unwrap().take());
 
@@ -536,8 +502,8 @@ impl Link {
                 return None;
             }
             // Cap the attempt by whichever is sooner — the per-attempt limit or the
-            // remaining give-up budget — so a short give-up window fires on time
-            // instead of overrunning by a whole attempt.
+            // remaining give-up budget, so the deadline fires on time instead
+            // of overrunning by a whole attempt.
             let this_timeout = attempt_timeout.min(deadline.saturating_duration_since(now));
             let attempt = async {
                 let mut channels = match recipe {

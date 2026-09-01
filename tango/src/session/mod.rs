@@ -657,6 +657,20 @@ impl State {
         self.active.is_some()
     }
 
+    /// Start an orderly application shutdown. PvP returns a completion token
+    /// because its supervisor must get a chance to send `Goodbye` before the
+    /// process runtime disappears; other session kinds have no asynchronous
+    /// network teardown to await.
+    pub(crate) fn request_app_close(&self) -> Option<tokio_util::sync::CancellationToken> {
+        let done = self
+            .active_as::<pvp::PvpSession>()
+            .map(pvp::PvpSession::supervisor_done);
+        if let Some(session) = self.active.as_ref() {
+            session.request_close();
+        }
+        done
+    }
+
     /// The active session as concrete kind `T` — `None` while idle or
     /// when a different kind is running.
     pub fn active_as<T: Session>(&self) -> Option<&T> {

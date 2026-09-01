@@ -48,12 +48,11 @@ pub mod derive;
 // trap sim) peers may pair with us.
 // (Still 0x4f: a deliberate mid-match quit announces itself again — a
 // control-channel `Goodbye` sent just before teardown — so the peer ends at
-// once instead of burning the short clean-close reconnect window (which
-// exists because our own reconnect's transport drop produces the same clean
-// EOF a quit does — the 0x4c-era rationale for dropping the old `Closing`
-// marker predates that ambiguity). No bump: an older peer can't decode the
-// packet, which its mid-match watch ignores as stray traffic, falling back
-// to that window.)
+// once instead of entering reconnect (our own reconnect's transport drop
+// produces the same clean EOF a quit does — the 0x4c-era rationale for
+// dropping the old `Closing` marker predates that ambiguity). No bump: an
+// older peer can't decode the packet, which its mid-match watch ignores as
+// stray traffic, falling back to its normal disconnect behavior.)
 // 0x50: the lobby reveal announces its total byte length up front
 // (ChunkStart) and the receiver counts arriving bytes against it, replacing
 // the empty-sentinel Chunk that used to terminate the stream. The new Packet

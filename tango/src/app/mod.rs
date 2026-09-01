@@ -22,6 +22,11 @@ use tabs::patches::PatchesState;
 use tabs::play::{create_new_save, duplicate_save, rename_save};
 use tabs::replays::ReplaysState;
 
+/// Backstop for orderly process exit. The session's `Goodbye` send is capped
+/// at one second; leave a little scheduling slack, but never let a wedged or
+/// panicked supervisor strand a window the user already asked to close.
+const PVP_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /// Per-tab `update_*` message handlers (the bulk of the update logic),
 /// split out of this file to keep `App` from being one giant module.
 mod update;
@@ -170,6 +175,9 @@ pub struct App {
     /// banner being dismissed) holds steady through the dissolve
     /// instead of flashing to the idle handshake line.
     lobby_exit_snapshot: Option<(netplay::Phase, netplay::LobbyState, netplay::ReadyView)>,
+    /// Set while an application quit waits for PvP's bounded `Goodbye` send.
+    /// Repeated close requests during that short window are ignored.
+    exit_pending: bool,
 }
 
 /// See [`App::screen_enter_scope`].
@@ -456,6 +464,7 @@ impl App {
             screen_enter_scope: EnterScope::Root { dy: ROOT_SLIDE },
             lobby_swap: anim::Transition::swap(false),
             lobby_exit_snapshot: None,
+            exit_pending: false,
         };
         app.refresh_loaded();
         let scan = app.boot_scan();
@@ -993,10 +1002,11 @@ pub enum Message {
     /// the window opens — the monitor's DPI scale, which the handler
     /// turns into the window's max size.
     WindowScaleQueried { id: iced::window::Id, scale: f32 },
-    /// Exit the application. Fired by the top bar's close button,
-    /// which only renders in fullscreen — there's no OS title-bar X
-    /// to reach for there (iced's fullscreen is borderless).
+    /// Request an orderly application exit. Fired by both the fullscreen top
+    /// bar and the intercepted OS `CloseRequested` event.
     Quit,
+    /// PvP's bounded close handshake finished; the runtime may now exit.
+    Exit,
     /// Fired when a backgrounded `Scanners::rescan` task completes.
     /// `followup` tells the handler which post-scan work to do —
     /// most paths just want `Refresh` (re-validate `self.loaded`),
@@ -1143,16 +1153,31 @@ impl App {
         match message {
             Message::NoOp => iced::Task::none(),
             Message::AnimTick => iced::Task::none(),
-            // Same as the OS close button: config is persisted
-            // incrementally (on every change + resize), so there's
-            // no shutdown bookkeeping to flush here.
+            // Keep the runtime alive long enough for PvP's supervisor to
+            // announce a deliberate quit. An immediate Alt-F4 teardown races
+            // that send, leaving the peer with an ambiguous clean EOF and an
+            // unnecessary reconnect attempt.
             Message::Quit => {
+                if self.exit_pending {
+                    return iced::Task::none();
+                }
                 // Complete any queued config write before the runtime
                 // tears down (Drop also flushes, as the backstop for the
                 // window-close exit path).
                 self.config_writer.flush();
-                iced::exit()
+                if let Some(done) = self.session.request_app_close() {
+                    self.exit_pending = true;
+                    iced::Task::perform(
+                        async move {
+                            let _ = tokio::time::timeout(PVP_EXIT_TIMEOUT, done.cancelled()).await;
+                        },
+                        |_| Message::Exit,
+                    )
+                } else {
+                    iced::exit()
+                }
             }
+            Message::Exit => iced::exit(),
             Message::TabSelected(t) => {
                 self.tab = t;
                 // A tab switch unmounts the input settings pane's capture
@@ -1245,6 +1270,9 @@ impl App {
                             self.config.last_window_position = Some((point.x, point.y));
                             self.persist_config();
                         }
+                    }
+                    iced::window::Event::CloseRequested => {
+                        return self.update_inner(Message::Quit);
                     }
                     _ => {}
                 }

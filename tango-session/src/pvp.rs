@@ -148,6 +148,10 @@ pub struct PvpSession {
     /// tasks. On Close we cancel + drop the session, which tears the
     /// network loop down cleanly.
     cancellation_token: tokio_util::sync::CancellationToken,
+    /// Cancelled when the receive supervisor has finished teardown. The
+    /// desktop exit path waits on this so its bounded best-effort `Goodbye`
+    /// can leave before iced destroys the async runtime.
+    supervisor_done: tokio_util::sync::CancellationToken,
     /// The console's screens, as the local game's engine presents them
     /// — what `screen` is sized for and what the host sizes its
     /// texture from.
@@ -589,6 +593,7 @@ impl PvpSession {
 
         // Receive pump + link supervisor: reads peer frames into the event
         // queue, watches for stalls, and runs the transparent reconnect.
+        let supervisor_done = tokio_util::sync::CancellationToken::new();
         spawn_supervisor(SupervisorContext {
             link: link.clone(),
             in_match,
@@ -600,6 +605,7 @@ impl PvpSession {
             drive_paused: drive_paused.clone(),
             wake: wake.clone(),
             local_primed: local_primed.clone(),
+            done: supervisor_done.clone(),
         });
 
         let session = Self {
@@ -611,6 +617,7 @@ impl PvpSession {
             end,
             tps_counter,
             cancellation_token,
+            supervisor_done,
             link,
             local_primed,
             peer_primed,
@@ -650,6 +657,12 @@ impl PvpSession {
     pub fn set_frame_delay(&self, frame_delay: u32) {
         self.frame_delay
             .store(frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY), Ordering::Relaxed);
+    }
+
+    /// Completion signal for an orderly process exit. Request the session's
+    /// close first, then keep the async runtime alive until this is cancelled.
+    pub fn supervisor_done(&self) -> tokio_util::sync::CancellationToken {
+        self.supervisor_done.clone()
     }
 
     /// `true` while our own pair is still being booted and primed on
@@ -1110,6 +1123,9 @@ struct SupervisorContext {
     /// Whether our own pair is primed, so a reconnect can re-announce it
     /// (the rebuild drops anything the old transport hadn't delivered).
     local_primed: Arc<AtomicBool>,
+    /// Process-exit waiter, cancelled after the bounded quit announcement and
+    /// the rest of supervisor teardown have completed.
+    done: tokio_util::sync::CancellationToken,
 }
 
 /// Pump one receiver until error/EOF, forwarding events to the drive
@@ -1155,6 +1171,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         drive_paused,
         wake,
         local_primed,
+        done,
     } = ctx;
 
     let make_receiver = {
@@ -1186,11 +1203,9 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             /// A channel hit EOF without a goodbye — the peer's reconnect
             /// dropping its old transport (libdatachannel closes gracefully;
             /// there is no silent teardown), its transport declaring the
-            /// link dead, or a quit whose goodbye was lost. We can't tell
-            /// those apart, so this reconnects on a *short* window: a real
-            /// drop's peer is already waiting at the rendezvous and rejoins
-            /// in a second or two, while a lost-goodbye quit finds no one
-            /// there and ends quickly.
+            /// link dead, or a quit whose goodbye was lost. An unannounced
+            /// close is treated as recoverable link loss and gets the normal
+            /// per-transport reconnect window.
             Closed,
             /// The local input queue climbed to `RECONNECT_QUEUE_LENGTH`:
             /// the peer stopped matching our inputs, i.e. a quiet/dead link.
@@ -1243,9 +1258,8 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // its DTLS close_notify hands the peer a prompt EOF — but that
             // EOF alone is ambiguous over there (our reconnect's transport
             // drop looks identical), so send the goodbye first to let the
-            // peer end at once instead of burning its clean-close reconnect
-            // window on us. Best-effort: if it's lost, that window is the
-            // fallback.
+            // peer end at once instead of entering its reconnect path on us.
+            // Best-effort: if it's lost, ordinary reconnect is the fallback.
             if matches!(trip, Trip::Cancelled) {
                 link.send_goodbye().await;
                 break;
@@ -1254,11 +1268,10 @@ fn spawn_supervisor(ctx: SupervisorContext) {
             // Reconnect on any mid-match link loss — a stalled input queue
             // *or* a bare channel close — as long as the transport can
             // rebuild and the match isn't ending (our completion, the
-            // peer's EndOfMatch, or an in-game abort). A close uses the
-            // short give-up window, so a real drop reconnects fast while a
-            // lost-goodbye quit still ends quickly. An announced quit
+            // peer's EndOfMatch, or an in-game abort). An announced quit
             // (`PeerQuit`) never reconnects — the peer told us it isn't
-            // coming back.
+            // coming back; every unannounced loss uses the normal transport
+            // budget.
             let reconnectable = matches!(trip, Trip::Stalled | Trip::Closed)
                 && link.can_reconnect()
                 && !completed.load(Ordering::Acquire)
@@ -1297,12 +1310,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                         wake.notify_one();
                     }
                 };
-                let cause = if matches!(trip, Trip::Closed) {
-                    crate::net::link::ReconnectCause::CleanClose
-                } else {
-                    crate::net::link::ReconnectCause::Stall
-                };
-                let timeout = link.reconnect_timeout(cause).unwrap_or_default();
+                let timeout = link.reconnect_timeout().unwrap_or_default();
                 let watchdog_done = tokio_util::sync::CancellationToken::new();
                 {
                     let end = end.clone();
@@ -1329,7 +1337,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
                 }
 
                 let restored = tokio::select! {
-                    restored = link.reconnect(cause) => restored,
+                    restored = link.reconnect() => restored,
                     _ = ui_tick => unreachable!(),
                 };
                 watchdog_done.cancel();
@@ -1384,6 +1392,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
         link.retire_latency();
         drive_paused.set(false);
         wake.notify_one();
+        done.cancel();
     });
 }
 
