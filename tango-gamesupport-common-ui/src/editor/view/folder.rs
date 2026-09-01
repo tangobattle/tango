@@ -1200,7 +1200,7 @@ pub fn as_html(loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
                 }
             }
             if let Some(url) = icons.get(&chip.id) {
-                out.push_str(r#"<img alt="" width="28" height="28" style="image-rendering:pixelated" src=""#);
+                out.push_str(r#"<img alt="" width="14" height="14" src=""#);
                 out.push_str(url);
                 out.push_str(r#""> "#);
             }
