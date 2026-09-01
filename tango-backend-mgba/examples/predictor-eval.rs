@@ -100,8 +100,6 @@ impl getgud::World for EvalWorld {
     fn predict(&self, last: &Self::Input) -> Self::Input {
         last & self.mask
     }
-
-    fn log(&mut self, _local: &Self::Input, _remotes: &[Self::Input]) {}
 }
 
 /// Aggregated results of one or more [`run_round`]s at a single (depth, mask).
@@ -192,7 +190,7 @@ fn run_round(local: &[u16], remote: &[u16], depth: u32, mask: u16) -> RunAgg {
             delivered += 1;
         }
         let (tick, tip_remote) = {
-            let frame = session.advance(local[t]).unwrap();
+            let frame = session.advance(local[t]).unwrap().frame;
             (frame.tick, frame.remotes[0])
         };
         agg.frames += 1;

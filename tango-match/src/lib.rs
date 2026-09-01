@@ -39,7 +39,7 @@ pub mod telemetry;
 pub mod throttler;
 
 pub use solo::{Console, Solo, SoloConfig};
-pub use engine::Match;
+pub use engine::{Advance, Match};
 pub use audio::{AudioIn, AudioOut};
 pub use link::{
     AudioSampleRate, Backend, FrameTiming, Link, PeerRom, Screen, ScreenLayout, SessionMode, Side, Snapshot,

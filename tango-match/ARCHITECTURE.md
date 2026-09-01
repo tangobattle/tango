@@ -56,7 +56,8 @@ mgba (emulator)
   session with the telemetry observer attached. The host calls
   `advance(local_keys)` per frame and gets the outgoing input packet +
   a report; `add_remote_input` feeds the peer's packets in tick order;
-  `take_confirmed_inputs` hands the replay sink its final input pairs;
+  `advance` returns final input pairs beside the outgoing packet for replay and
+  telemetry consumers;
   `checkpoint`/`digest_at` expose settled-state digests for cross-peer
   desync detection; `with_pair`/`pair_handle`/`local_video_buffer` are
   the video/audio readout paths.

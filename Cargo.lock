@@ -2877,7 +2877,7 @@ dependencies = [
 [[package]]
 name = "getgud"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/getgud#0ce6135ba22bbeabdcb5a5c45835004f7a0a83a7"
+source = "git+https://github.com/tangobattle/getgud#747b51bba50589f83f6e6724fcb01ccf35d73c73"
 
 [[package]]
 name = "gethostname"
@@ -4460,7 +4460,7 @@ dependencies = [
 [[package]]
 name = "melonds-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rollback#2369305b17e3c5caedbb6d5085470a310159b29b"
+source = "git+https://github.com/tangobattle/melonds-rollback#48ee21db7f953b7993de9df1a6329ac276d91441"
 dependencies = [
  "getgud",
  "js-sys",
@@ -4541,7 +4541,7 @@ dependencies = [
 [[package]]
 name = "mgba-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rollback#7fb2683103f7599bc1564c7f176522caf3b0c0a0"
+source = "git+https://github.com/tangobattle/mgba-rollback#0e037e9bfacd4bc70ccd9f1935d854d08f0fae6a"
 dependencies = [
  "crc32fast",
  "getgud",

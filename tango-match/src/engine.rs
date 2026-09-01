@@ -56,15 +56,21 @@ struct World {
     /// screen. Ticks below it are rollback re-simulation: nobody ever
     /// sees their frames, so nobody draws them.
     render_from: Arc<AtomicU32>,
-    /// Confirmed input rows in player order, tick order, not yet handed
-    /// out by [`Match::take_confirmed_inputs`]. Shared because the engine
-    /// owns its world outright.
-    confirmed: Arc<Mutex<Vec<[HostInput; 2]>>>,
     /// Where this pair's sound goes, once a host has asked for any
     /// ([`Match::play_audio`]). Pumped at the end of every step, while
     /// the link is still in hand — the one moment its lock is certainly
     /// free, which is what a sound callback could never count on.
     audio: Option<crate::audio::Pump>,
+}
+
+/// Put getgud's local/remote-slot input view into Tango's absolute player
+/// order.
+fn player_inputs(local_player: usize, local: HostInput, remotes: &[HostInput]) -> [HostInput; 2] {
+    debug_assert_eq!(remotes.len(), 1);
+    let mut inputs = [local; 2];
+    inputs[local_player] = local;
+    inputs[1 - local_player] = remotes[0];
+    inputs
 }
 
 impl getgud::World for World {
@@ -73,9 +79,7 @@ impl getgud::World for World {
     type Error = crate::Error;
 
     fn step(&mut self, local: &HostInput, remotes: &[HostInput]) -> Result<(), crate::Error> {
-        let mut inputs = [*local; 2];
-        inputs[1 - self.local_player] = remotes[0];
-        inputs[self.local_player] = *local;
+        let inputs = player_inputs(self.local_player, *local, remotes);
         let mut link = self.link.lock().unwrap();
         let render = self.live_tick + 1 >= self.render_from.load(Ordering::Relaxed);
         let screens = self.displayed_screens.load(Ordering::Relaxed);
@@ -137,13 +141,19 @@ impl getgud::World for World {
     fn predict(&self, last_remote: &HostInput) -> HostInput {
         *last_remote
     }
+}
 
-    fn log(&mut self, local: &HostInput, remotes: &[HostInput]) {
-        let mut row = [*local; 2];
-        row[1 - self.local_player] = remotes[0];
-        row[self.local_player] = *local;
-        self.confirmed.lock().unwrap().push(row);
-    }
+/// Everything produced by one [`Match::advance`] call.
+pub struct Advance {
+    /// Sequence number of `outgoing` on the transport.
+    pub tick: u32,
+    /// Sanitized local input to forward to the peer.
+    pub outgoing: HostInput,
+    /// This side's clock-sync hint to send beside `outgoing`.
+    pub tick_advantage: i16,
+    /// Input rows that joined the authoritative settled state during this
+    /// advance, in absolute player order and tick order.
+    pub confirmed_inputs: Vec<[HostInput; 2]>,
 }
 
 /// A running two-player rollback match on any engine — the unified
@@ -158,12 +168,6 @@ pub struct Match {
     /// live so an arrangement setting takes effect mid-session.
     displayed_screens: Arc<AtomicU8>,
     render_from: Arc<AtomicU32>,
-    /// Confirmed rows the world's `log` callback has recorded, shared
-    /// with it (the engine owns its world outright).
-    confirmed: Arc<Mutex<Vec<[HostInput; 2]>>>,
-    /// Tick of the last row handed out by
-    /// [`take_confirmed_inputs`](Match::take_confirmed_inputs).
-    inputs_taken_through: u32,
     /// How deep the last [`advance`](Match::advance) rolled back, kept
     /// because that is the only moment it is knowable and a host reads
     /// it on its own schedule.
@@ -197,7 +201,6 @@ impl Match {
         let visible = Arc::new([AtomicBool::new(local_player == 0), AtomicBool::new(local_player == 1)]);
         let render_from = Arc::new(AtomicU32::new(0));
         let displayed_screens = Arc::new(AtomicU8::new(u8::MAX));
-        let confirmed = Arc::new(Mutex::new(Vec::new()));
         let audio_seat = Arc::new(std::sync::atomic::AtomicUsize::new(local_player));
         let audio = audio.map(|into| crate::audio::Pump::new(into, audio_seat.clone()));
         let mut world = World {
@@ -208,7 +211,6 @@ impl Match {
             visible: visible.clone(),
             displayed_screens: displayed_screens.clone(),
             render_from: render_from.clone(),
-            confirmed: confirmed.clone(),
             audio,
         };
         // The priming walk ran on these consoles and left whatever it
@@ -234,8 +236,6 @@ impl Match {
             visible,
             displayed_screens,
             render_from,
-            confirmed,
-            inputs_taken_through: 0,
             last_rollback_depth: 0,
             audio_seat,
             telemetry: None,
@@ -255,9 +255,10 @@ impl Match {
     /// then speculate to the present target. Returns the tick this
     /// input belongs to (a sequence number for the transport), the
     /// input as the engine actually applied it — sanitized through the
-    /// link, so both peers feed their consoles identical values — and
-    /// this side's tick advantage for the peer's clock sync.
-    pub fn advance(&mut self, local: HostInput) -> Result<(u32, HostInput, i16), crate::Error> {
+    /// link, so both peers feed their consoles identical values — this
+    /// side's tick advantage for the peer's clock sync, and every input
+    /// row this advance settled for replay/telemetry consumers.
+    pub fn advance(&mut self, local: HostInput) -> Result<Advance, crate::Error> {
         let local = self.link.lock().unwrap().sanitize(local);
         // Both halves of the outgoing packet are read before the
         // advance enqueues this tick's local input: the tick is this
@@ -274,9 +275,18 @@ impl Match {
         // presents is drawn.
         self.render_from
             .store(tick.saturating_sub(self.inner.present_delay()), Ordering::Relaxed);
-        self.inner.advance(local)?;
+        let getgud::Advance { confirmed, .. } = self.inner.advance(local)?;
         self.last_rollback_depth = self.inner.last_misprediction_depth();
-        Ok((tick, local, tick_advantage))
+        let confirmed_inputs = confirmed
+            .into_iter()
+            .map(|(local, remotes)| player_inputs(self.local_player, local, &remotes))
+            .collect();
+        Ok(Advance {
+            tick,
+            outgoing: local,
+            tick_advantage,
+            confirmed_inputs,
+        })
     }
 
     /// Feed one remote input packet, in tick order. Sanitized on the
@@ -343,21 +353,6 @@ impl Match {
     /// The telemetry this match publishes, if its engine reads any.
     pub fn telemetry(&self) -> Option<&crate::telemetry::TelemetryHandle> {
         self.telemetry.as_ref()
-    }
-
-    /// Confirmed `(tick, [p0, p1])` input rows in order, for the
-    /// replay sink. Ticks are 1-based: the row that produced simulated
-    /// tick `t` is stamped `t`, so a tick's confirmed inputs and its
-    /// telemetry line up exactly.
-    pub fn take_confirmed_inputs(&mut self) -> Vec<(u32, [HostInput; 2])> {
-        let mut confirmed = self.confirmed.lock().unwrap();
-        let out = confirmed
-            .drain(..)
-            .enumerate()
-            .map(|(i, row)| (self.inputs_taken_through + i as u32 + 1, row))
-            .collect::<Vec<_>>();
-        self.inputs_taken_through += out.len() as u32;
-        out
     }
 
     /// Run `f` against the live pair — video, audio and RAM readout.

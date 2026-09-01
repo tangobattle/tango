@@ -1048,6 +1048,7 @@ impl DriveContext {
             match_,
             throttler: tango_match::Throttler::new(),
             fired_end_of_match: false,
+            confirmed_through: 0,
         })
     }
 
@@ -1636,6 +1637,9 @@ pub struct PvpDriver {
     match_: tango_match::Match,
     throttler: tango_match::Throttler,
     fired_end_of_match: bool,
+    /// Number of authoritative input rows consumed so far: the tick boundary
+    /// shared by the replay stream and confirmed telemetry.
+    confirmed_through: u32,
 }
 
 impl PvpDriver {
@@ -1732,7 +1736,7 @@ impl PvpDriver {
 
         let mut local = self.ctx.local_input.load();
         local.keys &= tango_match::keys::MASK;
-        let (_tick, outgoing, tick_advantage) = match self.match_.advance(local) {
+        let advanced = match self.match_.advance(local) {
             Ok(r) => r,
             Err(e) => {
                 log::error!("pvp: sio advance failed: {e}");
@@ -1745,20 +1749,25 @@ impl PvpDriver {
             .depth
             .store(self.match_.last_rollback_depth(), Ordering::Relaxed);
 
-        // A successful advance is the one place confirmed outputs are
-        // consumed. Nothing else settles the engine, so every early
-        // return below is already flushed and teardown has no tail path.
-        let confirmed_inputs = self.match_.take_confirmed_inputs();
-        let confirmed_through = confirmed_inputs.last().map_or(0, |(tick, _)| *tick);
+        // A successful advance returns every row it settled. Nothing else
+        // settles the engine, so every early return below is already consumed
+        // and teardown has no tail path.
+        let tango_match::Advance {
+            outgoing,
+            tick_advantage,
+            confirmed_inputs,
+            ..
+        } = advanced;
+        self.confirmed_through += confirmed_inputs.len() as u32;
         let (samples, events) = match self.match_.telemetry() {
-            Some(telemetry) => telemetry.lock().unwrap().take_through(confirmed_through),
+            Some(telemetry) => telemetry.lock().unwrap().take_through(self.confirmed_through),
             None => (Vec::new(), Vec::new()),
         };
         let match_ended = events
             .iter()
             .any(|(_, event)| matches!(event, telemetry::Event::MatchEnded));
         if let Some(w) = self.ctx.replay_writer.as_mut() {
-            for (_tick, inputs) in &confirmed_inputs {
+            for inputs in &confirmed_inputs {
                 if let Err(e) = w.write_input(inputs.map(replay_input_of)) {
                     log::warn!("pvp: replay write failed (recording stops): {e}");
                     self.ctx.replay_writer = None;
