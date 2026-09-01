@@ -214,21 +214,21 @@ fn telemetry_card<'a>(
     control: Element<'a, Message>,
     value: Element<'a, Message>,
 ) -> Element<'a, Message> {
-    let lane = row![
+    let icon = iced::widget::tooltip(
         icon.widget().size(14.0).style(widgets::muted_text_style),
+        widgets::tooltip_bubble(caption),
+        iced::widget::tooltip::Position::Top,
+    )
+    .gap(5);
+    let lane = row![
+        icon,
         control,
         value,
     ]
     .spacing(5)
     .align_y(Alignment::Center)
     .width(Fill);
-    iced::widget::tooltip(
-        lane,
-        widgets::tooltip_bubble(caption),
-        iced::widget::tooltip::Position::Top,
-    )
-    .gap(5)
-    .into()
+    lane.into()
 }
 
 /// A right-aligned monospace value readout, tinted by `tone`.
