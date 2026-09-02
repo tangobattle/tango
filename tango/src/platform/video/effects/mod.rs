@@ -3,7 +3,7 @@
 //! — `hqx::HQ2X`, `mmpx::MMPX`, etc. — built from the WGSL `.wgsl` files in
 //! this directory. [`EFFECTS`] maps the `config.video_filter` key to each.
 
-use crate::platform::video::framebuffer::Effect;
+use crate::platform::video::framebuffer::{Effect, WgslRenderer};
 
 pub mod hqx;
 pub mod lcd;
@@ -15,12 +15,8 @@ pub(crate) const COMMON: &str = include_str!("common.wgsl");
 
 /// Nearest pass-through — the "—" / no-filter default and the fallback for
 /// unknown keys.
-pub const PASSTHROUGH: Effect = Effect {
-    id: "",
-    name: "—",
-    scale: 1,
-    parts: &[COMMON, include_str!("passthrough.wgsl")],
-};
+static PASSTHROUGH_RENDERER: WgslRenderer = WgslRenderer::new(&[COMMON, include_str!("passthrough.wgsl")]);
+pub const PASSTHROUGH: Effect = Effect::new("", "—", 1, &PASSTHROUGH_RENDERER);
 
 /// The registry, in pick-list order. The `&str` is the `config.video_filter`
 /// key (unchanged from the old CPU registry, so existing configs keep

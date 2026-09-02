@@ -1,7 +1,7 @@
 // Shared infrastructure for every framebuffer effect: the fullscreen-triangle
 // vertex shader, the framebuffer texture binding, and the clamped texel fetch.
-// Effect modules are assembled as `common.wgsl` (+ `hqx_common.wgsl` for the
-// hqx family) + one fragment shader; see `video::framebuffer::Effect`.
+// Renderer implementations prepend this module to their fragment shader; see
+// `video::framebuffer::EffectRenderer`.
 //
 // The framebuffer arrives already expanded from mGBA's native BGR555 to RGBA8
 // on the CPU (`tango_replay_renderer::bgr555_to_rgba8`, the same table every

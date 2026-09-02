@@ -44,7 +44,7 @@
 //! (DX12/Vulkan/Metal, or ANGLE/GLES via the `main.rs` fallback probe), so
 //! in practice there is always a GPU backend behind this.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use iced::advanced::mouse;
 use iced::widget::shader::{self, Viewport};
@@ -57,15 +57,121 @@ use iced::Rectangle;
 /// touch the console-native format — the texture hands them ready-made RGB.
 const BYTES_PER_PIXEL: u32 = 4;
 
+/// Opaque rendering implementation behind an [`Effect`].
+pub(crate) trait EffectRenderer: Sync {
+    fn compile(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target: wgpu::TextureFormat,
+        effect_id: &'static str,
+    ) -> Box<dyn CompiledEffect>;
+}
+
+/// Fully-owned GPU state for one compiled effect. The shared framebuffer
+/// pipeline only supplies the current source texture view.
+pub(crate) trait CompiledEffect: std::fmt::Debug + Send + Sync {
+    fn prepare(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        framebuffer: &wgpu::TextureView,
+        texture_generation: u64,
+    );
+
+    fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>);
+}
+
+/// Renderer for effects implemented entirely in WGSL.
+#[derive(Debug)]
+pub(crate) struct WgslRenderer {
+    parts: &'static [&'static str],
+}
+
+impl WgslRenderer {
+    pub(crate) const fn new(parts: &'static [&'static str]) -> Self {
+        Self { parts }
+    }
+}
+
+impl EffectRenderer for WgslRenderer {
+    fn compile(
+        &self,
+        device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        target: wgpu::TextureFormat,
+        effect_id: &'static str,
+    ) -> Box<dyn CompiledEffect> {
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("framebuffer effect bind group layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            }],
+        });
+        let pipeline = compile_render_pipeline(device, target, effect_id, &bind_group_layout, self.parts, &[]);
+        Box::new(WgslCompiledEffect {
+            pipeline,
+            bind_group_layout,
+            bind_group: None,
+            texture_generation: None,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct WgslCompiledEffect {
+    pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    bind_group: Option<wgpu::BindGroup>,
+    texture_generation: Option<u64>,
+}
+
+impl CompiledEffect for WgslCompiledEffect {
+    fn prepare(
+        &mut self,
+        device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        framebuffer: &wgpu::TextureView,
+        texture_generation: u64,
+    ) {
+        if self.texture_generation == Some(texture_generation) {
+            return;
+        }
+        self.bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("framebuffer effect bind group"),
+            layout: &self.bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(framebuffer),
+            }],
+        }));
+        self.texture_generation = Some(texture_generation);
+    }
+
+    fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>) {
+        let Some(bind_group) = &self.bind_group else {
+            return;
+        };
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, bind_group, &[]);
+        render_pass.draw(0..3, 0..1);
+    }
+}
+
 /// A selectable GPU upscaler, defined as a named constant in
 /// [`crate::platform::video::effects`] (e.g. `effects::hqx::HQ2X`). `id` is the
 /// `config.video_filter` key; `name` is the picker label; `scale` is the
 /// integer magnification the fragment shader emulates (used by
 /// `session::view` to size the widget to the same rectangle the old CPU
-/// upscalers produced). `parts` are the WGSL pieces concatenated into the
-/// shader module — the shared prelude first, then any family prelude, then
-/// the fragment.
-#[derive(Debug, Clone, Copy)]
+/// upscalers produced). Rendering details live behind an opaque renderer.
+#[derive(Clone, Copy)]
 pub struct Effect {
     /// Stable identifier stored in `config.video_filter` ("" = pass-through,
     /// "hq2x", …); also keys the compiled-pipeline cache.
@@ -73,65 +179,93 @@ pub struct Effect {
     /// Picker label shown in settings.
     pub name: &'static str,
     pub scale: u32,
-    /// The ordered WGSL pieces concatenated into the shader module. Built by
-    /// the effect constants in [`crate::platform::video::effects`].
-    pub(crate) parts: &'static [&'static str],
+    renderer: &'static dyn EffectRenderer,
+}
+
+impl std::fmt::Debug for Effect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Effect")
+            .field("id", &self.id)
+            .field("name", &self.name)
+            .field("scale", &self.scale)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Effect {
-    /// Assemble the full WGSL module source for this effect. The render
-    /// target's gamma needs no injected code: it's carried by the framebuffer
-    /// *texture* format instead (sRGB or not — see [`Pipeline::upload`]), so
-    /// `textureLoad` already returns the right working space.
-    fn source(&self) -> String {
-        self.parts.join("\n")
+    pub(crate) const fn new(
+        id: &'static str,
+        name: &'static str,
+        scale: u32,
+        renderer: &'static dyn EffectRenderer,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            scale,
+            renderer,
+        }
     }
 
-    /// Compile this effect into a render pipeline. Every effect shares the
-    /// `pipeline_layout`, vertex shader, bind group layout, and render-pass
-    /// `target` format from the owning [`Pipeline`]; only the fragment (and
-    /// thus the module) differs.
-    fn build(
+    fn compile(
         &self,
         device: &wgpu::Device,
-        pipeline_layout: &wgpu::PipelineLayout,
+        queue: &wgpu::Queue,
         target: wgpu::TextureFormat,
-    ) -> wgpu::RenderPipeline {
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(&format!("framebuffer shader: {}", self.id)),
-            source: wgpu::ShaderSource::Wgsl(self.source().into()),
-        });
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some(&format!("framebuffer pipeline: {}", self.id)),
-            layout: Some(pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: target,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
+    ) -> Box<dyn CompiledEffect> {
+        self.renderer.compile(device, queue, target, self.id)
+    }
+}
+
+/// Compile WGSL for an effect-owned bind group layout.
+pub(crate) fn compile_render_pipeline(
+    device: &wgpu::Device,
+    target: wgpu::TextureFormat,
+    effect_id: &'static str,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    parts: &'static [&'static str],
+    constants: &'static [(&'static str, f64)],
+) -> wgpu::RenderPipeline {
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some(&format!("framebuffer shader: {effect_id}")),
+        source: wgpu::ShaderSource::Wgsl(parts.join("\n").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(&format!("framebuffer pipeline layout: {effect_id}")),
+        bind_group_layouts: &[bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(&format!("framebuffer pipeline: {effect_id}")),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: Some("vs_main"),
+            buffers: &[],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &module,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: target,
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions {
+                constants,
                 ..Default::default()
             },
-            depth_stencil: None,
-            // iced draws custom primitives into the (non-multisampled) surface
-            // pass — sample_count 1, matching its quad pipeline.
-            multisample: wgpu::MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        })
-    }
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            ..Default::default()
+        },
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview: None,
+        cache: None,
+    })
 }
 
 /// A framebuffer ready to present. Cheap to clone — the pixels live behind
@@ -271,7 +405,8 @@ impl shader::Primitive for Primitive {
         _viewport: &Viewport,
     ) {
         pipeline.upload(device, queue, &self.frame);
-        pipeline.ensure(device, self.frame.effect);
+        pipeline.ensure(device, queue, self.frame.effect);
+        pipeline.prepare_effect(device, queue, self.frame.effect);
     }
 
     fn draw(&self, pipeline: &Pipeline, render_pass: &mut wgpu::RenderPass<'_>) -> bool {
@@ -281,29 +416,25 @@ impl shader::Primitive for Primitive {
     }
 }
 
-/// Persistent wgpu state: the render pipelines (one per [`Effect`], built
-/// lazily and shared across instances), plus a lazily (re)created texture that
-/// tracks the current framebuffer size.
+/// Persistent wgpu state: one opaque compiled renderer per used [`Effect`],
+/// plus a lazily (re)created texture that tracks the current framebuffer size.
 #[derive(Debug)]
 pub struct Pipeline {
-    /// Compiled pipeline, keyed by [`Effect::id`]. Populated lazily on first
-    /// use (`ensure`) so only the effects actually selected pay their
-    /// shader-compile cost — at startup that's just the pass-through, not the
-    /// three large hqx tables.
-    compiled: Option<(&'static str, wgpu::RenderPipeline)>,
-    /// Retained so `ensure` can build pipelines after `new`.
-    pipeline_layout: wgpu::PipelineLayout,
+    /// Compiled renderer, keyed by [`Effect::id`]. Populated lazily on first
+    /// use so startup only pays for the pass-through effect.
+    compiled: HashMap<&'static str, Box<dyn CompiledEffect>>,
     /// Render-pass target format, needed for the lazy pipeline builds.
     target_format: wgpu::TextureFormat,
-    bind_group_layout: wgpu::BindGroupLayout,
+    texture_generation: u64,
     texture: Option<FrameTexture>,
 }
 
-/// The current framebuffer texture + its bind group, sized to the frame.
+/// The current framebuffer texture and view, sized to the frame.
 #[derive(Debug)]
 struct FrameTexture {
     texture: wgpu::Texture,
-    bind_group: wgpu::BindGroup,
+    view: wgpu::TextureView,
+    generation: u64,
     width: u32,
     height: u32,
     /// Revision of the pixels currently resident, or `None` if just
@@ -312,35 +443,13 @@ struct FrameTexture {
 }
 
 impl shader::Pipeline for Pipeline {
-    fn new(device: &wgpu::Device, _queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("framebuffer bind group layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    // Fetched via `textureLoad` only — no sampler — so the
-                    // (filterable) Rgba8Unorm* view binds as unfilterable.
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            }],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("framebuffer pipeline layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
+    fn new(_device: &wgpu::Device, _queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
         Self {
-            // Built lazily in `ensure` as effects are selected.
-            compiled: None,
-            pipeline_layout,
+            // Built lazily in `ensure` as effects are selected, then retained
+            // so switching filters never recompiles an already-used shader.
+            compiled: HashMap::new(),
             target_format: format,
-            bind_group_layout,
+            texture_generation: 0,
             texture: None,
         }
     }
@@ -385,17 +494,11 @@ impl Pipeline {
                 view_formats: &[],
             });
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("framebuffer bind group"),
-                layout: &self.bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                }],
-            });
+            self.texture_generation = self.texture_generation.wrapping_add(1);
             self.texture = Some(FrameTexture {
                 texture,
-                bind_group,
+                view,
+                generation: self.texture_generation,
                 width: frame.width,
                 height: frame.height,
                 revision: None,
@@ -432,30 +535,34 @@ impl Pipeline {
         tex.revision = Some(frame.revision);
     }
 
-    /// Compile `effect`'s pipeline if it hasn't been built yet (deferring the
-    /// large hqx WGSL until the effect is first selected). Called from
-    /// `prepare`, before `draw`.
-    fn ensure(&mut self, device: &wgpu::Device, effect: &'static Effect) {
-        if self.compiled.as_ref().map(|(id, _)| *id) == Some(effect.id) {
+    /// Compile `effect`'s pipeline if it hasn't been built yet. Called from
+    /// `prepare`, before `draw`; already-used effects remain cached.
+    fn ensure(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, effect: &'static Effect) {
+        if self.compiled.contains_key(effect.id) {
             return;
         }
-        let pipeline = effect.build(device, &self.pipeline_layout, self.target_format);
-        self.compiled = Some((effect.id, pipeline));
+        let pipeline = effect.compile(device, queue, self.target_format);
+        self.compiled.insert(effect.id, pipeline);
+    }
+
+    fn prepare_effect(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, effect: &'static Effect) {
+        let Some(texture) = &self.texture else {
+            return;
+        };
+        let Some(compiled) = self.compiled.get_mut(effect.id) else {
+            return;
+        };
+        compiled.prepare(device, queue, &texture.view, texture.generation);
     }
 
     /// Draw the framebuffer as a fullscreen triangle into iced's render
     /// pass, using the pipeline for `effect`. The pass viewport is already
     /// set to the widget bounds, so NDC maps onto the widget.
     fn draw(&self, render_pass: &mut wgpu::RenderPass<'_>, effect: &'static Effect) {
-        let Some(tex) = self.texture.as_ref() else {
-            return;
-        };
         // Built by `ensure` in `prepare`, which iced runs before `draw`.
-        let Some((_, pipeline)) = self.compiled.as_ref().filter(|(id, _)| *id == effect.id) else {
+        let Some(pipeline) = self.compiled.get(effect.id) else {
             return;
         };
-        render_pass.set_pipeline(pipeline);
-        render_pass.set_bind_group(0, &tex.bind_group, &[]);
-        render_pass.draw(0..3, 0..1);
+        pipeline.draw(render_pass);
     }
 }

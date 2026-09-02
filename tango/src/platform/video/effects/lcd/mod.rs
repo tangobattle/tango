@@ -1,9 +1,5 @@
 use super::COMMON;
-use crate::platform::video::framebuffer::Effect;
+use crate::platform::video::framebuffer::{Effect, WgslRenderer};
 
-pub const LCD: Effect = Effect {
-    id: "lcd",
-    name: "LCD",
-    scale: 1,
-    parts: &[COMMON, include_str!("lcd.wgsl")],
-};
+static RENDERER: WgslRenderer = WgslRenderer::new(&[COMMON, include_str!("lcd.wgsl")]);
+pub const LCD: Effect = Effect::new("lcd", "LCD", 1, &RENDERER);

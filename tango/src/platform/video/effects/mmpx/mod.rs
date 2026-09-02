@@ -2,11 +2,7 @@
 //! `mmpx.wgsl` rule cascade (which defines its own `luma`/equality helpers).
 
 use super::COMMON;
-use crate::platform::video::framebuffer::Effect;
+use crate::platform::video::framebuffer::{Effect, WgslRenderer};
 
-pub const MMPX: Effect = Effect {
-    id: "mmpx",
-    name: "mmpx",
-    scale: 2,
-    parts: &[COMMON, include_str!("mmpx.wgsl")],
-};
+static RENDERER: WgslRenderer = WgslRenderer::new(&[COMMON, include_str!("mmpx.wgsl")]);
+pub const MMPX: Effect = Effect::new("mmpx", "mmpx", 2, &RENDERER);
