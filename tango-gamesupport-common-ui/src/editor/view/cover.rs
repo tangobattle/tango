@@ -1,10 +1,9 @@
 use super::*;
 use sweeten::widget::column;
 
-pub fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
-    // The cover tab carries no save data of its own — it just shows the
-    // game's logo(s), decoded once in loaded-save baking. Logos vary in
-    // aspect ratio, so each is sized to a fixed height and Contain'd.
+/// The game's logo composition, decoded once in loaded-save baking. Logos
+/// vary in aspect ratio, so each is sized to a fixed height and Contain'd.
+fn cover_art<M: 'static>(loaded: &OpenSave) -> Element<'static, M> {
     let inner: Element<'static, M> = match loaded.logos.as_slice() {
         // Two variant logos in the family (e.g. Gregar/Falzar) — stack
         // them vertically with a left/right stagger, the way the Legacy
@@ -50,9 +49,13 @@ pub fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &OpenSave) -
         // No registered logo — render an empty cover.
         [] => Space::new().into(),
     };
-    container(column![inner].width(Fill).align_x(Alignment::Center))
+    inner
+}
+
+fn cover_frame<M: 'static>(content: Element<'static, M>) -> Element<'static, M> {
+    container(column![content].width(Fill).align_x(Alignment::Center))
         .width(Fill)
-        // Fill the tab body's height, with the logo(s) centered vertically.
+        // Fill the viewer's height, with the cover centered vertically.
         .height(Fill)
         .align_y(iced::alignment::Vertical::Center)
         // Extra breathing room above/below the logo(s); standard
@@ -60,4 +63,36 @@ pub fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &OpenSave) -
         .padding([crate::style::PANE_PADDING + 24.0, crate::style::PANE_PADDING + 24.0])
         .style(crate::widgets::pane)
         .into()
+}
+
+/// Legacy per-game render fallback. Cover is no longer included in the tab
+/// list, but keeping this entry point makes older game-specific render arms
+/// harmless while they are still exhaustive over [`Tab`].
+pub fn render_cover<M: 'static>(_lang: &LanguageIdentifier, loaded: &OpenSave) -> Element<'static, M> {
+    cover_frame(cover_art(loaded))
+}
+
+/// Streamer-mode gate: Cover replaces the entire save viewer until the user
+/// explicitly asks to review the build.
+pub fn render_cover_gate<M: Clone + 'static>(
+    lang: &LanguageIdentifier,
+    loaded: &OpenSave,
+    review: M,
+) -> Element<'static, M> {
+    let cover = cover_frame(cover_art(loaded));
+    let review = container(
+        crate::widgets::labeled_icon_button(
+            lucide_icons::Icon::Eye,
+            t!(lang, "save-review"),
+            review,
+            [5.0, 12.0],
+            crate::widgets::neutral,
+        ),
+    )
+    .width(Fill)
+    .height(Fill)
+    .align_x(iced::alignment::Horizontal::Right)
+    .align_y(iced::alignment::Vertical::Bottom)
+    .padding(crate::style::PANE_PADDING + 12.0);
+    iced::widget::Stack::new().push(cover).push(review).into()
 }

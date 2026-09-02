@@ -60,8 +60,9 @@ pub trait GameSaveEditor: Send + Sync {
         crate::build::warnings(save, assets)
     }
 
-    /// The section tabs this game's save editor offers, in display
-    /// order. The shell prepends [`Tab::Cover`] itself in streamer mode.
+    /// The section tabs this game's save editor offers, in display order.
+    /// Streamer mode's Cover is owned by the shell as a full-view gate and
+    /// never appears in this list.
     /// Called per frame — must stay cheap. Capability that genuinely
     /// varies at runtime (a BN6 link navi has no navicust) is this
     /// method's to probe; everything else should be declared statically.

@@ -36,7 +36,7 @@ pub struct OpenSave {
     /// handle)`. Indexed by part id; `None` = no shape / no color. Baked
     /// once here so the per-frame palette just clones handles.
     pub navicust_part_icons: Vec<Option<(u32, u32, iced_image::Handle)>>,
-    /// Logos for the Cover tab, as `(width, height, handle)` — one per
+    /// Logos for the streamer-mode Cover, as `(width, height, handle)` — one per
     /// variant in the loaded game's family, in the family's own order
     /// (so families with two logos — Gregar/Falzar etc. — fan both out,
     /// the same way round whichever one is loaded). Built once here so
@@ -173,7 +173,7 @@ pub fn from_model(
             (w, h, iced_image::Handle::from_rgba(w, h, img.into_raw()))
         }));
     }
-    // Logos for the Cover tab: every variant in this game's family, in
+    // Logos for the streamer-mode Cover: every variant in this game's family, in
     // the family's own order. The per-game `LazyImage` caches the PNG
     // decode; `to_rgba8` + `from_rgba` run once here so the per-frame
     // view() just clones handles.

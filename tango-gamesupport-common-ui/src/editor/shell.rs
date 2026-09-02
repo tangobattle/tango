@@ -180,6 +180,10 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         view_state_mut(into).carry_position_from(from);
     }
 
+    fn restart_view_entrance(&self, state: &mut dyn tango_gamesupport::SaveEditorState) {
+        view_state_mut(state).restart_entrance();
+    }
+
     /// What a session started from here runs on — netplay's committed
     /// save and training's alike. The file's own bytes, whole: a file
     /// holding several saves says which one is played in those bytes

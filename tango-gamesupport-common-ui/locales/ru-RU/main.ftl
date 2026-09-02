@@ -1,5 +1,6 @@
 play-play = Воспроизвести
 save-tab-cover = Покрытие
+save-review = Просмотреть
 save-tab-folder = Папка
 save-tab-patch-cards = Мод карты
 save-tab-auto-battle-data = Данные автобоя

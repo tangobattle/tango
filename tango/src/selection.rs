@@ -78,18 +78,19 @@ pub fn prepare_from_patched_rom(
     tango_gamesupport_common_ui::model::prepare(game, rom, save_path, save, applied_patch)
 }
 
-/// Build a [`LoadedSave`] for the local side of a replay — used by the
-/// replays tab to embed the save view in its detail panel. Pulls
-/// the local rom + patch from the scanners cache; returns Err
-/// if anything's missing.
-pub fn for_replay_local(
+/// Build a [`LoadedSave`] for one absolute player seat in a replay. Pulls
+/// that side's ROM + patch from the scanners cache and parses the matching
+/// embedded SRAM; returns Err if anything is missing.
+pub fn for_replay_player(
     scanners: &crate::library::Scanners,
     config: &crate::config::Config,
     replay: &tango_replay::Replay,
+    player_index: u8,
 ) -> anyhow::Result<LoadedSave> {
     let side = replay
-        .local_side()
-        .ok_or_else(|| anyhow::anyhow!("replay missing local side metadata"))?;
+        .metadata
+        .side(player_index)
+        .ok_or_else(|| anyhow::anyhow!("replay missing player {} side metadata", player_index + 1))?;
     let gi = side
         .game_info
         .as_ref()
@@ -105,7 +106,11 @@ pub fn for_replay_local(
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
 
-    let save = game.parse_save(&replay.srams[replay.local_player_index as usize])?;
+    let sram = replay
+        .srams
+        .get(player_index as usize)
+        .ok_or_else(|| anyhow::anyhow!("replay player index {player_index} out of range"))?;
+    let save = game.parse_save(sram)?;
 
     // Optional patch info — pull the Arc<Version> from the patch
     // scanner so we get the same rom_overrides (charset etc.) as
@@ -125,4 +130,22 @@ pub fn for_replay_local(
         &config.patches_path(),
         patch_meta,
     ))
+}
+
+/// Build the recorder's save for the replay detail viewer.
+pub fn for_replay_local(
+    scanners: &crate::library::Scanners,
+    config: &crate::config::Config,
+    replay: &tango_replay::Replay,
+) -> anyhow::Result<LoadedSave> {
+    for_replay_player(scanners, config, replay, replay.local_player_index)
+}
+
+/// Build the recorder's opponent save for the replay detail viewer.
+pub fn for_replay_remote(
+    scanners: &crate::library::Scanners,
+    config: &crate::config::Config,
+    replay: &tango_replay::Replay,
+) -> anyhow::Result<LoadedSave> {
+    for_replay_player(scanners, config, replay, 1 - replay.local_player_index)
 }

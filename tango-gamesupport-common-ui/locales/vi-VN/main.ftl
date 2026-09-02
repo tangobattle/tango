@@ -1,5 +1,6 @@
 play-play = Chơi
 save-tab-cover = Cover
+save-review = Xem
 save-tab-folder = Folder
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data

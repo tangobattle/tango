@@ -1,5 +1,6 @@
 play-play = 開始
 save-tab-cover = 封面
+save-review = 檢視
 save-tab-navicust = 領航客製
 save-tab-program-deck = 程式卡組
 save-tab-party = 隊伍

@@ -1,9 +1,9 @@
-use crate::library::Scanners;
+use crate::config;
 use crate::i18n::t;
 use crate::library::replays;
+use crate::library::Scanners;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
-use crate::config;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
@@ -35,6 +35,9 @@ pub enum Message {
     /// only.
     ShowIncompleteToggled(bool),
     Selected(std::path::PathBuf),
+    /// Select which replay participant's embedded build is shown in the
+    /// save viewer. The You/Opponent cards act as the two-choice control.
+    BuildSelected(BuildSide),
     /// Unmask the selected replay's HP chart, which streamer mode otherwise
     /// replaces with a placeholder.
     RevealChart,
@@ -73,12 +76,22 @@ pub enum Message {
     /// marker so a later re-focus can retry (e.g. after the user
     /// installs the ROM).
     HpStatsLoaded(std::path::PathBuf, Option<tango_match::analysis::MatchStats>),
-    SaveEditor(std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
+    SaveEditor(
+        BuildSide,
+        std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>,
+    ),
     /// Used by Tasks that need a Message to return but want no
     /// state mutation. Currently: the user dismissed the Save As
     /// file dialog without picking a path — the export form should
     /// stay open and untouched.
     NoOp,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BuildSide {
+    #[default]
+    You,
+    Opponent,
 }
 
 /// Date-dropdown filter: the replay's timestamp must fall within
@@ -145,10 +158,13 @@ pub struct ReplaysState {
     /// else re-masks on its own — revealing one match's chip history
     /// shouldn't make the next replay clicked come up bare.
     pub revealed: Option<std::path::PathBuf>,
-    /// Cached LoadedSave for the currently-selected replay's local
-    /// side. Rebuilt by the App's `Selected` handler; view borrows
-    /// read-only.
+    /// Cached LoadedSave for the currently-selected replay's local side.
     pub loaded: Option<crate::selection::LoadedSave>,
+    /// Cached LoadedSave for the selected replay's remote side. Kept beside
+    /// `loaded` so the matchup control can switch the viewer instantly.
+    pub opponent_loaded: Option<crate::selection::LoadedSave>,
+    /// Which participant currently feeds the read-only save viewer.
+    pub viewed_build: BuildSide,
     /// Path the cached `loaded` was built for. Used to invalidate the
     /// cache when the selection changes.
     pub loaded_cache_path: Option<std::path::PathBuf>,
@@ -215,15 +231,14 @@ pub struct HpChart {
 impl HpChart {
     fn new(
         stats: &tango_match::analysis::MatchStats,
-        loaded: Option<&crate::selection::LoadedSave>,
+        loadeds: [Option<&crate::selection::LoadedSave>; 2],
         total_ticks: Option<u32>,
         complete: bool,
     ) -> Self {
-        // Both sides' chip ids resolve through the LOCAL side's chip
-        // table (`"???"`/no icon when the ROM/patch wasn't loadable) —
-        // right for same-version matches, best-effort across
-        // versions/patches. bn1 records no chip events at all.
-        let (rounds, max_hp) = widgets::cook_hp_rounds(stats, [loaded, loaded], total_ticks);
+        // Resolve each lane through that participant's own ROM/save assets.
+        // A side whose build could not be loaded falls back to `???`/no icon;
+        // BN1 records no chip events at all.
+        let (rounds, max_hp) = widgets::cook_hp_rounds(stats, loadeds, total_ticks);
         Self {
             rounds,
             max_hp,
@@ -370,6 +385,7 @@ impl ReplaysState {
             Message::Selected(p) => {
                 if self.selected.as_ref() != Some(&p) {
                     self.detail_enter.start(iced::time::Instant::now());
+                    self.viewed_build = BuildSide::You;
                     // Moving off a replay re-masks it, so coming back to one
                     // that was unmasked earlier doesn't put its chart straight
                     // back on the stream.
@@ -409,17 +425,36 @@ impl ReplaysState {
                 }
                 None
             }
+            Message::BuildSelected(side) => {
+                let available = match side {
+                    BuildSide::You => self.loaded.is_some(),
+                    BuildSide::Opponent => self.opponent_loaded.is_some(),
+                };
+                if available && self.viewed_build != side {
+                    self.viewed_build = side;
+                    let data = match side {
+                        BuildSide::You => self.loaded.as_mut(),
+                        BuildSide::Opponent => self.opponent_loaded.as_mut(),
+                    }
+                    .expect("availability checked above");
+                    data.editor.restart_view_entrance(data.state.as_mut());
+                }
+                None
+            }
             Message::RevealReplay(p) => Some(Effect::RevealPath(p)),
             Message::Watch(p) => Some(Effect::Watch(p)),
             Message::CancelPatchDownload(key) => Some(Effect::CancelPatchDownload(key)),
-            Message::SaveEditor(msg) => {
+            Message::SaveEditor(side, msg) => {
                 // Clipboard outcomes need the App's clipboard collaborator
                 // — bubble them up as Effects. Anything else gets folded
                 // into save_editor-internal state and surfaces as a generic
                 // SaveEditorTask (currently used for the scroll-to-top snap
                 // on a tab change). Edit/Play outcomes can't fire here:
                 // the replay save view renders read-only.
-                let data = self.loaded.as_mut()?;
+                let data = match side {
+                    BuildSide::You => self.loaded.as_mut(),
+                    BuildSide::Opponent => self.opponent_loaded.as_mut(),
+                }?;
                 let (sv_task, outcome) = data.editor.update(&config.language, data, &*msg);
                 match outcome {
                     Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
@@ -428,7 +463,9 @@ impl ReplaysState {
                     }
                     Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),
                     Some(_) => None,
-                    None => Some(Effect::SaveEditorTask(sv_task.map(Message::SaveEditor))),
+                    None => Some(Effect::SaveEditorTask(
+                        sv_task.map(move |msg| Message::SaveEditor(side, msg)),
+                    )),
                 }
             }
             Message::Export(m) => self.update_export(m),
@@ -481,6 +518,8 @@ impl ReplaysState {
     fn clear_selection(&mut self) {
         self.selected = None;
         self.loaded = None;
+        self.opponent_loaded = None;
+        self.viewed_build = BuildSide::You;
         self.loaded_cache_path = None;
         self.loaded_total_ticks = None;
         self.sweep_idle_entries();
@@ -510,37 +549,55 @@ impl ReplaysState {
         }
         self.hp_charts.insert(
             path,
-            HpChart::new(stats, self.loaded.as_ref(), self.loaded_total_ticks, complete),
+            HpChart::new(
+                stats,
+                [self.loaded.as_ref(), self.opponent_loaded.as_ref()],
+                self.loaded_total_ticks,
+                complete,
+            ),
         );
     }
 
-    /// Decode the currently-selected replay just enough to build its
-    /// save-view OpenSave. Cached against the selected path so this only
-    /// re-runs on selection change.
+    /// Decode the currently-selected replay and build each participant's
+    /// save-view OpenSave. Cache only once both sides are available; a side
+    /// whose ROM arrives after a rescan can then be retried by reselecting it.
     fn refresh_loaded(&mut self, scanners: &Scanners, config: &config::Config) {
         let Some(path) = self.selected.clone() else {
             self.loaded = None;
+            self.opponent_loaded = None;
             self.loaded_cache_path = None;
             return;
         };
         if self.loaded_cache_path.as_ref() == Some(&path) {
             return;
         }
-        let res = (|| -> anyhow::Result<(crate::selection::LoadedSave, u32)> {
+        let res = (|| -> anyhow::Result<(Option<crate::selection::LoadedSave>, Option<crate::selection::LoadedSave>, u32)> {
             let f = std::fs::File::open(&path)?;
             let replay = tango_replay::Replay::decode(f)?;
             let total_ticks = replay.inputs.len() as u32;
-            Ok((crate::selection::for_replay_local(scanners, config, &replay)?, total_ticks))
+            let local = crate::selection::for_replay_local(scanners, config, &replay)
+                .inspect_err(|e| log::warn!("local replay build preview failed: {e}"))
+                .ok();
+            let opponent = crate::selection::for_replay_remote(scanners, config, &replay)
+                .inspect_err(|e| log::warn!("opponent replay build preview failed: {e}"))
+                .ok();
+            Ok((local, opponent, total_ticks))
         })();
         match res {
-            Ok((loaded, total_ticks)) => {
-                self.loaded = Some(loaded);
-                self.loaded_cache_path = Some(path.clone());
+            Ok((loaded, opponent_loaded, total_ticks)) => {
+                self.loaded = loaded;
+                self.opponent_loaded = opponent_loaded;
+                if self.loaded.is_none() && self.opponent_loaded.is_some() {
+                    self.viewed_build = BuildSide::Opponent;
+                }
+                self.loaded_cache_path =
+                    (self.loaded.is_some() && self.opponent_loaded.is_some()).then(|| path.clone());
                 self.loaded_total_ticks = Some(total_ticks);
             }
             Err(e) => {
                 log::warn!("replay save preview failed: {e}");
                 self.loaded = None;
+                self.opponent_loaded = None;
                 self.loaded_cache_path = None;
                 self.loaded_total_ticks = None;
             }
@@ -1024,10 +1081,7 @@ impl ReplaysState {
         let stats = self.stats.get(&r.path);
         let stats_line = stats.map(|s| {
             let mut parts = vec![type_name.clone()];
-            parts.extend(
-                s.round_count
-                    .map(|n| t!(lang, "replays-round-count", count = n as i64)),
-            );
+            parts.extend(s.round_count.map(|n| t!(lang, "replays-round-count", count = n as i64)));
             parts.push(format_duration(s.tick_count));
             if !s.is_complete {
                 parts.push(t!(lang, "replays-incomplete"));
@@ -1152,6 +1206,34 @@ fn streamer_masked_chart<'a>(lang: &'a LanguageIdentifier) -> Element<'a, Messag
     .into()
 }
 
+/// Quiet, non-CTA styling for the two build choices in the matchup pane.
+/// The checked dot uses the app's selection gold; the ring and hover remain
+/// neutral so this small selector does not read as another green action.
+fn build_selector_radio(
+    theme: &iced::Theme,
+    status: iced::widget::radio::Status,
+) -> iced::widget::radio::Style {
+    let hovered = matches!(status, iced::widget::radio::Status::Hovered { .. });
+    iced::widget::radio::Style {
+        background: if hovered {
+            iced::Color {
+                a: 0.08,
+                ..theme.palette().text
+            }
+            .into()
+        } else {
+            iced::Color::TRANSPARENT.into()
+        },
+        dot_color: widgets::SELECT_YELLOW,
+        border_width: 1.0,
+        border_color: iced::Color {
+            a: if hovered { 0.75 } else { 0.45 },
+            ..theme.palette().text
+        },
+        text_color: None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn replay_detail<'a>(
     lang: &'a LanguageIdentifier,
@@ -1176,7 +1258,11 @@ fn replay_detail<'a>(
     let md = &r.metadata;
     let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S %z");
 
-    let row_for_side = |label: String, side: Option<&tango_replay::metadata::Side>| -> Element<'static, Message> {
+    let row_for_side = |label: String,
+                        side: Option<&tango_replay::metadata::Side>,
+                        build: BuildSide,
+                        available: bool|
+     -> Element<'static, Message> {
         let nick = side.map(|s| s.nickname.clone()).unwrap_or_default();
         let gi = side.and_then(|s| s.game_info.as_ref());
         let game_line = gi
@@ -1188,10 +1274,25 @@ fn replay_detail<'a>(
                 s
             })
             .unwrap_or_default();
+        let selector: Element<'static, Message> = if available {
+            iced::widget::radio(
+                label,
+                build,
+                Some(state.viewed_build),
+                Message::BuildSelected,
+            )
+            .size(14.0)
+            .spacing(6.0)
+            .text_size(TEXT_CAPTION)
+            .style(build_selector_radio)
+            .into()
+        } else {
+            text(label).size(TEXT_CAPTION).style(widgets::muted_text_style).into()
+        };
         let col = column![
-            text(label).size(TEXT_CAPTION).style(widgets::muted_text_style),
+            selector,
             text(nick).size(TEXT_TITLE),
-            text(game_line).size(TEXT_CAPTION),
+            text(game_line).size(TEXT_CAPTION)
         ]
         .spacing(2);
         container(col).width(Length::Fill).into()
@@ -1379,8 +1480,18 @@ fn replay_detail<'a>(
     .style(widgets::pane);
 
     let matchup_pane = widgets::matchup_pane(
-        row_for_side(t!(lang, "play-you"), r.local_side()),
-        row_for_side(t!(lang, "play-opponent"), r.remote_side()),
+        row_for_side(
+            t!(lang, "play-you"),
+            r.local_side(),
+            BuildSide::You,
+            state.loaded.is_some(),
+        ),
+        row_for_side(
+            t!(lang, "play-opponent"),
+            r.remote_side(),
+            BuildSide::Opponent,
+            state.opponent_loaded.is_some(),
+        ),
     );
 
     // HP-over-time pane: the match graph, at a fixed height with the
@@ -1434,11 +1545,16 @@ fn replay_detail<'a>(
     // Save view contributes its own pane pair (tab strip + body)
     // when a save is loaded; otherwise a single placeholder pane
     // explaining the empty state.
-    let preview: Element<'_, Message> = if let Some(loaded) = state.loaded.as_ref() {
+    let selected_loaded = match state.viewed_build {
+        BuildSide::You => state.loaded.as_ref(),
+        BuildSide::Opponent => state.opponent_loaded.as_ref(),
+    };
+    let preview: Element<'_, Message> = if let Some(loaded) = selected_loaded {
+        let viewed_build = state.viewed_build;
         loaded
             .editor
-            .view(lang, loaded, false, None, true, false)
-            .map(Message::SaveEditor)
+            .view(lang, loaded, streamer_mode, None, true, false)
+            .map(move |msg| Message::SaveEditor(viewed_build, msg))
     } else {
         container(
             text(t!(lang, "save-empty"))
@@ -1451,7 +1567,7 @@ fn replay_detail<'a>(
         .into()
     };
 
-    let panes = column![title_pane, matchup_pane, hp_pane]
+    let panes = column![title_pane, hp_pane, matchup_pane]
         .spacing(style::PANE_GAP)
         .width(Fill);
     let content: Element<'a, Message> = panes.push(preview).height(Fill).into();
@@ -1469,8 +1585,7 @@ fn replay_detail<'a>(
         Message::Export(ExportMessage::PanelClose(r.path.clone()))
     };
     let click_away =
-        iced::widget::mouse_area(iced::widget::Space::new().width(Length::Fill).height(Length::Fill))
-            .on_press(dismiss);
+        iced::widget::mouse_area(iced::widget::Space::new().width(Length::Fill).height(Length::Fill)).on_press(dismiss);
     let popover = export::export_popover(
         lang,
         &state.export_settings,

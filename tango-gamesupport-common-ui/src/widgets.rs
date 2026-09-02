@@ -19,7 +19,7 @@ pub fn error_dot<'a, M: 'a>() -> Element<'a, M> {
 }
 
 /// Compact tab pill used by sub-navs (save_view's
-/// Cover/Navi/Folder/Patch Cards/Auto Battle Data strip, etc).
+/// Navi/Folder/Patch Cards/Auto Battle Data strip, etc).
 /// Body-text size, modest padding — meant to sit inside a pane
 /// without competing with the global top nav. A legality error adds a
 /// danger-red pip at the pill's top-right corner and exposes every localized

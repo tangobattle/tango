@@ -188,4 +188,9 @@ pub trait SaveEditor: Send + Sync {
     /// tab, which committing does not. Editors with no view position to
     /// speak of need not implement it.
     fn carry_view_position(&self, _from: &dyn SaveEditorState, _into: &mut dyn SaveEditorState) {}
+
+    /// Restart the same presentation-only entrance used when this save is
+    /// first loaded. Hosts call this when an already-loaded save becomes the
+    /// active view again (for example, switching replay participants).
+    fn restart_view_entrance(&self, _state: &mut dyn SaveEditorState) {}
 }

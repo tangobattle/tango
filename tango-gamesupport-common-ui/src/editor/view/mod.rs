@@ -70,6 +70,9 @@ pub struct RenderOpts {
 #[derive(Clone)]
 pub struct State {
     pub active_tab: Option<Tab>,
+    /// Streamer-mode privacy gate. A new loaded save starts covered; Review
+    /// reveals the normal viewer without turning Cover into a section tab.
+    pub reviewing: bool,
     pub folder_grouped: bool,
     pub body_scroll_id: iced::widget::Id,
     /// Id of the sub-tab strip scrollable, so [`Action::SelectTab`] can
@@ -177,6 +180,7 @@ impl State {
     pub fn new() -> Self {
         let mut state = Self {
             active_tab: None,
+            reviewing: false,
             folder_grouped: true,
             body_scroll_id: iced::widget::Id::unique(),
             tab_scroll_id: iced::widget::Id::unique(),
@@ -202,6 +206,12 @@ impl State {
         // this animates.
         state.enter.start(iced::time::Instant::now());
         state
+    }
+
+    /// Replay the vertical save-switch entrance for an already-loaded view.
+    pub fn restart_entrance(&mut self) {
+        self.enter_from = iced::Vector::new(0.0, 20.0);
+        self.enter.start(iced::time::Instant::now());
     }
 }
 
@@ -237,6 +247,8 @@ pub enum Outcome {
 /// a clipboard write.
 #[derive(Debug, Clone)]
 pub enum Action {
+    /// Leave the streamer-mode cover and reveal the regular save viewer.
+    Review,
     SelectTab(Tab),
     /// The sub-tab strip was scrolled; carries the new relative x offset
     /// (0..=1), used only to drive the strip's edge fades.
@@ -745,11 +757,16 @@ pub fn view<'a>(
     use crate::widgets;
     use iced::{Alignment, Fill};
 
+    let now = iced::time::Instant::now();
+    if streamer_mode && !state.reviewing {
+        let cover = cover::render_cover_gate(lang, loaded, Action::Review);
+        return crate::anim::slide_in_opt(cover, state.enter.progress(now), state.enter_from);
+    }
+
     let available = available_tabs(loaded, streamer_mode);
     let build_report = loaded.save_editor.build_report(loaded);
     let can_save = !build_report.has_errors();
 
-    let now = iced::time::Instant::now();
     // Body entrance — restarted on sub-tab switches (sliding along the strip's
     // direction of travel), edit-mode toggles and game/save swaps (rising in
     // vertically).
@@ -1001,7 +1018,8 @@ pub fn view<'a>(
                 // read-only views' shared shrink-height body scrollable.
                 (loaded.save_editor.render_edit(lang, active, loaded, state), true)
             } else if active == Tab::Cover {
-                // The Cover tab is a single full-height pane (logo banner).
+                // Legacy fallback for a game-specific tab list that still
+                // returns Cover; the shared list never includes it.
                 (cover::render_cover::<Action>(lang, loaded), true)
             } else {
                 let opts = RenderOpts {
@@ -1459,6 +1477,7 @@ impl State {
     /// this exists for is what ends one).
     pub fn carry_position_from(&mut self, other: &Self) {
         self.active_tab = other.active_tab;
+        self.reviewing = other.reviewing;
         self.prev_tab = other.prev_tab;
         self.folder_grouped = other.folder_grouped;
         self.library_sort = other.library_sort;
@@ -1570,6 +1589,11 @@ impl State {
     /// [`Outcome`].
     pub fn fold(&mut self, action: &Action, loaded: Option<&OpenSave>) -> iced::Task<Action> {
         match action {
+            Action::Review => {
+                self.reviewing = true;
+                self.restart_entrance();
+                iced::Task::none()
+            }
             Action::SelectTab(t) => {
                 if self.active_tab != Some(*t) {
                     // Which way the body slides is which way along the
@@ -1581,9 +1605,6 @@ impl State {
                     // discriminant wherever the strip shows it, and
                     // comparing those slid the wrong way).
                     //
-                    // Cover is counted whether or not streamer mode is
-                    // showing it: it is always the strip's first when
-                    // present, so keeping it in only fixes the order.
                     // With no strip to place a tab in — the first pick
                     // after a load, where the strip is showing its
                     // default — enter from the right, so the pick reads
@@ -2068,18 +2089,14 @@ impl State {
     }
 }
 
-/// The tab list for this save: the game's own sections (via its
-/// [`crate::editor::GameSaveEditor`]), with Cover prepended in streamer mode.
+/// The tab list for this save: only the game's data sections (via its
+/// [`crate::editor::GameSaveEditor`]). Streamer mode's Cover is a full-view
+/// privacy gate rendered before this list, never a tab inside it.
 /// The equipped navi (emblem / name / HP / buster) is not a tab — it
 /// lives in the persistent strip above the body (see [`view`]), so it's
 /// always on screen regardless of the active section.
-pub fn available_tabs(loaded: &OpenSave, streamer_mode: bool) -> Vec<Tab> {
-    let mut tabs = vec![];
-    if streamer_mode {
-        tabs.push(Tab::Cover);
-    }
-    tabs.extend(loaded.save_editor.tabs(loaded));
-    tabs
+pub fn available_tabs(loaded: &OpenSave, _streamer_mode: bool) -> Vec<Tab> {
+    loaded.save_editor.tabs(loaded)
 }
 
 /// Stable copy-feedback key for a tab's copy buttons — shared between

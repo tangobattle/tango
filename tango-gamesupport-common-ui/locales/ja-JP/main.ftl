@@ -1,5 +1,6 @@
 play-play = プレイ
 save-tab-cover = カバー
+save-review = 確認
 save-tab-folder = フォルダ
 save-tab-patch-cards = パッチカード
 save-tab-auto-battle-data = オートバトルデータ

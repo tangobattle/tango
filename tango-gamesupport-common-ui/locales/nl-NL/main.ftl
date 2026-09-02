@@ -1,5 +1,6 @@
 play-play = Spelen
 save-tab-cover = Omslag
+save-review = Bekijken
 save-tab-folder = Map
 save-tab-patch-cards = Patch Cards
 save-tab-auto-battle-data = Auto Battle Data

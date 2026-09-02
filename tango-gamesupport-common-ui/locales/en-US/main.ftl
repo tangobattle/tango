@@ -1,5 +1,6 @@
 play-play = Play
 save-tab-cover = Cover
+save-review = Review
 save-tab-navicust = NaviCust
 save-tab-folder = Folder
 save-tab-patch-cards = Patch Cards
