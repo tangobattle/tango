@@ -104,7 +104,7 @@ pub struct Stream {
     /// emulator produced what it plays.
     pull: super::Resampler,
     /// The console's own frame rate
-    /// ([`FrameTiming::fps`](tango_match::FrameTiming::fps)) — the pace
+    /// ([`Backend::tps`](tango_match::Backend::tps)) — the pace
     /// its audio production is a function of, and so what the faux
     /// clock below measures the host's target against.
     expected_fps: f32,
@@ -363,7 +363,12 @@ mod tests {
         };
         feed.push(RATE * AUDIO_TARGET_QUEUED_SECS);
         let published = Arc::new(std::sync::atomic::AtomicU32::new((NATIVE_FPS as f32).to_bits()));
-        let mut stream = Stream::new(out, NATIVE_FPS as f32, Stream::fps_from_bits(published.clone()), OUT_RATE);
+        let mut stream = Stream::new(
+            out,
+            NATIVE_FPS as f32,
+            Stream::fps_from_bits(published.clone()),
+            OUT_RATE,
+        );
 
         let secs_per_fill = FILL as f64 / OUT_RATE as f64;
         let mut buf = vec![[0i16; NUM_CHANNELS]; FILL];

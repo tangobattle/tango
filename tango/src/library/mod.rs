@@ -20,8 +20,8 @@ pub mod autoupdate;
 pub mod replays;
 mod scanning;
 
-pub use tango_library::{bnlc, game, patch, rom, save, storage};
 pub(crate) use scanning::Scanners;
+pub use tango_library::{bnlc, game, patch, rom, save, storage};
 
 use tango_library::http::Http;
 use tango_library::storage::Storage;

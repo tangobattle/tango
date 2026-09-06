@@ -288,7 +288,12 @@ impl ReplaySession {
                 replay
                     .inputs
                     .iter()
-                    .map(|&row| (widen_touch(row[local_player].touch), widen_touch(row[1 - local_player].touch)))
+                    .map(|&row| {
+                        (
+                            widen_touch(row[local_player].touch),
+                            widen_touch(row[1 - local_player].touch),
+                        )
+                    })
                     .collect()
             } else {
                 Vec::new()
@@ -938,8 +943,7 @@ impl Playhead {
         }
         pb.step();
         self.cursor.store(pb.cursor(), Ordering::Relaxed);
-        self.speed
-            .set_custom_screen_active(pb.either_player_in_custom_screen());
+        self.speed.set_custom_screen_active(pb.either_player_in_custom_screen());
         self.surfaces.publish_frames(&pb.frames());
         true
     }
@@ -1045,8 +1049,7 @@ impl SeekWorker {
             &mut |frames| self.surfaces.publish_frames(frames),
             &mut || self.paused.set(false),
         ) == tango_match::SeekStep::Working;
-        self.speed
-            .set_custom_screen_active(pb.either_player_in_custom_screen());
+        self.speed.set_custom_screen_active(pb.either_player_in_custom_screen());
         working
     }
 

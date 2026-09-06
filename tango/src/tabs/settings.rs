@@ -952,7 +952,13 @@ fn settings_input<'a>(
     use iced::alignment::{Horizontal as Ax, Vertical as Ay};
     let ab_d = 40.0;
     let face_key = |label: &'static str, k: input::MappedKey| {
-        key_btn(text(label).size(style::TEXT_HEADING).into(), k, ab_d, ab_d, 999.0.into())
+        key_btn(
+            text(label).size(style::TEXT_HEADING).into(),
+            k,
+            ab_d,
+            ab_d,
+            999.0.into(),
+        )
     };
     // A square housing with one key pinned to the midpoint of each
     // edge. Stacked full-size layers rather than rows so X and B tuck

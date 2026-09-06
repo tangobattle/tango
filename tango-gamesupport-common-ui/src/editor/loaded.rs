@@ -107,10 +107,7 @@ pub fn chip_display_table(open: &OpenSave) -> Vec<tango_gamesupport::ChipDisplay
 
 /// Bake every image handle the save view draws from, once per
 /// game+save, so the per-frame `view()` only clones handles.
-pub fn from_model(
-    model: crate::model::SaveModel,
-    save_editor: &'static dyn crate::editor::GameSaveEditor,
-) -> OpenSave {
+pub fn from_model(model: crate::model::SaveModel, save_editor: &'static dyn crate::editor::GameSaveEditor) -> OpenSave {
     let assets = model.assets.as_ref();
 
     // Chip icons (14x14 cropped from 16x16) + full chip images for

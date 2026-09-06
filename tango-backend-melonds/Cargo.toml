@@ -10,9 +10,13 @@ license = "GPL-3.0-or-later"
 # game could share it.
 
 [dependencies]
+num-rational.workspace = true
 tango-match = { path = "../tango-match" }
 melonds = { git = "https://github.com/tangobattle/melonds-rs" }
 melonds-rollback = { git = "https://github.com/tangobattle/melonds-rollback" }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+num-traits.workspace = true

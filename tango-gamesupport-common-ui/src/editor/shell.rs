@@ -56,10 +56,7 @@ struct Warnings(Vec<tango_gamesupport::OpaqueBuildWarnings>);
 
 impl tango_gamesupport::BuildWarnings for Warnings {
     fn format(&self, lang: &LanguageIdentifier) -> Vec<String> {
-        self.0
-            .iter()
-            .flat_map(|warnings| warnings.format(lang))
-            .collect()
+        self.0.iter().flat_map(|warnings| warnings.format(lang)).collect()
     }
 }
 
@@ -71,15 +68,11 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         let save = crate::dataview::save_ref(prepared.save.as_ref());
         let assets = crate::dataview::assets_ref(prepared.assets.as_ref());
         let warnings = self.0.validate_save(save, assets);
-        (!warnings.is_empty()).then(|| {
-            std::sync::Arc::new(Warnings(warnings)) as tango_gamesupport::OpaqueBuildWarnings
-        })
+        (!warnings.is_empty())
+            .then(|| std::sync::Arc::new(Warnings(warnings)) as tango_gamesupport::OpaqueBuildWarnings)
     }
 
-    fn load(
-        &'static self,
-        prepared: tango_gamesupport::PreparedSave,
-    ) -> LoadedSave {
+    fn load(&'static self, prepared: tango_gamesupport::PreparedSave) -> LoadedSave {
         let model = crate::model::from_prepared(prepared);
         let game = model.game;
         let save_path = model.save_path.clone();

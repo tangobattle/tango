@@ -11,7 +11,7 @@
 //! that would exceed a cap, and blocking Save while the folder has an
 //! existing error.
 //!
-//! [`FolderLimits`]: tango_gamesupport_common_dataview::save::FolderLimits
+//! [`FolderLimits`]: tango_gamesupport_common_ui::dataview::save::FolderLimits
 
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view as sv;

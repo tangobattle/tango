@@ -589,10 +589,7 @@ mod tests {
 
     fn obs(p0: u16, p1: u16, custom: bool) -> crate::telemetry::BattleObs {
         crate::telemetry::BattleObs {
-            units: [
-                UnitObs { hp: p0, tile: (1, 2) },
-                UnitObs { hp: p1, tile: (4, 2) },
-            ],
+            units: [UnitObs { hp: p0, tile: (1, 2) }, UnitObs { hp: p1, tile: (4, 2) }],
             custom: [custom, custom],
         }
     }
@@ -608,7 +605,14 @@ mod tests {
         for tick in 1..=4 {
             // The intro repeats the zeroed slots until the unit structs
             // re-init at tick 3.
-            samples.push((tick, if tick < 3 { obs(0, 0, false) } else { obs(100, 100, false) }));
+            samples.push((
+                tick,
+                if tick < 3 {
+                    obs(0, 0, false)
+                } else {
+                    obs(100, 100, false)
+                },
+            ));
         }
         samples.push((5, obs(100, 90, true)));
         samples.push((6, obs(80, 90, true)));
@@ -626,7 +630,12 @@ mod tests {
                 (13, obs(100, 40, false)),
             ],
             vec![
-                (10, Event::RoundEnded { outcome: Some(Outcome::P0Win) }),
+                (
+                    10,
+                    Event::RoundEnded {
+                        outcome: Some(Outcome::P0Win),
+                    },
+                ),
                 (10, Event::RoundStarted),
             ],
         );
@@ -727,7 +736,12 @@ mod tests {
             &mut b,
             1,
             vec![(1, obs(100, 60, false))],
-            vec![(2, Event::RoundEnded { outcome: Some(Outcome::P0Win) })],
+            vec![(
+                2,
+                Event::RoundEnded {
+                    outcome: Some(Outcome::P0Win),
+                },
+            )],
         );
         let stats = b.finish();
         assert_eq!(stats.hp[0].local, 60);
@@ -744,7 +758,11 @@ mod tests {
         fold_confirmed(
             &mut b,
             0,
-            vec![(1, obs(100, 100, true)), (2, obs(100, 100, true)), (3, obs(90, 100, true))],
+            vec![
+                (1, obs(100, 100, true)),
+                (2, obs(100, 100, true)),
+                (3, obs(90, 100, true)),
+            ],
             vec![],
         );
         let snap = b.snapshot();

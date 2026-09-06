@@ -46,6 +46,7 @@
 //! the revocable window is the whole queue depth — much more than a
 //! console's own small ring could ever hold.
 
+use num_traits::ToPrimitive;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
@@ -361,7 +362,7 @@ impl Pump {
 
     /// Empty one console, publishing what comes out.
     fn take(&mut self, side: &mut dyn crate::Side) {
-        self.into.set_sample_rate(side.audio_sample_rate().as_f64());
+        self.into.set_sample_rate(side.audio_sample_rate().to_f64().unwrap());
         loop {
             self.scratch.resize(DRAIN_CHUNK * CHANNELS, 0);
             // A drain fills as far as it goes and answers with the
@@ -392,9 +393,7 @@ mod tests {
     /// Frames counting up from `base`, so a test can tell which span it
     /// is looking at.
     fn ramp(base: i16, frames: usize) -> Vec<i16> {
-        (0..frames as i16)
-            .flat_map(|i| [base + i, base + i])
-            .collect()
+        (0..frames as i16).flat_map(|i| [base + i, base + i]).collect()
     }
 
     #[test]
@@ -479,7 +478,7 @@ mod tests {
     /// bigger than one call can carry.
     struct Console {
         queued: Vec<i16>,
-        rate: crate::AudioSampleRate,
+        rate: num_rational::Ratio<u32>,
     }
 
     impl crate::Side for Console {
@@ -487,7 +486,7 @@ mod tests {
             None
         }
 
-        fn audio_sample_rate(&mut self) -> crate::AudioSampleRate {
+        fn audio_sample_rate(&mut self) -> num_rational::Ratio<u32> {
             self.rate
         }
 
@@ -509,7 +508,7 @@ mod tests {
         let mut pump = Pump::lone(into);
         let mut console = Console {
             queued: ramp(0, DRAIN_CHUNK * 2 + 7),
-            rate: crate::AudioSampleRate::integer(65_536),
+            rate: num_rational::Ratio::from_integer(65_536),
         };
         pump.take(&mut console);
         assert_eq!(out.available(), DRAIN_CHUNK * 2 + 7);
@@ -525,7 +524,7 @@ mod tests {
         let mut pump = Pump::lone(into);
         let mut console = Console {
             queued: ramp(0, 10),
-            rate: crate::AudioSampleRate::integer(32_768),
+            rate: num_rational::Ratio::from_integer(32_768),
         };
         pump.take(&mut console);
 
@@ -556,7 +555,7 @@ mod tests {
         let mut pump = Pump::new(into, seat.clone());
         let mut console = Console {
             queued: ramp(0, 10),
-            rate: crate::AudioSampleRate::integer(32_768),
+            rate: num_rational::Ratio::from_integer(32_768),
         };
         pump.take(&mut console);
         assert_eq!(out.available(), 10);

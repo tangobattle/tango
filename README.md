@@ -1,46 +1,60 @@
 # Tango
 
-Tango is rollback netplay for Mega Man Battle Network.
+Tango provides rollback netplay for Mega Man Battle Network, with desktop
+and browser frontends, save editors, and replay playback and video export.
 
-## Building
+## Build and run
+
+Install Rust stable, a C/C++ compiler, CMake, Ninja, and Protocol Buffers
+(`protoc`). Native dependencies include emulator and networking libraries
+built from source. Platform package lists and release setup are in
+[the native CI workflow](.github/workflows/ci.yaml).
 
 ```sh
-cargo build --release --features=gamesupport-all
+cargo run --release --bin tango
 ```
 
-`gamesupport-all` turns on every game; a build can also take them one at
-a time (`--features=gamesupport-bn6`, and so on) — see the feature list
-in [`tango/Cargo.toml`](tango/Cargo.toml).
+The desktop app enables all supported games by default. For a build with
+only one game, disable the defaults explicitly:
 
-## Layout
+```sh
+cargo run --release --bin tango --no-default-features --features gamesupport-bn6
+```
 
-The workspace splits along two seams: what the games are, and what runs
-them.
+Use `cargo build --release --bin tango` to build without launching.
+Platform packaging scripts in `linux/`, `macos/`, and `win/` use the
+optimized `release-dist` profile. The browser has a separate toolchain
+and server requirements; see [its build instructions](tango-lite-web/README.md).
 
-Game support lives in the `tango-gamesupport-*` crates, one family per
-game, each holding the ROM and save knowledge that family needs — a
-`-dataview` crate for reading its saves and ROM assets, and a `-ui`
-crate for its save editor. `tango-gamesupport` is the interface they all
-implement, and the machinery they share splits the same way:
-`tango-gamesupport-common-dataview` (the parsing substrate),
-`tango-gamesupport-common-ui` (the editor shell), and
-`tango-gamesupport-common` (the shared telemetry trackers). They
-join the workspace as path dependencies rather than explicit members;
-the app's features select which families a build includes.
+## Find your way around
 
-The engine is `tango-match` — a match over a pair of emulated consoles —
-on top of a backend: `tango-backend-mgba` for the Game Boy Advance games
-and `tango-backend-melonds` for the Nintendo DS one. `tango-session`
-drives a running game, whether that is netplay, a replay or training,
-and `tango` is the app around it. `tango-ui` is the look and feel shared
-between frontends, and `tango-lobby` is the matchmaking server.
+| Area | Location | Responsibility |
+| --- | --- | --- |
+| Desktop app | `tango` | Application state, tabs, native input/audio/video, updates |
+| Browser app | `tango-lite-web` | Browser UI, canvas, audio worklet, IndexedDB |
+| Library | `tango-library` | Game registry, ROM/save/patch/replay scanning, shared settings |
+| Sessions | `tango-session` | Single-player, netplay, training, replay drivers and transport |
+| Match engine | `tango-match` | Backend interfaces, rollback coordination, audio, telemetry |
+| Emulators | `tango-backend-mgba`, `tango-backend-melonds` | GBA and DS implementations |
+| Matchmaking | `tango-lobby`, `tango-net-protocol` | Lobby state and wire messages |
+| Replays | `tango-replay`, `tango-replay-renderer` | Recording format and video export |
+| Game interface | `tango-gamesupport` | ROM identity, save/editor contracts, engine hooks |
+| Per-game support | `tango-gamesupport-<game>` | Registration and game-specific engine integration |
+| Save and ROM data | `tango-gamesupport-<game>-dataview` | Binary layouts, parsing, assets |
+| Save editors | `tango-gamesupport-<game>-ui` | Per-game editor presentation |
+| Shared game support | `tango-gamesupport-common*` | Telemetry, parsing, editor state and controls |
+| Shared UI | `tango-ui` | Styles, widgets, animation, copy feedback |
+
+Per-game crates join the workspace through path dependencies. A plain
+root build uses `default-members`, excluding the browser-only target.
+Use explicit packages when checking portable code; `--workspace` also
+selects the browser, which cannot compile for a native target.
+
+[CONTRIBUTING.md](CONTRIBUTING.md) documents checks, module ownership, and
+how to add a game or dependency.
 
 ## License
 
-GPL-3.0-or-later — see [LICENSE](LICENSE).
-
-Tango links [melonDS](https://melonds.kuribo64.net/), which is GPL
-licensed, so Tango as a whole is distributed under the GPL. That covers
-the game-support crates as well: they used to live in a separate
-repository under all-rights-reserved terms, and now they are here under
-the same license as everything else.
+GPL-3.0-or-later — see [LICENSE](LICENSE) and [CREDITS.md](CREDITS.md).
+Tango links GPL-licensed [melonDS](https://melonds.kuribo64.net/).
+The game-support crates in this repository use the same license.

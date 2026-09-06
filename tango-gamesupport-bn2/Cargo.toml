@@ -19,9 +19,8 @@ tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-datavi
 tango-match = { path = "../tango-match" }
 tango-backend-mgba = { path = "../tango-backend-mgba" }
 mgba.workspace = true
-image = { version = "0.25", default-features = false, features = ["png"] }
-bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
-rand = "0.8"
+image = { workspace = true, features = ["png"] }
+bytemuck = { workspace = true, features = ["derive", "const_zeroed", "min_const_generics"] }
 
 tango-gamesupport-bn2-ui = { path = "../tango-gamesupport-bn2-ui", optional = true }
 

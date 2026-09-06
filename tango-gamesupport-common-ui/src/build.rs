@@ -2,8 +2,8 @@
 //! placement, save policy, and localization stop here; the host receives only
 //! opaque [`tango_gamesupport::BuildWarnings`] providers.
 
-pub use crate::dataview::build::{BuildViolationKind, NavicustViolationKind, PatchCardViolationKind};
 use crate::dataview::build::BuildViolation as RawBuildViolation;
+pub use crate::dataview::build::{BuildViolationKind, NavicustViolationKind, PatchCardViolationKind};
 use crate::i18n::t;
 
 #[derive(Debug, Default)]
@@ -108,18 +108,9 @@ pub fn violation_reason(lang: &unic_langid::LanguageIdentifier, kind: BuildViola
 
 /// The single presentation boundary for legality text. Detailed reports pass
 /// a subject; warnings attached to an already-labelled row pass `None`.
-pub fn format_violation(
-    lang: &unic_langid::LanguageIdentifier,
-    subject: Option<&str>,
-    reason: String,
-) -> String {
+pub fn format_violation(lang: &unic_langid::LanguageIdentifier, subject: Option<&str>, reason: String) -> String {
     match subject.filter(|subject| !subject.is_empty()) {
-        Some(subject) => t!(
-            lang,
-            "build-violation",
-            subject = subject.to_string(),
-            reason = reason
-        ),
+        Some(subject) => t!(lang, "build-violation", subject = subject.to_string(), reason = reason),
         None => reason,
     }
 }
@@ -134,20 +125,11 @@ pub fn navicust_slot_warning(lang: &unic_langid::LanguageIdentifier) -> String {
     format_violation(lang, None, navicust_violation_reason(lang))
 }
 
-pub fn patch_card_slot_warning(
-    lang: &unic_langid::LanguageIdentifier,
-    mb: u8,
-    used: u32,
-    limit: u32,
-) -> String {
+pub fn patch_card_slot_warning(lang: &unic_langid::LanguageIdentifier, mb: u8, used: u32, limit: u32) -> String {
     format_violation(
         lang,
         None,
-        patch_card_violation_reason(
-            lang,
-            PatchCardViolationKind::TotalMbExceeded { used, limit },
-            Some(mb),
-        ),
+        patch_card_violation_reason(lang, PatchCardViolationKind::TotalMbExceeded { used, limit }, Some(mb)),
     )
 }
 
@@ -249,7 +231,12 @@ impl Warnings {
                         return None;
                     };
                     seen.insert((*id, *code)).then(|| {
-                        chip_label(lang, *id, &code.to_string(), self.names.chips.get(id).map(String::as_str))
+                        chip_label(
+                            lang,
+                            *id,
+                            &code.to_string(),
+                            self.names.chips.get(id).map(String::as_str),
+                        )
                     })
                 })
                 .collect::<Vec<_>>()
@@ -284,9 +271,8 @@ impl Warnings {
                     let RawBuildViolation::PatchCard { id, mb, .. } = finding else {
                         return None;
                     };
-                    seen.insert(*id).then(|| {
-                        patch_card_label(lang, *id, *mb, self.names.patch_cards.get(id).map(String::as_str))
-                    })
+                    seen.insert(*id)
+                        .then(|| patch_card_label(lang, *id, *mb, self.names.patch_cards.get(id).map(String::as_str)))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -320,9 +306,8 @@ impl Warnings {
                     let RawBuildViolation::NavicustPart { id, row, col, .. } = finding else {
                         return None;
                     };
-                    seen.insert((*id, *row, *col)).then(|| {
-                        navicust_part_label(lang, *id, self.names.navicust_parts.get(id).map(String::as_str))
-                    })
+                    seen.insert((*id, *row, *col))
+                        .then(|| navicust_part_label(lang, *id, self.names.navicust_parts.get(id).map(String::as_str)))
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -461,8 +446,18 @@ mod tests {
             ),
             t!(lang, "build-violation-partycust-copies", used = 10, limit = 9),
             t!(lang, "build-violation-chip-illegal-for-program-deck"),
-            t!(lang, "build-violation-program-deck-exceeds-memory", used = 101, limit = 80),
-            t!(lang, "build-violation-slot-in-chip-exceeds-memory", used = 41, limit = 40),
+            t!(
+                lang,
+                "build-violation-program-deck-exceeds-memory",
+                used = 101,
+                limit = 80
+            ),
+            t!(
+                lang,
+                "build-violation-slot-in-chip-exceeds-memory",
+                used = 41,
+                limit = 40
+            ),
             t!(lang, "build-violation-program-deck-missing-navi"),
         ])
         .collect()
@@ -475,23 +470,17 @@ mod tests {
             format_violation(&english, Some("Shadow"), "Reason.".to_string()),
             "Shadow: Reason."
         );
+        assert_eq!(format_violation(&english, None, "Reason.".to_string()), "Reason.");
         assert_eq!(
-            format_violation(&english, None, "Reason.".to_string()),
-            "Reason."
+            folder_not_full(&english, 0, 1),
+            "Folder contains 0 of the required 1 chip."
         );
-        assert_eq!(folder_not_full(&english, 0, 1), "Folder contains 0 of the required 1 chip.");
         assert_eq!(
-            violation_reason(
-                &english,
-                BuildViolationKind::TooManyCopiesOfChip { used: 1, limit: 0 }
-            ),
+            violation_reason(&english, BuildViolationKind::TooManyCopiesOfChip { used: 1, limit: 0 }),
             "1 copy is installed; the limit is 0."
         );
         assert_eq!(
-            violation_reason(
-                &english,
-                BuildViolationKind::TooManyNaviChips { used: 1, limit: 0 }
-            ),
+            violation_reason(&english, BuildViolationKind::TooManyNaviChips { used: 1, limit: 0 }),
             "The folder contains 1 Navi chip; the limit is 0."
         );
         assert_eq!(

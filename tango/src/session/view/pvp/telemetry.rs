@@ -220,14 +220,10 @@ fn telemetry_card<'a>(
         iced::widget::tooltip::Position::Top,
     )
     .gap(5);
-    let lane = row![
-        icon,
-        control,
-        value,
-    ]
-    .spacing(5)
-    .align_y(Alignment::Center)
-    .width(Fill);
+    let lane = row![icon, control, value,]
+        .spacing(5)
+        .align_y(Alignment::Center)
+        .width(Fill);
     lane.into()
 }
 

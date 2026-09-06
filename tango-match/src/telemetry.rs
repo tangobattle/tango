@@ -446,10 +446,13 @@ impl<Core> Telemetry<Core> {
         for r in &reports {
             if let Report::ChipUsed { player, chip } = r {
                 if store.round_open && !store.decided(tick) {
-                    store.events.push((tick, Event::ChipUsed {
-                        player: *player,
-                        chip: *chip,
-                    }));
+                    store.events.push((
+                        tick,
+                        Event::ChipUsed {
+                            player: *player,
+                            chip: *chip,
+                        },
+                    ));
                 }
             }
         }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::dataview::rom::NavicustPartColor;
 use sweeten::widget::{column, row};
 
 pub mod editor;
@@ -369,15 +370,8 @@ fn navicust_installed_parts<M: 'static>(
         let bg = if is_solid { solid_color } else { plus_color };
         let illegal = illegal_slots.contains(&i);
         let issue = illegal.then(|| crate::build::navicust_slot_warning(lang));
-        let badge_el = colored_badge_sized_with_danger(
-            part_name,
-            bg,
-            iced::Color::BLACK,
-            TEXT_BODY,
-            [3.0, 8.0],
-            Fill,
-            illegal,
-        );
+        let badge_el =
+            colored_badge_sized_with_danger(part_name, bg, iced::Color::BLACK, TEXT_BODY, [3.0, 8.0], Fill, illegal);
         // Use the same danger-red legality dot as chip tooltips. The compact
         // slot warning deliberately omits the piece name and grid coordinates.
         let badge_el = folder::detail_popover_with_issue(badge_el, None, description, None, issue);

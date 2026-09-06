@@ -314,12 +314,7 @@ fn current_deck_violations(loaded: &OpenSave) -> Vec<DeckViolation> {
     tango_gamesupport_bcc_dataview::build::violations(save, assets)
 }
 
-fn candidate_issue(
-    lang: &LanguageIdentifier,
-    loaded: &OpenSave,
-    slot: usize,
-    id: usize,
-) -> Option<String> {
+fn candidate_issue(lang: &LanguageIdentifier, loaded: &OpenSave, slot: usize, id: usize) -> Option<String> {
     let Some(save) = loaded
         .save
         .as_any()
@@ -335,21 +330,14 @@ fn candidate_issue(
         kinds
             .into_iter()
             .map(|kind| {
-                tango_gamesupport_common_ui::build::format_violation(
-                    lang,
-                    None,
-                    deck_violation_reason(lang, kind),
-                )
+                tango_gamesupport_common_ui::build::format_violation(lang, None, deck_violation_reason(lang, kind))
             })
             .collect::<Vec<_>>()
             .join("\n")
     })
 }
 
-fn deck_slot_issues(
-    lang: &LanguageIdentifier,
-    loaded: &OpenSave,
-) -> std::collections::HashMap<usize, String> {
+fn deck_slot_issues(lang: &LanguageIdentifier, loaded: &OpenSave) -> std::collections::HashMap<usize, String> {
     let mut issues: std::collections::HashMap<usize, Vec<String>> = Default::default();
     for violation in current_deck_violations(loaded) {
         let (slot, issue) = match violation {
@@ -363,11 +351,7 @@ fn deck_slot_issues(
             ),
             DeckViolation::Chip { slot, kind, .. } => (
                 slot,
-                tango_gamesupport_common_ui::build::format_violation(
-                    lang,
-                    None,
-                    deck_violation_reason(lang, kind),
-                ),
+                tango_gamesupport_common_ui::build::format_violation(lang, None, deck_violation_reason(lang, kind)),
             ),
         };
         let slot_issues = issues.entry(slot).or_default();
@@ -408,10 +392,7 @@ struct DeckWarnings {
 }
 
 impl DeckWarnings {
-    fn new(
-        violations: Vec<DeckViolation>,
-        assets: &tango_gamesupport_common_ui::editor::Assets,
-    ) -> Self {
+    fn new(violations: Vec<DeckViolation>, assets: &tango_gamesupport_common_ui::editor::Assets) -> Self {
         let assets = assets
             .underlying_any()
             .downcast_ref::<tango_gamesupport_bcc_dataview::rom::Assets>();
@@ -428,10 +409,7 @@ impl DeckWarnings {
                     .map(|name| (id, name))
             })
             .collect();
-        Self {
-            violations,
-            chip_names,
-        }
+        Self { violations, chip_names }
     }
 }
 
@@ -1116,17 +1094,17 @@ mod legality_tests {
                 DeckViolation::Chip {
                     slot: 0,
                     id: 1,
-                kind: DeckViolationKind::ChipIllegalForProgramDeck,
+                    kind: DeckViolationKind::ChipIllegalForProgramDeck,
                 },
                 DeckViolation::Chip {
                     slot: 1,
                     id: 1,
-                kind: DeckViolationKind::ProgramDeckExceedsMemory { used: 90, limit: 80 },
+                    kind: DeckViolationKind::ProgramDeckExceedsMemory { used: 90, limit: 80 },
                 },
                 DeckViolation::Chip {
                     slot: 2,
                     id: 1,
-                kind: DeckViolationKind::SlotInChipExceedsMemory { used: 45, limit: 40 },
+                    kind: DeckViolationKind::SlotInChipExceedsMemory { used: 45, limit: 40 },
                 },
             ],
             chip_names: HashMap::new(),

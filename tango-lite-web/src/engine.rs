@@ -38,6 +38,7 @@
 //! wants a handful of numbers off it at ~10Hz — so the UI polls
 //! [`status`] instead of the engine pushing.
 
+use num_traits::ToPrimitive;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -509,7 +510,7 @@ pub fn status() -> Option<Status> {
         let replay = engine.session.downcast_ref::<ReplaySession>();
         Some(Status {
             keys_mask: engine.session.local_game().pvp.keys_mask(),
-            fps: engine.session.local_game().pvp.frame_timing().fps() as f32,
+            fps: engine.session.local_game().pvp.tps().to_f32().unwrap(),
             playhead: replay.map(|r| (r.current_tick(), r.total_ticks())),
             prefetched: replay.map(|r| r.prefetch_progress()).unwrap_or(0),
             paused: replay.is_some_and(|r| r.is_paused()),

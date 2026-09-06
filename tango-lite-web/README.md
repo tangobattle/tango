@@ -1,152 +1,82 @@
-# tango-lite-web
+# Tango Lite
 
-Tango, phone-sized, in a browser tab. Load a ROM, play it, or dial a
-link code and play someone — patches included.
+The browser frontend supports single-player, live netplay, patch
+installation, and replay recording, playback, and video export. Game
+support uses the same ten `gamesupport-*` feature flags as the desktop.
+There are no games enabled by default; the build script enables all of them.
 
-Everything below the UI is the workspace's own crates.
-[`tango-session`] was written so a session is *driven* by its host
-rather than running itself, [`tango-lobby`] so that bringing a
-connection up is one linear future and the lobby is a plain state
-machine, and [`tango-library`] so that all of its I/O goes through two
-traits a frontend supplies. This crate is the browser end of those three
-contracts and little else — the one thing it needed adding was
-`tango_session::pvp::ReplayStore`, because recording a match was the
-last place the live session still assumed a filesystem.
+## Build and serve
 
-## What it is
+Install Rust nightly with `rust-src` and the `wasm32-unknown-unknown`
+target, CMake, Ninja, `protoc`, wasi-sdk, and a wasm-aware libclang.
+Install the `wasm-bindgen` CLI version matching `Cargo.lock`.
+`wasm-opt` is optional; the deployment workflow uses Binaryen 131.
+See [the web workflow](../.github/workflows/web.yaml) for the complete
+Linux toolchain setup.
 
-| | |
-|---|---|
-| Play | Single-player, and live rollback netplay over the matchmaking server |
-| Games | All seven families, same registry and the same `gamesupport-*` features as the desktop |
-| Patches | The real `.tangopatch` catalog: index, install, apply, and auto-fetch what your opponent brings |
-| Replays | Every match records itself; play back, scrub, import and export |
-| Storage | ROMs, saves, patch packages and config, kept on the device |
-| Input | gbaroll's slide-aware touch overlay, a keyboard, and gamepads |
-
-Deliberately absent: the ROM scanner, the save editor, the results
-screen, Discord presence, and any localization of the app's own words —
-though the *games* are named properly, because every family already
-ships Fluent fragments and it would be silly not to.
-
-## Building
+From this directory:
 
 ```sh
-export WASI_SDK_PATH=/path/to/wasi-sdk    # mgba's C, compiled for wasm32
-export LIBCLANG_PATH=$(brew --prefix llvm)/lib   # bindgen needs a wasm-aware libclang
+rustup toolchain install nightly --component rust-src --target wasm32-unknown-unknown
+export WASI_SDK_PATH=/path/to/wasi-sdk
+export CC_wasm32_unknown_unknown="$WASI_SDK_PATH/bin/clang"
+export AR_wasm32_unknown_unknown="$WASI_SDK_PATH/bin/llvm-ar"
+# On macOS with Homebrew LLVM, for bindgen:
+export LIBCLANG_PATH="$(brew --prefix llvm)/lib"
 ./build.sh
-python3 -m http.server -d dist 8080
+python3 serve.py 8080
 ```
 
-`dist/` is a flat drop of static files — no server-side anything, and no
-cross-origin isolation headers (nothing here uses `SharedArrayBuffer`).
+Open `http://127.0.0.1:8080`. The DS backend requires shared WebAssembly
+memory, so the server must send `Cross-Origin-Opener-Policy: same-origin`
+and `Cross-Origin-Embedder-Policy: require-corp`. `serve.py` sends these
+locally; `assets/_headers` supplies them on Cloudflare Pages. A plain
+`python3 -m http.server` does not send them and cannot run this build.
 
-The crate is a workspace member but **not** a default member: it only
-builds for `wasm32-unknown-unknown`, and a host-target build stops at one
-`compile_error!` rather than a page of unrelated noise. A plain root
-`cargo build` skips it.
+`build.sh` produces a self-contained `dist/` with the wasm module, JS
+glue, stylesheet, icons, and service worker. Override `FEATURES` to choose
+games or `PROFILE` to choose a Cargo profile, for example:
 
-`build.sh` uses plain cargo + `wasm-bindgen` rather than `dx`. The Dioxus
-CLI's value is hot reload and asset processing; this crate uses neither
-(the stylesheet is a copied file, and the two worker scripts are
-`include_str!`), so it is one fewer tool to have installed. `wasm-opt`
-is used if present — the unoptimised module is ~14MB, most of it mgba.
+```sh
+FEATURES=gamesupport-bn6 PROFILE=dev ./build.sh
+```
 
-## How it fits together
+This crate is a workspace member but not a default member. Native builds
+must exclude it; build it through `build.sh`, which supplies the shared
+memory flags and rebuilds the standard library.
 
-    library.rs   the user's ROMs/saves/patches — tango-library, arranged
-      storage.rs   its Storage seam: a memory image mirrored to IndexedDB
-      http.rs      its Http seam: fetch, read off the response stream
-    loadout.rs   the current pick, and what it takes to run it
-    engine.rs    the pump — three tick sources, one canvas
-      audio.rs     an AudioWorklet, fed by a push pump
-      input.rs     touch + keyboard + gamepad, folded into one joyflag word
-    link.rs      netplay: spawn the connect future, pump the lobby, hand off
-    recording.rs a match's ReplayStore: buffer, then one atomic put
-    playback.rs  opening a recording: resolve its ROMs, boot, hand to the pump
-    lang.rs      which locale the game names come out in
-    app.rs       the shell, and the one place polling becomes reactivity
-    ui/          the four screens, and the touch overlay
+## Module map
 
-Six decisions are worth knowing about before changing anything.
+| Module | Responsibility |
+| --- | --- |
+| `app.rs`, `ui/` | Dioxus shell, screens, touch controls, UI polling |
+| `library.rs`, `loadout.rs` | Library state and the selected game/save/patch |
+| `storage.rs` | Synchronous memory image persisted to IndexedDB |
+| `http.rs` | Shared library HTTP interface implemented with fetch |
+| `engine.rs` | Session pumping, screen composition, canvas output |
+| `audio.rs` | AudioWorklet output and queue management |
+| `input.rs` | Touch, keyboard, and gamepad input |
+| `link.rs` | Lobby connection and session handoff |
+| `recording.rs`, `playback.rs` | Replay storage and playback setup |
+| `export.rs` | Replay video export through the shared renderer |
+| `lang.rs`, `wakelock.rs` | Game-name locale and screen wake lock |
 
-**The engine, the library and the netplay state machine live in
-thread-locals, not signals.** None of them is `Clone`, the engine is
-touched sixty times a second, and what the UI wants off them is a
-handful of numbers. So `app.rs` polls them at 10Hz and writes into a
-signal only when the value actually changed. The corollary bites: a
-component that reads one of them and takes no changing prop is memoized
-and will happily draw stale data forever — which is why the revision
-counter is threaded into every card on the library screen.
+The engine, library, and lobby state live in thread-locals. `app.rs`
+polls them and updates reactive signals when values change; components
+reading this state need a changing revision or prop to avoid stale views.
 
-**Storage is a memory image with a persistence mirror, and that's why
-it's IndexedDB rather than OPFS.** `tango_library::Storage` is
-synchronous, because `apply_patch` and every session-construction path
-read through it. The backend that could honour that natively is OPFS's
-`createSyncAccessHandle()` — but that is worker-only, and this app is
-main-thread-only. On the main thread OPFS is as asynchronous as anything
-else and buys nothing IndexedDB doesn't. If emulation ever moves into a
-worker, OPFS becomes the right backend and `storage.rs` is the only
-thing that changes.
+Storage reads are synchronous because patch application and session
+construction read through `tango_library::Storage`. IndexedDB writes
+mirror the memory image asynchronously. Recording buffers bytes and
+persists them when the writer is dropped, including abandoned matches.
 
-**Audio is pushed, not pulled.** The worklet processor runs on the audio
-thread and can't reach this wasm module, so `Sink::pump` estimates how
-far the worklet's ring has fallen below the latency target and posts
-exactly that many frames. The iOS ringer switch is handled the way it
-has to be: claim the `playback` audio session category where the API
-exists (16.4+), and fall back to a looping silent media element where it
-doesn't.
+Audio is pushed to an AudioWorklet. Animation frames, worker timers, and
+audio queue reports all drive the session pump, which uses elapsed time
+to avoid advancing twice. The worker timer keeps netplay moving when a
+hidden tab stops receiving animation frames. DS emulation also uses
+workers, which is why the build requires shared memory.
 
-**Three things drive the pump, and that is not redundancy.**
-`requestAnimationFrame` stops dead in a hidden tab; main-thread timers
-get clamped to ~1Hz there; an `AudioContext` that never saw a user
-gesture is suspended and reports nothing. So the guaranteed heartbeat is
-a worker timer, with rAF for the visible case and the audio queue report
-riding along for free. This is not hypothetical — with only rAF, a
-backgrounded netplay tab stalls, and a stalled simulation isn't a local
-inconvenience: it backs the peer's input queue up until their supervisor
-gives the link up for dead. `pump_now` advances by elapsed wall clock,
-so three uncoordinated callers drive one loop correctly.
-
-**A recording is bytes to the host, not a file.** `ReplayStore::create`
-names a recording and hands back somewhere to write it; the desktop
-opens a file, and `recording.rs` buffers it and does one atomic put when
-the match lets go. That release is the only moment available — the
-writer is a `Box<dyn Write + Send>` held for the whole match, so there
-is no completion callback, but there is a `Drop`, and it runs on both
-the finished path and the abandoned one.
-
-**The pad is gbaroll's overlay, and the D-pad is one control rather than
-four buttons.** Where a finger lands inside its circle is the direction,
-a dead zone in the middle is neutral, and `pointermove` re-steers
-mid-press — so left → up-left → up is one continuous slide, which is how
-a thumb moves and what a grid of nine buttons can't do. It floats over
-the stage (`pointer-events: none` on the container, `auto` on the
-controls) so the picture gets the whole viewport, which is also why a
-phone held upright renders the session landscape and rotates it onto the
-tall screen: the pad's corners have to land where fingers actually rest.
-The touch maths survives that rotation because `offsetX`/`offsetY` map
-through the inverse transform.
-
-## Known gaps
-
-- **No match-stats sidecar.** The desktop caches a cooked
-  `MatchStats` next to each replay so its Replays tab doesn't
-  re-simulate; there is no results screen here to feed, so
-  `ReplayStore::root` returns `None` and nothing is written.
-- **No picture-in-picture** on playback, and no clip export. The inset
-  is a second screen's worth of pixels on a display that hasn't room
-  for the first.
-- **No signaling-free direct connections.** They need a UDP socket of
-  their own, which a browser won't give out.
-- **Priming blocks.** Booting a match primes both games to the link
-  screen — seconds of emulation, with no thread to hide it on, so the
-  page really does stop responding. The lobby says so rather than
-  looking broken.
-- **Mid-match reconnect is only lightly exercised** here. It is the same
-  code the desktop runs, and it demonstrably fires and recovers, but a
-  real lossy mobile link hasn't been through it.
-
-[`tango-session`]: ../tango-session
-[`tango-lobby`]: ../tango-lobby
-[`tango-library`]: ../tango-library
+Desktop features without a browser counterpart include the save editor,
+results/stats sidecars, Discord presence, and signaling-free direct UDP
+connections. The app UI is not localized; game names use the shared
+localization data. Reconnect needs further testing on lossy mobile links.

@@ -310,11 +310,7 @@ impl Link {
     /// `reconnect` uses the same helper, so the dialog and the watchdog cannot
     /// drift onto different timeout values.
     pub(crate) fn reconnect_timeout(&self) -> Option<std::time::Duration> {
-        self.recipe
-            .lock()
-            .unwrap()
-            .as_ref()
-            .map(reconnect_timeout)
+        self.recipe.lock().unwrap().as_ref().map(reconnect_timeout)
     }
 
     /// Watch the control channel mid-match. Only two things legitimately

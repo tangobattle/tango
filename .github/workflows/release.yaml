@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -59,13 +59,7 @@ jobs:
           git config --global core.longpaths true
           git config --system core.longpaths true || true
 
-      # `gamesupport` is a private submodule; the PAT authenticates its
-      # checkout. The token is used over HTTPS, so the submodule URL is
-      # HTTPS — see .gitmodules.
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-          token: ${{ secrets.GAMESUPPORT_REPO_PAT }}
+      - uses: actions/checkout@v4
 
       - run: git fetch --tags --force
 
@@ -131,13 +125,7 @@ jobs:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
-      # `gamesupport` is a private submodule; the PAT authenticates its
-      # checkout. The token is used over HTTPS, so the submodule URL is
-      # HTTPS — see .gitmodules.
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-          token: ${{ secrets.GAMESUPPORT_REPO_PAT }}
+      - uses: actions/checkout@v4
 
       - run: git fetch --tags --force
 
@@ -182,13 +170,7 @@ jobs:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
-      # `gamesupport` is a private submodule; the PAT authenticates its
-      # checkout. The token is used over HTTPS, so the submodule URL is
-      # HTTPS — see .gitmodules.
-      - uses: actions/checkout@v2
-        with:
-          submodules: recursive
-          token: ${{ secrets.GAMESUPPORT_REPO_PAT }}
+      - uses: actions/checkout@v4
 
       - run: git fetch --tags --force
 

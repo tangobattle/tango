@@ -11,13 +11,14 @@
 //! into a booted session, which on a desktop means a blocking thread and
 //! here means a yield and a few seconds of the main thread.
 
+use num_traits::ToPrimitive;
 use std::cell::RefCell;
 
 use futures::StreamExt as _;
 
 use tango_library::game;
-use tango_net_protocol::control as protocol;
 use tango_lobby::{compat, Event, LinkIdent, MatchmakingParams, Phase, State};
+use tango_net_protocol::control as protocol;
 
 use crate::loadout::Loadout;
 
@@ -432,7 +433,7 @@ async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
         // `crate::recording`. The stats sidecar has no browser
         // counterpart and is compiled out on wasm entirely.
         replays: Some(&crate::recording::BrowserReplayStore),
-        expected_fps: local_game.pvp.frame_timing().fps() as f32,
+        expected_fps: local_game.pvp.tps().to_f32().unwrap(),
         sample_rate: crate::audio::sample_rate(),
     })
     .await

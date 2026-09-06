@@ -76,10 +76,7 @@ pub enum Message {
     /// marker so a later re-focus can retry (e.g. after the user
     /// installs the ROM).
     HpStatsLoaded(std::path::PathBuf, Option<tango_match::analysis::MatchStats>),
-    SaveEditor(
-        BuildSide,
-        std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>,
-    ),
+    SaveEditor(BuildSide, std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
     /// Used by Tasks that need a Message to return but want no
     /// state mutation. Currently: the user dismissed the Save As
     /// file dialog without picking a path — the export form should
@@ -1209,10 +1206,7 @@ fn streamer_masked_chart<'a>(lang: &'a LanguageIdentifier) -> Element<'a, Messag
 /// Quiet, non-CTA styling for the two build choices in the matchup pane.
 /// The checked dot uses the app's selection gold; the ring and hover remain
 /// neutral so this small selector does not read as another green action.
-fn build_selector_radio(
-    theme: &iced::Theme,
-    status: iced::widget::radio::Status,
-) -> iced::widget::radio::Style {
+fn build_selector_radio(theme: &iced::Theme, status: iced::widget::radio::Status) -> iced::widget::radio::Style {
     let hovered = matches!(status, iced::widget::radio::Status::Hovered { .. });
     iced::widget::radio::Style {
         background: if hovered {
@@ -1275,17 +1269,12 @@ fn replay_detail<'a>(
             })
             .unwrap_or_default();
         let selector: Element<'static, Message> = if available {
-            iced::widget::radio(
-                label,
-                build,
-                Some(state.viewed_build),
-                Message::BuildSelected,
-            )
-            .size(14.0)
-            .spacing(6.0)
-            .text_size(TEXT_CAPTION)
-            .style(build_selector_radio)
-            .into()
+            iced::widget::radio(label, build, Some(state.viewed_build), Message::BuildSelected)
+                .size(14.0)
+                .spacing(6.0)
+                .text_size(TEXT_CAPTION)
+                .style(build_selector_radio)
+                .into()
         } else {
             text(label).size(TEXT_CAPTION).style(widgets::muted_text_style).into()
         };

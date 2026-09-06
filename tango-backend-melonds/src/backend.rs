@@ -287,14 +287,8 @@ impl tango_match::Backend for DsBackend {
         melonds_rollback::workers_ready(consoles as usize)
     }
 
-    fn frame_timing(&self) -> tango_match::FrameTiming {
-        // The DS frame clock: 280095 scanline-pair cycles against its
-        // 16.756991 MHz half-rate tick — the exact rational behind
-        // [`EXPECTED_FPS`](crate::link::EXPECTED_FPS).
-        tango_match::FrameTiming {
-            timescale: 16_756_991,
-            frame_duration: 280_095,
-        }
+    fn tps(&self) -> num_rational::Ratio<u32> {
+        crate::link::TPS
     }
 
     fn start(&self, config: tango_match::StartConfig) -> Result<tango_match::Match, tango_match::Error> {

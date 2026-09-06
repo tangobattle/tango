@@ -86,7 +86,6 @@ impl<M> MenuItem<M> {
         self.shortcut = Some(shortcut.into());
         self
     }
-
 }
 
 /// Default width of the dropdown pane. Independent of the trigger's
@@ -606,11 +605,7 @@ impl<M: Clone> overlay::Overlay<M, Theme, iced::Renderer> for MenuOverlay<'_, '_
                     );
                 });
                 if let Some(shortcut) = item.shortcut.as_ref() {
-                    let mut shortcut_text = text_at(
-                        shortcut.clone(),
-                        renderer.default_font(),
-                        text::Shaping::Advanced,
-                    );
+                    let mut shortcut_text = text_at(shortcut.clone(), renderer.default_font(), text::Shaping::Advanced);
                     shortcut_text.bounds = Size::new(SHORTCUT_COLUMN_WIDTH, row.height);
                     shortcut_text.align_x = text::Alignment::Right;
                     shortcut_text.wrapping = text::Wrapping::None;

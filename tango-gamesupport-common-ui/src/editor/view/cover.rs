@@ -80,15 +80,13 @@ pub fn render_cover_gate<M: Clone + 'static>(
     review: M,
 ) -> Element<'static, M> {
     let cover = cover_frame(cover_art(loaded));
-    let review = container(
-        crate::widgets::labeled_icon_button(
-            lucide_icons::Icon::Eye,
-            t!(lang, "save-review"),
-            review,
-            [5.0, 12.0],
-            crate::widgets::neutral,
-        ),
-    )
+    let review = container(crate::widgets::labeled_icon_button(
+        lucide_icons::Icon::Eye,
+        t!(lang, "save-review"),
+        review,
+        [5.0, 12.0],
+        crate::widgets::neutral,
+    ))
     .width(Fill)
     .height(Fill)
     .align_x(iced::alignment::Horizontal::Right)

@@ -328,9 +328,7 @@ fn build_warning_overlay(lang: &LanguageIdentifier, state: &State) -> Option<Ele
         [6.0, 8.0],
         widgets::neutral,
     );
-    let mut body = column![header, toggle]
-    .spacing(10)
-    .width(Fill);
+    let mut body = column![header, toggle].spacing(10).width(Fill);
     if expanded {
         let violations = build_warning_violations(warnings, lang);
         body = body.push(
@@ -361,10 +359,7 @@ fn build_warning_overlay(lang: &LanguageIdentifier, state: &State) -> Option<Ele
     )
 }
 
-fn build_warning_violations(
-    warnings: &OpaqueBuildWarnings,
-    lang: &LanguageIdentifier,
-) -> Element<'static, Message> {
+fn build_warning_violations(warnings: &OpaqueBuildWarnings, lang: &LanguageIdentifier) -> Element<'static, Message> {
     let mut rows = column![].spacing(4);
     for violation in warnings.format(lang) {
         rows = rows.push(

@@ -25,6 +25,8 @@
 //! [`Progress`] says which phase a render is in and how far along, and
 //! the [`Canceller`] stops it wherever it is.
 
+use num_rational::Ratio;
+use num_traits::ToPrimitive;
 use std::sync::Arc;
 
 /// The cancel handle and the chapter list both belong to the encoder;
@@ -74,15 +76,15 @@ pub fn container(raw_output: bool) -> encoder_facade::Container {
 }
 
 /// Translate a render's choices into encoder settings. `width` and
-/// `height` are the composed frame's native size; `timing` is the
+/// `height` are the composed frame's native size; `tps` is the
 /// console's exact frame clock
-/// ([`tango_match::Backend::frame_timing`]).
+/// ([`tango_match::Backend::tps`]).
 fn encoder_settings(
     scale: Option<usize>,
     width: u32,
     height: u32,
-    timing: tango_match::FrameTiming,
-    audio_sample_rate: encoder_facade::SampleRate,
+    tps: Ratio<u32>,
+    audio_sample_rate: Ratio<u32>,
     audio_tracks: usize,
 ) -> encoder_facade::Settings {
     let raw_output = scale.is_none();
@@ -103,8 +105,8 @@ fn encoder_settings(
             height,
             scale: scale.unwrap_or(1) as u32,
             keyframe_interval: KEYFRAME_INTERVAL,
-            timescale: timing.timescale,
-            frame_duration: timing.frame_duration,
+            timescale: *tps.numer(),
+            frame_duration: u64::from(*tps.denom()),
             color: Some(if raw_output {
                 encoder_facade::ColorInfo::SRGB_RGB_FULL
             } else {
@@ -117,7 +119,7 @@ fn encoder_settings(
             } else {
                 encoder_facade::AudioCodec::Aac { bitrate: 384_000 }
             },
-            sample_rate: audio_sample_rate,
+            sample_rate: encoder_facade::SampleRate::new(*audio_sample_rate.numer(), *audio_sample_rate.denom()),
             channels: AUDIO_CHANNELS as u8,
         },
         container: container(raw_output),
@@ -482,20 +484,12 @@ impl<W: Writer> Render<W> {
         // 48 kHz, with the offline converter below bridging any source
         // rate.
         let audio_sample_rate = if raw_output {
-            let rate = playback.side(first_seat).audio_sample_rate();
-            encoder_facade::SampleRate::new(rate.numerator, rate.denominator)
+            playback.side(first_seat).audio_sample_rate()
         } else {
-            encoder_facade::SampleRate::integer(LOSSY_SAMPLE_RATE as u32)
+            Ratio::from_integer(LOSSY_SAMPLE_RATE as u32)
         };
         let session = encoder_facade::Session::new(
-            encoder_settings(
-                scale,
-                width,
-                height,
-                backend.frame_timing(),
-                audio_sample_rate,
-                audio_tracks,
-            ),
+            encoder_settings(scale, width, height, backend.tps(), audio_sample_rate, audio_tracks),
             canceller,
         )?;
         let output = encoder_facade::Output::new(open_output()?);
@@ -638,7 +632,7 @@ impl<W: Writer> Render<W> {
                 break;
             }
             let mut side = self.playback.side(seat);
-            let rate = side.audio_sample_rate().as_f64();
+            let rate = side.audio_sample_rate().to_f64().unwrap();
             loop {
                 // What landed is whatever fit: a drain fills as far as
                 // it goes and reports the console's whole total.
@@ -754,7 +748,9 @@ mod tests {
     /// slipped by a row or a slot still fills the frame but fails the
     /// per-pixel check. Row-major, like the seam's composed frame.
     fn seat_frame(tag: u8, w: usize, h: usize) -> Vec<u8> {
-        (0..w * h).flat_map(|i| [tag, (i / w) as u8, (i % w) as u8, 0xff]).collect()
+        (0..w * h)
+            .flat_map(|i| [tag, (i / w) as u8, (i % w) as u8, 0xff])
+            .collect()
     }
 
     /// A single-screen console's two seats land side by side, row for
@@ -774,7 +770,11 @@ mod tests {
         for row in 0..h {
             let line = &composed[row * w * 2 * 4..(row + 1) * w * 2 * 4];
             assert_eq!(&line[..w * 4], &left[row * w * 4..(row + 1) * w * 4], "row {row} left");
-            assert_eq!(&line[w * 4..], &right[row * w * 4..(row + 1) * w * 4], "row {row} right");
+            assert_eq!(
+                &line[w * 4..],
+                &right[row * w * 4..(row + 1) * w * 4],
+                "row {row} right"
+            );
         }
     }
 
@@ -843,7 +843,10 @@ mod tests {
     #[test]
     fn an_undrawn_seat_blits_nothing() {
         let mut composed = vec![7u8; 240 * 160 * 4];
-        let screens = [tango_match::Screen { width: 240, height: 160 }];
+        let screens = [tango_match::Screen {
+            width: 240,
+            height: 160,
+        }];
         blit_seat(&mut composed, 240, 0, &screens, &[]);
         assert!(composed.iter().all(|&b| b == 7));
     }
@@ -874,27 +877,42 @@ mod tests {
     }
 
     #[test]
-    fn native_sample_rates_preserve_the_hardware_clocks() {
-        let gba = tango_match::AudioSampleRate::integer(32_768);
-        assert_eq!(gba.as_f64(), 32_768.0);
-        let ds = tango_match::AudioSampleRate::new(33_513_982, 1_024);
-        assert_eq!(ds.as_f64(), 33_513_982.0 / 1_024.0);
-        let encoded_ds = encoder_facade::SampleRate::new(ds.numerator, ds.denominator);
+    fn rational_tick_rates_preserve_exact_video_timestamps() {
+        for (clock, ticks_per_frame) in [(16_777_216, 280_896), (16_756_991, 280_095)] {
+            // Both the hardware timebase and its reduced form must describe
+            // the same frame duration without rounding through a float.
+            for tps in [
+                Ratio::new_raw(clock, ticks_per_frame),
+                Ratio::new(clock, ticks_per_frame),
+            ] {
+                let settings = encoder_settings(Some(1), 240, 160, tps, Ratio::from_integer(48_000), 1);
+                assert_eq!(
+                    u64::from(settings.video.timescale) * u64::from(ticks_per_frame),
+                    u64::from(clock) * settings.video.frame_duration
+                );
+                assert_eq!(settings.audio.sample_rate, encoder_facade::SampleRate::integer(48_000));
+            }
+        }
+    }
 
-        let settings = encoder_settings(
-            None,
-            240,
-            160,
-            tango_match::FrameTiming {
-                timescale: 16_777_216,
-                frame_duration: 280_896,
-            },
-            encoded_ds,
-            1,
-        );
+    #[test]
+    fn native_sample_rates_preserve_the_hardware_clocks() {
+        let gba = Ratio::from_integer(32_768);
+        assert_eq!(gba.to_f64().unwrap(), 32_768.0);
+        let ds = Ratio::new(33_513_982, 1_024);
+        assert_eq!(ds.to_f64().unwrap(), 33_513_982.0 / 1_024.0);
+
+        let settings = encoder_settings(None, 240, 160, Ratio::new(16_777_216, 280_896), ds, 1);
         assert_eq!(settings.video.codec, encoder_facade::VideoCodec::RawRgb24);
         assert_eq!(settings.audio.codec, encoder_facade::AudioCodec::PcmS16Le);
-        assert_eq!(settings.audio.sample_rate, encoded_ds);
+        assert_eq!(
+            Ratio::new(
+                settings.audio.sample_rate.numerator,
+                settings.audio.sample_rate.denominator
+            ),
+            ds
+        );
+        assert_eq!(settings.audio.sample_rate.as_f64(), 33_513_982.0 / 1_024.0);
         assert_eq!(settings.container, encoder_facade::Container::Matroska);
     }
 }

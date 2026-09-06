@@ -6,8 +6,9 @@
 //! very different hardware, which is what lets one
 //! [`Match`](tango_match::Match) drive either.
 
+use num_rational::Ratio;
 use tango_match::telemetry::Telemetry;
-use tango_match::{AudioSampleRate, HostInput, Screen, ScreenLayout};
+use tango_match::{HostInput, Screen, ScreenLayout};
 
 /// The rate the SPU hands samples out at.
 ///
@@ -15,14 +16,14 @@ use tango_match::{AudioSampleRate, HostInput, Screen, ScreenLayout};
 /// every 1,024 cycles. The melonDS shim configures its output to this
 /// exact rate, so rate conversion belongs to the host audio path rather
 /// than happening inside the emulator first.
-pub const SAMPLE_RATE: AudioSampleRate = AudioSampleRate::new(
+pub const SAMPLE_RATE: Ratio<u32> = Ratio::new_raw(
     melonds::AUDIO_SAMPLE_RATE.numerator,
     melonds::AUDIO_SAMPLE_RATE.denominator,
 );
 
 /// The DS's video framerate, which is also the rate audio production
 /// scales against when a host paces the simulation faster or slower.
-pub const EXPECTED_FPS: f64 = 16756991.0 / 280095.0;
+pub const TPS: Ratio<u32> = Ratio::new_raw(16_756_991, 280_095);
 
 /// The DS's whole input word: the GBA's ten buttons, X and Y, and the
 /// mic — which is every bit [`keys`](tango_match::keys) names, all of
@@ -303,7 +304,7 @@ impl tango_match::Side for DsSide<'_> {
         Some(self.0.console().save_memory())
     }
 
-    fn audio_sample_rate(&mut self) -> AudioSampleRate {
+    fn audio_sample_rate(&mut self) -> Ratio<u32> {
         SAMPLE_RATE
     }
 
@@ -327,11 +328,7 @@ impl tango_match::Side for DsSide<'_> {
 /// screen in turn. Stacked would be the cheaper concatenation — a
 /// vertical stack is free when the widths match — but a 256x384 pane
 /// wastes most of the width of any display it is drawn into.
-fn compose_frame(
-    top: &[melonds::UnpackedBgr666],
-    bottom: &[melonds::UnpackedBgr666],
-    screens: Screens,
-) -> Vec<u8> {
+fn compose_frame(top: &[melonds::UnpackedBgr666], bottom: &[melonds::UnpackedBgr666], screens: Screens) -> Vec<u8> {
     let sources = [top, bottom];
     let (width, height) = (SCREENS[0].width as usize, SCREENS[0].height as usize);
     let mut rgba = vec![0u8; screens.layout().buffer_len()];
@@ -422,13 +419,12 @@ pub(crate) fn rtc_parts(rtc: std::time::SystemTime) -> (i32, i32, i32, i32, i32,
 
 #[cfg(test)]
 mod tests {
+    use num_traits::ToPrimitive;
+
     #[test]
     fn the_spu_rate_keeps_the_hardware_ratio() {
-        assert_eq!(
-            super::SAMPLE_RATE,
-            tango_match::AudioSampleRate::new(33_513_982, 1_024)
-        );
-        assert_eq!(super::SAMPLE_RATE.as_f64(), 33_513_982.0 / 1_024.0);
+        assert_eq!(super::SAMPLE_RATE, num_rational::Ratio::new(33_513_982, 1_024));
+        assert_eq!(super::SAMPLE_RATE.to_f64().unwrap(), 33_513_982.0 / 1_024.0);
     }
 
     /// The shared rollback loop accepts this link — the point of the

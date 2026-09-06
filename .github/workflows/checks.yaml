@@ -1,0 +1,53 @@
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  conventions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependency audit tool
+        run: cargo install cargo-machete --version 0.8.0 --locked
+      - run: cargo machete
+      - run: python3 tools/check_workspace.py
+      - run: cargo fmt --all -- --check
+
+  test:
+    runs-on: ubuntu-22.04
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: tests
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y clang cmake ninja-build pkg-config libssl-dev
+      - name: Test portable core without native library adapters
+        run: cargo test --locked --no-default-features -p tango-library -p tango-match -p tango-net-protocol -p tango-replay -p tango-gamesupport-common-dataview
+      - name: Test native library, sessions, and save editor
+        run: cargo test --locked --lib -p tango-library --features tango-library/gamesupport-bn6 -p tango-session -p tango-gamesupport-common-ui

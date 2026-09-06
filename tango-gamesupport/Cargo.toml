@@ -17,7 +17,7 @@ thiserror.workspace = true
 # UI toolkit.
 iced = { workspace = true, optional = true }
 semver = { workspace = true, optional = true }
-tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"], optional = true }
+tango-patch = { workspace = true, features = ["package", "index"], optional = true }
 unic-langid = { workspace = true, optional = true }
 
 [features]

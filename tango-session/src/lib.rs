@@ -26,10 +26,6 @@
 
 // The session kinds. Each hands a host a [`Drive`] and publishes what
 // the host shows; nothing here spawns or sleeps.
-/// One machine, no netplay: the game as a single player rides it.
-pub mod singleplayer;
-/// Watching a recorded match.
-pub mod replay;
 /// Live netplay, on the transport below.
 ///
 /// Builds for wasm32: the transport rides a facade that is the
@@ -38,6 +34,10 @@ pub mod replay;
 /// browser host doesn't have. A browser has played a real match over
 /// it; the reconnect path is the one part still unexercised there.
 pub mod pvp;
+/// Watching a recorded match.
+pub mod replay;
+/// One machine, no netplay: the game as a single player rides it.
+pub mod singleplayer;
 /// A real link battle fought locally against a dummy on the other seat.
 pub mod training;
 
@@ -63,11 +63,8 @@ pub use tango_match::keys;
 /// [`keys`].
 pub use tango_match::HostInput;
 
-
-/// Placeholder marker: see [`Error::UnsupportedEngine`].
-///
 /// Why a session failed to construct or boot, any kind. One enum for
-/// all three session kinds — their failure sets overlap heavily (core
+/// all session kinds — their failure sets overlap heavily (core
 /// boot, thread spawn, engine priming), and hosts route every variant
 /// the same way (log + stay on the menu).
 #[derive(Debug, thiserror::Error)]
@@ -424,6 +421,9 @@ mod tests {
         ]);
         assert_eq!(super::composite_size(&ds), (512, 192));
         // One screen is unaffected either way.
-        assert_eq!(super::composite_size(&tango_match::ScreenLayout::single(240, 160)), (240, 160));
+        assert_eq!(
+            super::composite_size(&tango_match::ScreenLayout::single(240, 160)),
+            (240, 160)
+        );
     }
 }

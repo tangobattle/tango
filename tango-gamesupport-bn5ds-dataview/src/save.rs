@@ -1911,11 +1911,11 @@ mod tests {
         let mut data = plausible();
         // Blocks 0/1 hold generation 5, blocks 2/3 generation 6: the
         // game alternates pairs, so the higher counter is current.
-        data[0 * BLOCK_SIZE + GENERATION_OFFSET..][..4].copy_from_slice(&5u32.to_le_bytes());
+        data[GENERATION_OFFSET..][..4].copy_from_slice(&5u32.to_le_bytes());
         data[1 * BLOCK_SIZE + GENERATION_OFFSET..][..4].copy_from_slice(&5u32.to_le_bytes());
         data[2 * BLOCK_SIZE + GENERATION_OFFSET..][..4].copy_from_slice(&6u32.to_le_bytes());
         data[3 * BLOCK_SIZE + GENERATION_OFFSET..][..4].copy_from_slice(&6u32.to_le_bytes());
-        data[0 * BLOCK_SIZE + FOLDER_OFFSET..][..2].copy_from_slice(&chip_bytes(1, 0));
+        data[FOLDER_OFFSET..][..2].copy_from_slice(&chip_bytes(1, 0));
         data[2 * BLOCK_SIZE + FOLDER_OFFSET..][..2].copy_from_slice(&chip_bytes(2, 0));
 
         let save = SaveSet::parse(&data).unwrap().current();
@@ -2314,7 +2314,10 @@ mod tests {
             assert!(save.view_party().can_add_party_program(0, &assets, 11));
             assert!(save.view_party_mut().add_party_program(0, &assets, 11));
         }
-        assert_eq!(save.view_party().programs(0, &assets).len(), MAX_PARTY_PROGRAMS_EQUIPPED);
+        assert_eq!(
+            save.view_party().programs(0, &assets).len(),
+            MAX_PARTY_PROGRAMS_EQUIPPED
+        );
         assert_eq!(save.view_party().cost(0, &assets), 70);
         assert!(!save.view_party().can_add_party_program(0, &assets, 11));
     }
@@ -2403,7 +2406,7 @@ mod tests {
             data[block * BLOCK_SIZE + FILE_SLOT_OFFSET] = 1;
             data[block * BLOCK_SIZE + GENERATION_OFFSET..][..4].copy_from_slice(&3u32.to_le_bytes());
         }
-        data[0 * BLOCK_SIZE + FOLDER_OFFSET..][..2].copy_from_slice(&chip_bytes(1, 0));
+        data[FOLDER_OFFSET..][..2].copy_from_slice(&chip_bytes(1, 0));
         data[2 * BLOCK_SIZE + FOLDER_OFFSET..][..2].copy_from_slice(&chip_bytes(99, 0));
         data[4 * BLOCK_SIZE + FOLDER_OFFSET..][..2].copy_from_slice(&chip_bytes(2, 0));
         data
@@ -2483,7 +2486,7 @@ mod tests {
         // File 0 is Team ProtoMan, file 1 Team Colonel — which is what
         // picks between the two BassCross values. (Their live blocks are
         // 0 and 4; see `two_files`.)
-        data[0 * BLOCK_SIZE + TEAM_OFFSET] = 0;
+        data[TEAM_OFFSET] = 0;
         data[4 * BLOCK_SIZE + TEAM_OFFSET] = 1;
         let set = SaveSet::parse(&data).unwrap();
         assert_eq!(set.save(0).unwrap().cross(), Cross::None);

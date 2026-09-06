@@ -16,14 +16,11 @@ mod netplay;
 mod loadout;
 mod selection;
 
-// Screens. The save view itself lives in `tango-gamesupport`'s
-// feature-gated `ui` layer (each game's editor is a feature-gated
-// module in its own crate, carried on `Game::save_editor`); `save_editor`
-// here is just the path shim.
+// Screens. Per-game save editors are embedded through tango-gamesupport.
 mod session;
 mod tabs;
 
-// The replays tab's ffmpeg encode pipeline (runs on its own thread).
+// Replay video export through tango-replay-renderer (runs on its own thread).
 mod replay_render;
 
 // Side services, and the app shell that ties everything together.
@@ -60,9 +57,7 @@ const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
 /// launched directly (then native crashes just get a stderr note).
 const TANGO_CRASH_SOCKET_ENV_VAR: &str = "TANGO_CRASH_SOCKET";
 
-/// CLI shape — matches legacy `tango/src/main.rs::Args` so
-/// Discord deep-links and the `tango Join <code>` command-line
-/// invocation behave the same way.
+/// Command-line entry points, also used by Discord join requests.
 #[derive(clap::Parser, Debug, Clone)]
 struct Args {
     #[command(subcommand)]
@@ -104,8 +99,7 @@ pub fn main() {
     }
 }
 
-/// Parent half of the crash-handling trampoline. Mirrors
-/// `tango/src/main.rs`'s parent flow:
+/// Parent half of crash handling:
 ///   1. Make sure the logs dir exists; rotate the previous
 ///      sessions' logs and open a fresh `tango.log` inside it.
 ///   2. Spawn `current_exe()` again with `TANGO_CHILD=1` +

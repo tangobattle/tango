@@ -12,6 +12,7 @@
 //! viewer swaps recordings, where the old session's teardown races the
 //! new session's priming.
 
+use num_traits::ToPrimitive;
 use std::sync::{Arc, Mutex};
 
 fn game_of(family: &str, variant: u32) -> &'static tango_gamesupport::Game {
@@ -47,8 +48,7 @@ fn open_session(arg: &str, tag: &str) -> Opened {
         .expect("replay carries no game info");
     let game = game_of(&gi.rom_family, gi.rom_variant);
     let rom = Arc::new(std::fs::read(rom_path).expect("rom unreadable"));
-    let timing = game.pvp.frame_timing();
-    let fps = timing.timescale as f32 / timing.frame_duration as f32;
+    let fps = game.pvp.tps().to_f32().unwrap();
     let (partial_tx, partial_rx) = futures::channel::mpsc::unbounded();
     std::mem::forget(partial_rx);
     let stats_job = with_stats.then(|| tango_session::replay::PrefetchStatsJob {

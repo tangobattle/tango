@@ -20,11 +20,7 @@ where
     arr
 }
 
-fn ncp_bitmap(
-    info: &dyn crate::rom::NavicustPart,
-    compressed: bool,
-    rot: u8,
-) -> crate::rom::NavicustBitmap {
+fn ncp_bitmap(info: &dyn crate::rom::NavicustPart, compressed: bool, rot: u8) -> crate::rom::NavicustBitmap {
     rotate(
         &info
             .compressed_bitmap()

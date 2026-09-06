@@ -10,8 +10,8 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
-image = { version = "0.25", default-features = false, features = ["png"] }
-byteorder = "1"
+image = { workspace = true, features = ["png"] }
+byteorder.workspace = true
 
 [lints]
 workspace = true

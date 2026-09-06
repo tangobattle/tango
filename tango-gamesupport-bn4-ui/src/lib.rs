@@ -119,12 +119,8 @@ impl GameSaveEditor for Ui {
     }
 
     fn tab_errors(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave) -> Vec<String> {
-        let mut errors = tango_gamesupport_common_ui::build::tab_errors(
-            lang,
-            tab,
-            loaded.save.as_ref(),
-            loaded.assets.as_ref(),
-        );
+        let mut errors =
+            tango_gamesupport_common_ui::build::tab_errors(lang, tab, loaded.save.as_ref(), loaded.assets.as_ref());
         if tab == Tab::PatchCards {
             errors.extend(
                 patch_cards4::warnings(loaded.save.as_ref(), loaded.assets.as_ref())

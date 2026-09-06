@@ -22,7 +22,10 @@ fn chip_use_marks(
 ) -> Vec<ChipUseMark> {
     uses.iter()
         .map(|&(t, id)| {
-            let chip = loaded.and_then(|l| l.chips.get(id as usize)).cloned().unwrap_or_default();
+            let chip = loaded
+                .and_then(|l| l.chips.get(id as usize))
+                .cloned()
+                .unwrap_or_default();
             ChipUseMark {
                 x: x_of(t),
                 name: chip.name.unwrap_or_else(|| "???".to_string()),
@@ -70,13 +73,7 @@ pub fn cook_hp_rounds(
     loadeds: [Option<&tango_gamesupport::LoadedSave>; 2],
     total_ticks: Option<u32>,
 ) -> (Vec<CookedHpRound>, f32) {
-    let max_hp = stats
-        .hp
-        .iter()
-        .map(|p| p.local.max(p.remote))
-        .max()
-        .unwrap_or(0)
-        .max(1) as f32;
+    let max_hp = stats.hp.iter().map(|p| p.local.max(p.remote)).max().unwrap_or(0).max(1) as f32;
     let rounds = (0..stats.rounds.len())
         .map(|i| {
             let outcome = stats.rounds[i].outcome.map(|(_, o)| round_outcome(o));

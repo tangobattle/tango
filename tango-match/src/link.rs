@@ -34,33 +34,6 @@
 /// machinery shares its keyframes across the host's workers.
 pub type Snapshot = Box<dyn std::any::Any + Send + Sync>;
 
-/// An emulator's exact audio clock, in samples per second.
-///
-/// Playback APIs generally want floating-point Hz, while archival
-/// containers can retain the underlying ratio. Carrying both integers
-/// through the engine seam keeps each caller free to choose without
-/// reconstructing information the emulator already knew.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct AudioSampleRate {
-    pub numerator: u32,
-    pub denominator: u32,
-}
-
-impl AudioSampleRate {
-    pub const fn new(numerator: u32, denominator: u32) -> Self {
-        Self { numerator, denominator }
-    }
-
-    pub const fn integer(hz: u32) -> Self {
-        Self::new(hz, 1)
-    }
-
-    /// The clock in floating-point Hz, for live playback and resampling.
-    pub const fn as_f64(self) -> f64 {
-        self.numerator as f64 / self.denominator as f64
-    }
-}
-
 /// An emulator's linked pair: two consoles plus whatever connects
 /// them, snapshotted and restored as one unit. That is the rollback
 /// unit, because the wire between two consoles carries state just as
@@ -154,8 +127,8 @@ pub trait Side {
         None
     }
 
-    /// The exact rate this console produces audio at.
-    fn audio_sample_rate(&mut self) -> AudioSampleRate;
+    /// The exact audio clock in samples per second, with a nonzero denominator.
+    fn audio_sample_rate(&mut self) -> num_rational::Ratio<u32>;
 
     /// Take up to `out`'s worth of this console's produced audio, as
     /// interleaved stereo, and answer with how much it had in total —
@@ -334,13 +307,11 @@ pub trait Backend: Sync {
     /// its mode uses.
     fn keys_mask(&self) -> u32;
 
-    /// The console's native frame clock — known, like the layout,
-    /// before a match exists: hosts pace their drive loops and size
-    /// their audio streams around its [`fps`](FrameTiming::fps), and a
-    /// video encoder timestamps frames by the exact rational. The GBA's
-    /// rate is not a round 60, and the DS's differs again, so nothing
-    /// above an engine may hardcode one.
-    fn frame_timing(&self) -> FrameTiming;
+    /// The console's native rate in emulated ticks (video frames) per second.
+    /// The denominator must be nonzero. Hosts convert this to floating point
+    /// for pacing; video encoders retain the ratio for exact timestamps.
+    /// GBA and DS clocks differ, and neither is exactly 60 Hz.
+    fn tps(&self) -> num_rational::Ratio<u32>;
 
     /// A session that will run `consoles` of this game's console is
     /// being put together; get whatever per-console machinery ready
@@ -388,30 +359,6 @@ pub trait Backend: Sync {
     fn open_replay(&self, config: crate::ReplayConfig) -> Result<crate::ReplaySet, crate::Error> {
         let _ = config;
         Err(crate::Error::Unsupported("this game has no replay support"))
-    }
-}
-
-/// One video frame's length on the console's own clock, as an exact
-/// rational: a frame lasts `frame_duration / timescale` seconds.
-///
-/// A rational rather than a rate, because a video encoder timestamps
-/// frames in integer clock ticks — a rate rounded through a float
-/// accumulates drift over a long recording, where the console's own
-/// cycle counts don't. Everything that wants the rate takes
-/// [`fps`](FrameTiming::fps) of it.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct FrameTiming {
-    /// Ticks of the console's clock per second.
-    pub timescale: u32,
-    /// Clock ticks one video frame lasts.
-    pub frame_duration: u64,
-}
-
-impl FrameTiming {
-    /// The frame rate the rational reduces to — what hosts pace their
-    /// drive loops and size their audio streams around.
-    pub fn fps(&self) -> f64 {
-        self.timescale as f64 / self.frame_duration as f64
     }
 }
 

@@ -194,9 +194,7 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
                 let base = s.pending_seek_target().unwrap_or_else(|| s.current_tick());
                 let boundaries = s.round_boundaries();
                 let forward = matches!(round_message, Message::SeekToNextRound);
-                if let Some(target) =
-                    round_skip_target(base, &boundaries, forward, s.prefetch_progress())
-                {
+                if let Some(target) = round_skip_target(base, &boundaries, forward, s.prefetch_progress()) {
                     let playing = !s.is_paused() || s.seek_will_resume();
                     s.seek_to(target, playing);
                 }
@@ -302,12 +300,7 @@ pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
 /// Tick zero is the implicit start of the replay's first section. Forward
 /// skips are only safe through the prefetch frontier: later boundaries may be
 /// known from a cached analysis even though no seek capture has reached them.
-fn round_skip_target(
-    current: u32,
-    round_boundaries: &[u32],
-    forward: bool,
-    prefetched_through: u32,
-) -> Option<u32> {
+fn round_skip_target(current: u32, round_boundaries: &[u32], forward: bool, prefetched_through: u32) -> Option<u32> {
     if forward {
         round_boundaries
             .iter()
@@ -316,10 +309,7 @@ fn round_skip_target(
     } else {
         // Boundaries at or before the playhead identify the current
         // section's start. Skip over that one to reach the prior section.
-        let passed = round_boundaries
-            .iter()
-            .take_while(|&&tick| tick <= current)
-            .count();
+        let passed = round_boundaries.iter().take_while(|&&tick| tick <= current).count();
         match passed {
             // There is no earlier round to select from round 1, so restart
             // it instead. At tick zero the shortcut is already satisfied.
@@ -1360,10 +1350,14 @@ fn input_display_overlay<'a>(
         let name = text(nick.to_string())
             .size(TEXT_CAPTION)
             .style(widgets::muted_text_style);
-        container(column![input_pad(joyflags, ds), name].spacing(4).align_x(Alignment::Center))
-            .padding([8, 10])
-            .style(hud_chip_plate)
-            .into()
+        container(
+            column![input_pad(joyflags, ds), name]
+                .spacing(4)
+                .align_x(Alignment::Center),
+        )
+        .padding([8, 10])
+        .style(hud_chip_plate)
+        .into()
     };
     Some(
         container(row![

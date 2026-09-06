@@ -25,6 +25,7 @@ name = "tango-lite-web"
 path = "src/main.rs"
 
 [dependencies]
+num-traits.workspace = true
 # `default-features = false` deliberately: the default set pulls
 # devtools/logger/asset/cli-config, all of which expect the `dx` CLI to
 # have built the app. This crate builds with plain cargo + wasm-bindgen
@@ -45,7 +46,7 @@ futures.workspace = true
 log.workspace = true
 semver.workspace = true
 # Timestamps on the replays list.
-chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
+chrono = { workspace = true, features = ["clock", "wasmbind"] }
 # Language tags, for matching the browser's locale against the ones the
 # game families ship Fluent fragments for.
 unic-langid.workspace = true
@@ -58,7 +59,7 @@ console_error_panic_hook = "0.1"
 # library's Storage seam, `fetch` + a stream reader behind its Http one,
 # and the file/keyboard/pointer events the UI listens on.
 wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
+wasm-bindgen-futures.workspace = true
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
     "AudioContext",
@@ -128,8 +129,7 @@ getrandom = { version = "0.2", features = ["js"] }
 # Gamepads. The crate is a facade over SDL3 natively and the browser's
 # Gamepad API on wasm; `default-features = false` drops the SDL half,
 # which this target never links anyway.
-gamepad-facade = { git = "https://github.com/tangobattle/gamepad-facade", default-features = false }
-tango-gamesupport = { path = "../tango-gamesupport" }
+gamepad-facade.workspace = true
 # `native` off: that feature is the std-fs + reqwest + Steam half. This
 # crate supplies the browser implementations of the two seams instead
 # (see `storage` / `http`).
@@ -142,12 +142,11 @@ tango-replay = { path = "../tango-replay" }
 tango-replay-renderer = { path = "../tango-replay-renderer" }
 encoder-facade.workspace = true
 tango-lobby = { path = "../tango-lobby" }
-tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
 tango-session = { path = "../tango-session" }
 
 [features]
-# Same shape as the desktop app's: no games compiled in by default, one
-# feature per game, `gamesupport-all` for the shipped build. Each one
+# One feature per game, with `gamesupport-all` for the shipped build.
+# Unlike the desktop app, no games are enabled by default. Each feature
 # also switches the game on in tango-library, which owns the registry.
 default = []
 gamesupport-bcc = ["tango-library/gamesupport-bcc"]
@@ -175,3 +174,7 @@ gamesupport-all = [
 
 [lints]
 workspace = true
+
+# Enables the browser randomness backend for transitive users.
+[package.metadata.cargo-machete]
+ignored = ["getrandom"]

@@ -181,13 +181,8 @@ impl tango_match::Backend for GbaBackend {
         crate::link::JOYFLAGS_MASK
     }
 
-    fn frame_timing(&self) -> tango_match::FrameTiming {
-        // The GBA frame clock: 280896 cycles at 2^24 Hz — the exact
-        // rational behind [`EXPECTED_FPS`](crate::link::EXPECTED_FPS).
-        tango_match::FrameTiming {
-            timescale: 16_777_216,
-            frame_duration: 280_896,
-        }
+    fn tps(&self) -> num_rational::Ratio<u32> {
+        crate::link::TPS
     }
 
     /// Boot the pair, prime both games to their link battle, and start

@@ -52,11 +52,7 @@ pub trait GameSaveEditor: Send + Sync {
     /// Validate a prepared save without involving loaded editor state. Games
     /// with additional rule sets override this; the shared BN rules are the
     /// default.
-    fn validate_save(
-        &self,
-        save: &Save,
-        assets: &Assets,
-    ) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
+    fn validate_save(&self, save: &Save, assets: &Assets) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
         crate::build::warnings(save, assets)
     }
 
@@ -222,7 +218,13 @@ impl GameSaveEditor for EmptyEditor {
         crate::editor::view::placeholder(crate::t!(lang, "save-empty"))
     }
 
-    fn tab_as_text(&self, _lang: &LanguageIdentifier, _tab: Tab, _loaded: &OpenSave, _opts: RenderOpts) -> Option<String> {
+    fn tab_as_text(
+        &self,
+        _lang: &LanguageIdentifier,
+        _tab: Tab,
+        _loaded: &OpenSave,
+        _opts: RenderOpts,
+    ) -> Option<String> {
         None
     }
 }

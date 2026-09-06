@@ -1,27 +1,12 @@
-//! Tango Lite — a phone-sized Tango that runs in a browser tab.
+//! Browser frontend for single-player, netplay, patches, and replays.
 //!
-//! Load a ROM, play it, or dial a link code and play someone. The
-//! emulator, the netplay choreography and the rollback engine are the
-//! workspace's own crates, unmodified: [`tango_session`] was written so
-//! that a session is *driven* by its host rather than running itself,
-//! and [`tango_lobby`] so that bringing a connection up is one linear
-//! future and the lobby is a plain state machine. What this crate adds
-//! is only the browser end of those contracts:
+//! The host drives shared sessions through [`engine`], sends audio to an
+//! AudioWorklet through [`audio`], and persists the library in IndexedDB
+//! through [`storage`]. [`input`] combines touch, keyboard, and gamepads.
+//! [`link`] coordinates the lobby; [`playback`], [`recording`], and [`export`]
+//! handle replay playback, recording, and video export.
 //!
-//! * [`engine`] — the pump. `requestAnimationFrame` instead of a drive
-//!   thread, and a 2D canvas instead of a wgpu pane.
-//! * [`audio`] — a `ScriptProcessorNode` pulling the same
-//!   [`Stream`](tango_session::audio::Stream) cpal pulls on the
-//!   desktop.
-//! * [`input`] — touch buttons and a keyboard map, resolved into one
-//!   GBA joyflag word.
-//! * [`link`] — the netplay state machine, pumped from the microtask
-//!   queue and handed off into a live match.
-//! * [`storage`] — the ROM/save locker, in IndexedDB.
-//!
-//! Deliberately *not* here: the ROM scanner, patches, replays, the save
-//! editor, the results screen. Lite means the two things you'd open a
-//! phone for — play, and play someone.
+//! See the crate README for browser build requirements and module ownership.
 
 // The whole app is browser code. Gated as a unit so a host-target build
 // reports this one line rather than a page of errors from crates that
@@ -76,7 +61,9 @@ fn main() {
         // spawns Web Workers (the DS games') bootstraps them from this;
         // it cannot reliably discover it from inside the module.
         if let Some(window) = web_sys::window() {
-            if let Ok(url) = web_sys::Url::new_with_base("tango-lite-web.js", &window.location().href().unwrap_or_default()) {
+            if let Ok(url) =
+                web_sys::Url::new_with_base("tango-lite-web.js", &window.location().href().unwrap_or_default())
+            {
                 tango_match::hosting::set_wasm_glue_url(url.href());
             }
         }

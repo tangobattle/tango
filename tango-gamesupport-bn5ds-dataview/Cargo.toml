@@ -10,12 +10,12 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
-image = { version = "0.25", default-features = false, features = ["png"] }
-bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
-c2rust-bitfields = "0.22"
-num-traits = "0.2"
+image = { workspace = true, features = ["png"] }
+bytemuck = { workspace = true, features = ["derive", "const_zeroed", "min_const_generics"] }
+c2rust-bitfields.workspace = true
+num-traits.workspace = true
 # The NaviCust placement masks are 5x5 grids, as in the GBA crates.
-ndarray = "0.15"
+ndarray.workspace = true
 
 [lints]
 workspace = true

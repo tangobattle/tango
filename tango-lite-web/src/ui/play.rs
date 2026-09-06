@@ -150,12 +150,18 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
 fn Priming(priming: crate::engine::Priming) -> Element {
     use crate::engine::Priming as P;
     let (title, detail) = match &priming {
-        P::Match => ("Starting the match…", "Booting both games into their battle.".to_string()),
+        P::Match => (
+            "Starting the match…",
+            "Booting both games into their battle.".to_string(),
+        ),
         P::Peer => (
             "Waiting for your opponent…",
             "Their game is still starting up.".to_string(),
         ),
-        P::Playback => ("Starting the replay…", "Booting the games into their battle.".to_string()),
+        P::Playback => (
+            "Starting the replay…",
+            "Booting the games into their battle.".to_string(),
+        ),
         P::Failed(error) => ("The games didn't reach their battle.", error.clone()),
     };
     let failed = matches!(priming, P::Failed(_));

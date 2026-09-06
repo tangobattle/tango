@@ -26,26 +26,23 @@ publish = false
 futures.workspace = true
 log.workspace = true
 rand.workspace = true
-rand_pcg.workspace = true
 semver.workspace = true
-sha3 = "0.10"
-subtle = "2"
-thiserror.workspace = true
+subtle.workspace = true
 # Sync primitives and `select!` only — the waiting and spawning here go
 # through tango-session's platform seam, so there's no runtime to ask
 # tokio for on either target.
 tokio = { workspace = true, features = ["sync", "macros"] }
-tokio-util = { workspace = true }
+tokio-util.workspace = true
 unic-langid.workspace = true
-web-time = "1"
+web-time.workspace = true
 zstd.workspace = true
 
-datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
+datachannel-wrapper.workspace = true
 tango-library = { path = "../tango-library", default-features = false }
 tango-net-protocol = { path = "../tango-net-protocol" }
-tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
+tango-patch = { workspace = true, features = ["package", "index"] }
 tango-session = { path = "../tango-session" }
-tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
+tango-signaling.workspace = true
 
 [lints]
 workspace = true

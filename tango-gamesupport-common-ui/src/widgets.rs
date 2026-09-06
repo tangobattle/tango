@@ -12,10 +12,10 @@ use lucide_icons::Icon;
 /// Plain danger-red bullet used beside localized legality errors.
 pub fn error_dot<'a, M: 'a>() -> Element<'a, M> {
     iced::widget::text("•")
-    .style(|theme: &Theme| iced::widget::text::Style {
-        color: Some(theme.palette().danger),
-    })
-    .into()
+        .style(|theme: &Theme| iced::widget::text::Style {
+            color: Some(theme.palette().danger),
+        })
+        .into()
 }
 
 /// Compact tab pill used by sub-navs (save_view's

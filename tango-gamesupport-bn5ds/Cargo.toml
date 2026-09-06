@@ -26,8 +26,8 @@ tango-gamesupport-common = { path = "../tango-gamesupport-common" }
 tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 tango-match = { path = "../tango-match" }
 tango-backend-melonds = { path = "../tango-backend-melonds" }
-log = "0.4"
-image = { version = "0.25", default-features = false, features = ["png"] }
+log.workspace = true
+image = { workspace = true, features = ["png"] }
 
 tango-gamesupport-bn5ds-ui = { path = "../tango-gamesupport-bn5ds-ui", optional = true }
 

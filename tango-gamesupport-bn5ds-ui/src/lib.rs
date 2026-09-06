@@ -40,9 +40,7 @@ use tango_gamesupport_common_dataview::save::Save as _;
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view as sv;
 use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
-use tango_gamesupport_common_ui::editor::{
-    BuildReport, GameSaveEditor, OpaqueBuildWarnings, SaveEditorShell,
-};
+use tango_gamesupport_common_ui::editor::{BuildReport, GameSaveEditor, OpaqueBuildWarnings, SaveEditorShell};
 use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use unic_langid::LanguageIdentifier;
 
@@ -403,7 +401,12 @@ const MEGAMAN_NAVI: usize = 0;
 /// 0-based, so the card's is one more; the chip attack is what the navi
 /// brings at this file's story rank plus whatever `P.Chp` programs it
 /// carries.
-fn navi_stats<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save, navi: usize) -> iced::Element<'a, Action> {
+fn navi_stats<'a>(
+    lang: &'a LanguageIdentifier,
+    loaded: &'a OpenSave,
+    save: &'a Save,
+    navi: usize,
+) -> iced::Element<'a, Action> {
     row![
         sv::stat(
             tango_gamesupport_common_ui::t!(lang, "navi-base-hp"),
@@ -501,8 +504,7 @@ impl PartycustWarnings {
         let mut program_costs = std::collections::HashMap::new();
         for violation in &violations {
             navis.entry(violation.slot).or_insert_with(|| {
-                file
-                    .and_then(|save| save.view_party().navi(violation.slot))
+                file.and_then(|save| save.view_party().navi(violation.slot))
                     .map(|navi| {
                         assets
                             .navi(navi)
@@ -511,13 +513,11 @@ impl PartycustWarnings {
                     })
                     .unwrap_or_else(|| format!("#{}", violation.slot + 1))
             });
-            programs
-                .entry(violation.program)
-                .or_insert_with(|| {
-                    cart.and_then(|cart| cart.party_program(violation.program))
-                        .and_then(|program| program.name())
-                        .unwrap_or_else(|| format!("#{}", violation.program))
-                });
+            programs.entry(violation.program).or_insert_with(|| {
+                cart.and_then(|cart| cart.party_program(violation.program))
+                    .and_then(|program| program.name())
+                    .unwrap_or_else(|| format!("#{}", violation.program))
+            });
             if let Some(cost) = cart
                 .and_then(|cart| cart.party_program(violation.program))
                 .map(|program| program.cost())
@@ -665,7 +665,9 @@ fn partycust_gauge<'a>(loaded: &'a OpenSave, capacity: u8, equipped: &[usize]) -
     let cart = cart_of(loaded);
     let mut filled: Vec<iced::Color> = Vec::new();
     for &index in equipped {
-        let Some(program) = cart.and_then(|cart| cart.party_program(index)) else { continue };
+        let Some(program) = cart.and_then(|cart| cart.party_program(index)) else {
+            continue;
+        };
         let color = program_color(program.kind());
         filled.extend(std::iter::repeat_n(color, program.cost() as usize));
     }
@@ -778,9 +780,7 @@ fn party_slot<'a>(
         .align_y(iced::Alignment::Center)
         .push(naming)
         .push(iced::widget::Space::new().width(iced::Fill))
-        .push_maybe(editing.then(|| {
-            sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartySlot(slot))))
-        }));
+        .push_maybe(editing.then(|| sv::clear_all_button(lang, Action::Game(Arc::new(ClearPartySlot(slot))))));
     // The gauge finishes the line the card's own numbers are on, at the
     // far right of it.
     let stats = row![]
@@ -818,14 +818,20 @@ fn party_slot<'a>(
                 .size(tango_gamesupport_common_ui::style::TEXT_BODY)
                 .width(iced::Fill),
             sv::limit_caption(
-                cart.party_program(index).map(|program| program.cost()).unwrap_or(0).to_string(),
+                cart.party_program(index)
+                    .map(|program| program.cost())
+                    .unwrap_or(0)
+                    .to_string(),
                 danger,
             ),
         ]
         .spacing(PROGRAM_ROW_SPACING)
         .align_y(iced::Alignment::Center);
         if editing {
-            line = line.push(sv::remove_button(Action::Game(Arc::new(RemovePartyProgram { slot, at }))));
+            line = line.push(sv::remove_button(Action::Game(Arc::new(RemovePartyProgram {
+                slot,
+                at,
+            }))));
         }
         body = body.push(
             // Hovering a row gives what the panel's own INFORMATION box
@@ -1046,11 +1052,7 @@ fn card_slot<'a>(
 /// BN5/BN6 name their navi in, over the team the file plays. Every save
 /// shows one — a save with no cross brings plain MegaMan, which is a
 /// name like any other.
-fn cross_card<'a>(
-    lang: &'a LanguageIdentifier,
-    loaded: &'a OpenSave,
-    save: &'a Save,
-) -> iced::Element<'a, Action> {
+fn cross_card<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save) -> iced::Element<'a, Action> {
     let (options, selected) = cross_choices(loaded, save);
     let name = selected
         .or_else(|| options.first().cloned())
@@ -1070,11 +1072,7 @@ fn cross_card<'a>(
 /// The same card while editing: the dropdown that changes the name. The
 /// team below it stays a reading — it is the file's, and the file select
 /// is what moves between them.
-fn cross_picker<'a>(
-    lang: &'a LanguageIdentifier,
-    loaded: &'a OpenSave,
-    save: &'a Save,
-) -> iced::Element<'a, Action> {
+fn cross_picker<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'a Save) -> iced::Element<'a, Action> {
     let (options, selected) = cross_choices(loaded, save);
     card_slot(
         loaded,
@@ -1230,12 +1228,8 @@ impl GameSaveEditor for Ui {
     }
 
     fn tab_errors(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave) -> Vec<String> {
-        let mut errors = tango_gamesupport_common_ui::build::tab_errors(
-            lang,
-            tab,
-            loaded.save.as_ref(),
-            loaded.assets.as_ref(),
-        );
+        let mut errors =
+            tango_gamesupport_common_ui::build::tab_errors(lang, tab, loaded.save.as_ref(), loaded.assets.as_ref());
         if tab == Tab::Party {
             errors.extend(
                 partycust_warnings(loaded.save.as_ref(), loaded.assets.as_ref())

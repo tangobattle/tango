@@ -1,7 +1,7 @@
-use crate::library::Scanners;
 use crate::i18n::t;
 use crate::library::game;
 use crate::library::patch::{Catalog, Download, Downloads, VersionKey};
+use crate::library::Scanners;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
 use iced::widget::space::horizontal as horizontal_space;

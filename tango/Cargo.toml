@@ -17,12 +17,13 @@ path = "src/main.rs"
 embed-resource = "1"
 
 [dependencies]
-iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
+num-traits.workspace = true
+iced.workspace = true
 # Drop-in replacement widgets that extend iced 0.14's stock ones.
 # We use sweeten's `pick_list` for its `.disabled()` closure so the
 # ROM dropdown can grey out games we don't have a ROM for instead
 # of jamming a "file-x" glyph into the label string.
-sweeten = "0.14"
+sweeten.workspace = true
 # Used only for a tiny pre-iced adapter probe in `run_app`: we
 # enumerate Backends::PRIMARY and auto-fall-back to ANGLE on
 # Windows if no DX12/Vulkan adapter is present. Version pinned
@@ -33,40 +34,27 @@ sweeten = "0.14"
 # to re-list them here.
 wgpu = { version = "27", default-features = false }
 image = { workspace = true, default-features = true }
-tiny-skia = "0.11"
-# Direct handles to iced's graphics layer + software renderer so the baked
-# NaviCust image (viewer / clipboard) is rasterized through the SAME canvas
-# drawing routine as the live editor — one render path, no hand-rolled
-# tiny-skia. Pinned to iced 0.14's versions (unified via Cargo.lock).
-iced_graphics = { version = "0.14", features = ["geometry"] }
-iced_tiny_skia = { version = "0.14", features = ["geometry"] }
+# Graphics primitives used by the desktop video renderer.
+iced_graphics.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-toml = "0.8"
-semver = { version = "1", features = ["serde"] }
-regex = "1"
-mailparse = "0.14"
+semver.workspace = true
 open = "5"
-bps = { git = "https://github.com/tangobattle/bps" }
 discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
-rennet.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-lobby = { path = "../tango-lobby" }
 # Reads packages and the index; the app never writes a package.
-tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
+tango-patch = { workspace = true, features = ["package", "index"] }
 tango-library = { path = "../tango-library" }
 tango-match = { path = "../tango-match" }
 tango-replay = { path = "../tango-replay" }
 tango-replay-renderer = { path = "../tango-replay-renderer" }
 tango-session = { path = "../tango-session" }
-datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
-bincode = "1"
-async-trait.workspace = true
 # Gamepad input. The crate is a facade over a gamepad-only SDL3 build
 # natively and the browser Gamepad API on wasm; all the backend glue and
 # the SDL subsystem trim live there, and tango sees only its
 # backend-neutral `Button`/`Axis`/`GamepadEvent` types.
-gamepad-facade = { git = "https://github.com/tangobattle/gamepad-facade" }
+gamepad-facade = { workspace = true, default-features = true }
 # Native audio output. The session side always mixes at 48 kHz; this
 # boundary negotiates the current default device's format and converts
 # to it, so a device swap can change sample rate without rebuilding the
@@ -78,28 +66,19 @@ arboard = { version = "3", default-features = false, features = ["image-data"] }
 # `Icon::Foo`, `char::from(Icon::Foo)`, and (with the iced feature)
 # `LUCIDE_FONT_BYTES` so we don't have to maintain a hand-rolled
 # codepoint table or vendor the ttf ourselves.
-lucide-icons = { version = "1.16", features = ["iced"] }
-# Netplay ready-handshake: rand for the nonce, sha3 for the
-# Shake128 commitment, zstd for chunk compression, subtle for the
-# constant-time commitment compare, rand_pcg for re-seeding the
-# stepper's RNG from the XOR'd nonces.
+lucide-icons.workspace = true
+# Unique replay file names.
 rand.workspace = true
-rand_pcg.workspace = true
-sha3 = "0.10"
-zstd.workspace = true
-subtle = "2"
 bytemuck.workspace = true
 thiserror.workspace = true
-chrono = "0.4"
+chrono = { workspace = true, default-features = true }
 itertools.workspace = true
-steamlocate = "2"
-zip = { workspace = true, features = ["aes-crypto", "bzip2", "deflate64", "deflate", "lzma", "time", "zstd", "xz"] }
-reqwest = { version = "0.11", features = ["stream", "json", "native-tls"], default-features = false }
+reqwest = { workspace = true, features = ["stream", "json", "native-tls"] }
 tokio = { workspace = true, features = ["fs", "io-util", "time", "rt", "net", "sync", "macros"] }
 tokio-util = { workspace = true, features = ["io", "rt"] }
 futures.workspace = true
-fluent-templates = "0.14"
-unic-langid = { version = "0.9", features = ["likelysubtags"] }
+fluent-templates.workspace = true
+unic-langid.workspace = true
 # `ui` for the save-editor embedding API: the app's view plumbing
 # speaks it (LoadedSave, the opaque message/state envelopes) whether or
 # not a game is compiled in to implement it. The implementation — the
@@ -121,7 +100,6 @@ tango-gamesupport-exeoss = { path = "../tango-gamesupport-exeoss", optional = tr
 # Named directly only for `Container` and `Settings`, which the export
 # dialog builds; the rendering itself is tango-replay-renderer's.
 encoder-facade.workspace = true
-walkdir = "2"
 directories-next = "2"
 log.workspace = true
 env_logger = "0.9"
@@ -146,13 +124,13 @@ libc = "0.2"
 # Stack-allocated string for formatting the crash summary in the handler
 # without heap allocation (see crash_log.rs).
 arrayvec = "0.7"
-indexmap = "2"
-clap = { version = "4", features = ["derive"] }
+indexmap.workspace = true
+clap.workspace = true
 
 [dev-dependencies]
 # The app never writes a package, but its patch-scanner tests build one
 # to scan.
-tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index", "bundle"] }
+tango-patch = { workspace = true, features = ["package", "index", "bundle"] }
 
 [features]
 default = ["gamesupport-all"]
@@ -199,3 +177,13 @@ features = ["reveal"]
 # range here keeps both halves on 0.61.
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-core = "0.61"
+
+# These optional dependencies activate the per-game editors through features;
+# registration itself is owned by tango-library.
+[package.metadata.cargo-machete]
+ignored = [
+    "tango-gamesupport-bcc", "tango-gamesupport-bn1", "tango-gamesupport-bn2",
+    "tango-gamesupport-bn3", "tango-gamesupport-bn4", "tango-gamesupport-bn5",
+    "tango-gamesupport-bn5ds", "tango-gamesupport-bn6", "tango-gamesupport-exe45",
+    "tango-gamesupport-exeoss",
+]

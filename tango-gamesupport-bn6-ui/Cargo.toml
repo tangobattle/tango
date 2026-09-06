@@ -11,9 +11,9 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui" }
-image = { version = "0.25", default-features = false, features = ["png"] }
-iced = { workspace = true}
-unic-langid = { workspace = true}
+image = { workspace = true, features = ["png"] }
+iced.workspace = true
+unic-langid.workspace = true
 
 [lints]
 workspace = true

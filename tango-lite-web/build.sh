@@ -53,7 +53,7 @@ cargo +nightly build \
     --features "$features" \
     -Zbuild-std=std,panic_abort
 
-# `release` is the only profile whose directory isn't its own name.
+# Cargo writes the `dev` profile to `debug`; other profiles use their name.
 profile_dir="$profile"
 [ "$profile" = "dev" ] && profile_dir=debug
 
@@ -115,4 +115,4 @@ print(f"service worker: {len(shell)} shell entries, build {digest.hexdigest()[:1
 STAMP
 
 echo "built $out"
-echo "serve it with any static file server, e.g.:  python3 -m http.server -d $out 8080"
+echo "serve it with the required browser headers: python3 $here/serve.py 8080"

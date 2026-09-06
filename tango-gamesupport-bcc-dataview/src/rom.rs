@@ -230,7 +230,6 @@ impl Assets {
     }
 }
 
-
 impl tango_gamesupport_common_dataview::rom::Assets for Assets {
     fn chip_is_legal(&self, id: usize) -> bool {
         self.offsets.legal_chips.contains(id)

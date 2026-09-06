@@ -20,11 +20,11 @@ pub mod view;
 
 pub use tango_session::{pvp, replay, singleplayer, training, Session};
 
-use crate::library::Scanners;
 use crate::config;
 use crate::i18n::t;
 use crate::library::game;
 use crate::library::patch;
+use crate::library::Scanners;
 use crate::platform::audio;
 use crate::platform::video::framebuffer::Effect;
 use crate::selection;
@@ -36,6 +36,7 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, stack, text};
 use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme};
 use lucide_icons::Icon;
+use num_traits::ToPrimitive;
 use pvp::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
@@ -1038,8 +1039,8 @@ impl State {
                 // Live-session speed-up: only fire set_speed on the
                 // rising or falling edge so we don't spam the audio sync
                 // target with no-op writes. Replays use preset controls.
-                let now_engaged = self.active_as::<replay::ReplaySession>().is_none()
-                    && mapping.speed_up_held(&self.input_held);
+                let now_engaged =
+                    self.active_as::<replay::ReplaySession>().is_none() && mapping.speed_up_held(&self.input_held);
                 if now_engaged != self.speed_up_engaged {
                     self.speed_up_engaged = now_engaged;
                     let factor = if now_engaged { 4.0 } else { 1.0 };
@@ -1340,10 +1341,7 @@ fn thumbnail_handle(width: u32, height: u32, pixels: Vec<u8>) -> iced::widget::i
 /// ([`State::audio_binding`]). A failed bind is logged and downgraded
 /// to silence rather than aborting the session — no session kind
 /// depends on the audio device.
-fn bind_session_audio(
-    audio_binder: &audio::LateBinder,
-    stream: audio::Stream,
-) -> Option<audio::Binding> {
+fn bind_session_audio(audio_binder: &audio::LateBinder, stream: audio::Stream) -> Option<audio::Binding> {
     match audio_binder.bind(Some(Box::new(stream))) {
         Ok(b) => Some(b),
         Err(e) => {
@@ -1414,7 +1412,7 @@ pub fn build_playback(
         replay,
         // Both seats always share one engine, so either seat's rate is
         // the session's.
-        p1_game.pvp.frame_timing().fps() as f32,
+        p1_game.pvp.tps().to_f32().unwrap(),
         audio_binder.sample_rate(),
         config.opponent_view != config::OpponentView::Off,
         stats_job,
@@ -1616,7 +1614,7 @@ pub async fn spawn_pvp(
         disable_bgm: config.disable_bgm_in_pvp,
         replays: Some(&pvp::DirReplayStore(config.replays_path())),
         cache_path: &config.cache_path(),
-        expected_fps: local_game_impl.pvp.frame_timing().fps() as f32,
+        expected_fps: local_game_impl.pvp.tps().to_f32().unwrap(),
         sample_rate: audio_binder.sample_rate(),
     })
     .await?;
@@ -1803,7 +1801,7 @@ pub fn spawn_singleplayer(
         Some(save.clone()),
         // Leave the cart clock on the real one, as it has always been.
         None,
-        game.pvp.frame_timing().fps() as f32,
+        game.pvp.tps().to_f32().unwrap(),
         audio_binder.sample_rate(),
     )?;
     let drive = spawn_drive_thread("singleplayer", driver)?;
@@ -1856,7 +1854,7 @@ pub fn spawn_training(
         loaded.editor.sram(loaded),
         std::time::SystemTime::now(),
         rand::random(),
-        game.pvp.frame_timing().fps() as f32,
+        game.pvp.tps().to_f32().unwrap(),
         audio_binder.sample_rate(),
         Box::new(training::NoopController),
     )?;

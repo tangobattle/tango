@@ -5,10 +5,8 @@ use tango_gamesupport_common_dataview::rom::LegalChips;
 
 // Statically extracted by taking every id with a nonzero pack count in the
 // corresponding bundled save template. The editor never reads the pack.
-const EXE6_GREGAR_LEGAL_CHIPS: LegalChips =
-    LegalChips::from_ranges(&[1..=202, 221..=280, 301..=305, 311..=312]);
-const EXE6_FALZAR_LEGAL_CHIPS: LegalChips =
-    LegalChips::from_ranges(&[1..=202, 221..=280, 306..=311, 313..=313]);
+const EXE6_GREGAR_LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[1..=202, 221..=280, 301..=305, 311..=312]);
+const EXE6_FALZAR_LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[1..=202, 221..=280, 306..=311, 313..=313]);
 const BN6_GREGAR_LEGAL_CHIPS: LegalChips =
     LegalChips::from_ranges(&[1..=17, 19..=152, 154..=202, 221..=274, 301..=305]);
 const BN6_FALZAR_LEGAL_CHIPS: LegalChips =

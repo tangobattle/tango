@@ -18,10 +18,10 @@ use tango_gamesupport_common_ui::editor::view::{
     edit_toggle_maybe, editor_header, folder, patch_cards, placeholder, Action, State,
 };
 use tango_gamesupport_common_ui::editor::BuildReport;
+use tango_gamesupport_common_ui::editor::OpaqueBuildWarnings;
 use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use tango_gamesupport_common_ui::style::{self, TEXT_BODY, TEXT_CAPTION};
 use tango_gamesupport_common_ui::t;
-use tango_gamesupport_common_ui::editor::OpaqueBuildWarnings;
 use tango_gamesupport_common_ui::widgets::{self, muted_text_style};
 use unic_langid::LanguageIdentifier;
 
@@ -65,10 +65,7 @@ fn patch_card4_slot_label(slot: usize) -> String {
         .unwrap_or_else(|| format!("#{}", slot + 1))
 }
 
-fn patch_card4_issues(
-    lang: &LanguageIdentifier,
-    loaded: &OpenSave,
-) -> std::collections::HashMap<usize, String> {
+fn patch_card4_issues(lang: &LanguageIdentifier, loaded: &OpenSave) -> std::collections::HashMap<usize, String> {
     if bn4_assets(loaded).is_none() {
         return Default::default();
     }
@@ -103,11 +100,7 @@ fn patch_card4_violation_reason(lang: &LanguageIdentifier, violation: &PatchCard
     }
 }
 
-fn format_patch_card4_violation(
-    lang: &LanguageIdentifier,
-    card: &str,
-    violation: &PatchCard4Violation,
-) -> String {
+fn format_patch_card4_violation(lang: &LanguageIdentifier, card: &str, violation: &PatchCard4Violation) -> String {
     tango_gamesupport_common_ui::build::format_violation(
         lang,
         Some(card),
@@ -130,10 +123,7 @@ impl PatchCardWarnings {
                 (violation.id, card_name(info.as_ref(), violation.id))
             })
             .collect();
-        Self {
-            violations,
-            card_names,
-        }
+        Self { violations, card_names }
     }
 }
 
@@ -252,18 +242,17 @@ pub fn render<M: 'static>(lang: &LanguageIdentifier, loaded: &OpenSave) -> Eleme
             .align_y(Alignment::Center)
             .into(),
         };
-        let row: Element<'static, M> =
-            container(cell)
-                .width(Fill)
-                .padding([8, 10])
-                .style(move |theme: &iced::Theme| {
-                    let mut style = widgets::zebra_row(slot)(theme);
-                    if illegal {
-                        style.text_color = Some(theme.palette().danger);
-                    }
-                    style
-                })
-                .into();
+        let row: Element<'static, M> = container(cell)
+            .width(Fill)
+            .padding([8, 10])
+            .style(move |theme: &iced::Theme| {
+                let mut style = widgets::zebra_row(slot)(theme);
+                if illegal {
+                    style.text_color = Some(theme.palette().danger);
+                }
+                style
+            })
+            .into();
         list = list.push(folder::detail_popover_with_issue(row, None, None, None, issue));
     }
 
@@ -391,13 +380,7 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
         }
         let mut choices = vec![PatchCard4Choice::none(lang)];
         choices.extend(ids.iter().map(|&id| PatchCard4Choice::card(assets, id)));
-        rows = rows.push(slot_row(
-            assets,
-            slot,
-            installed,
-            choices,
-            issues.get(&slot).cloned(),
-        ));
+        rows = rows.push(slot_row(assets, slot, installed, choices, issues.get(&slot).cloned()));
     }
 
     let count_caption = text(t!(lang, "patch-card-edit-count", count = filled as i64))
@@ -683,10 +666,7 @@ mod legality_tests {
         for language in [
             "de-DE", "es-419", "fr-FR", "ja-JP", "nl-NL", "pt-BR", "ru-RU", "vi-VN", "zh-CN", "zh-TW",
         ] {
-            assert_ne!(
-                warnings.format(&language.parse().unwrap()).remove(0),
-                english
-            );
+            assert_ne!(warnings.format(&language.parse().unwrap()).remove(0), english);
         }
     }
 

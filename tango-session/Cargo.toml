@@ -10,10 +10,10 @@ publish = false
 [dependencies]
 async-trait.workspace = true
 bytemuck.workspace = true
-chrono = "0.4"
+chrono = { workspace = true, default-features = true }
 # One data-channel API over libdatachannel natively and the browser's
 # own WebRTC on wasm.
-datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
+datachannel-wrapper.workspace = true
 futures.workspace = true
 log.workspace = true
 rand.workspace = true
@@ -21,7 +21,7 @@ rand_pcg.workspace = true
 rennet.workspace = true
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-match = { path = "../tango-match" }
-tango-signaling = { git = "https://github.com/tangobattle/tango-signaling" }
+tango-signaling.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }
 thiserror.workspace = true
@@ -32,10 +32,10 @@ thiserror.workspace = true
 # wasm32 and then panic on `Instant::now` at run time. Now it doesn't
 # compile, which is where that belongs.
 tokio = { workspace = true, features = ["sync", "macros"] }
-tokio-util = { workspace = true }
+tokio-util.workspace = true
 # `std::time::Instant` panics in a browser; this is the same API backed
 # by `performance.now()` there and by std everywhere else.
-web-time = "1"
+web-time.workspace = true
 
 
 # The live-session half: threads, sockets and wall clocks, none of which
@@ -53,7 +53,7 @@ tokio-util = { workspace = true, features = ["io", "rt"] }
 # The page's timers, for the netplay plumbing's waits — a browser has no
 # runtime to hold tokio's.
 gloo-timers = { version = "0.3", features = ["futures"] }
-wasm-bindgen-futures = "0.4"
+wasm-bindgen-futures.workspace = true
 
 [lints]
 workspace = true

@@ -12,8 +12,7 @@ const PROTOMAN_LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[
     311..=312,
     314..=314,
 ]);
-const COLONEL_LEGAL_CHIPS: LegalChips =
-    LegalChips::from_ranges(&[1..=180, 187..=198, 201..=280, 304..=306, 309..=313]);
+const COLONEL_LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[1..=180, 187..=198, 201..=280, 304..=306, 309..=313]);
 
 pub struct Offsets {
     legal_chips: LegalChips,

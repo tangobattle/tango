@@ -41,17 +41,16 @@ pub fn render_patch_cards56<M: 'static>(lang: &LanguageIdentifier, loaded: &Open
         ]
         .spacing(8)
         .align_y(Alignment::Start);
-        let row: Element<'static, M> =
-            container(row)
-                .padding(style::ROW_PADDING)
-                .style(move |theme: &iced::Theme| {
-                    let mut style = crate::widgets::zebra_row(i)(theme);
-                    if danger {
-                        style.text_color = Some(theme.palette().danger);
-                    }
-                    style
-                })
-                .into();
+        let row: Element<'static, M> = container(row)
+            .padding(style::ROW_PADDING)
+            .style(move |theme: &iced::Theme| {
+                let mut style = crate::widgets::zebra_row(i)(theme);
+                if danger {
+                    style.text_color = Some(theme.palette().danger);
+                }
+                style
+            })
+            .into();
         list = list.push(folder::detail_popover_with_issue(row, None, None, None, issue));
     }
 

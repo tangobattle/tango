@@ -59,7 +59,13 @@ impl GameSaveEditor for Ui {
         }
     }
 
-    fn tab_as_text(&self, _lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, _opts: RenderOpts) -> Option<String> {
+    fn tab_as_text(
+        &self,
+        _lang: &LanguageIdentifier,
+        tab: Tab,
+        loaded: &OpenSave,
+        _opts: RenderOpts,
+    ) -> Option<String> {
         match tab {
             Tab::ProgramDeck => deck::as_text(loaded),
             _ => None,

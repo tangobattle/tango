@@ -309,10 +309,7 @@ impl dv_save::NaviView for NaviView<'_> {
             .unwrap_or_default()
     }
 
-    fn folder_limits(
-        &self,
-        _assets: &dyn tango_gamesupport_common_dataview::rom::Assets,
-    ) -> dv_save::FolderLimits {
+    fn folder_limits(&self, _assets: &dyn tango_gamesupport_common_dataview::rom::Assets) -> dv_save::FolderLimits {
         // BCC budgets a deck in MB, not in chip classes; the deck board
         // enforces that itself.
         dv_save::FolderLimits::default()

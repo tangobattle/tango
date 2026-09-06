@@ -230,12 +230,7 @@ mod tests {
         // A(0x001)]. Untouched inputs are two bytes (tag-and-high, low) — the
         // exact bytes the 10-bit era produced, so a touchless stream's wire form
         // is byte-for-byte unchanged.
-        let f = data_frame(
-            12345,
-            12345,
-            Meta { tick_advantage: 2 },
-            vec![keys(0x010), keys(0x001)],
-        );
+        let f = data_frame(12345, 12345, Meta { tick_advantage: 2 }, vec![keys(0x010), keys(0x001)]);
         assert_eq!(f.to_vec(), vec![0xB9, 0x60, 0x00, 0x04, 0x00, 0x10, 0x00, 0x01]);
     }
 

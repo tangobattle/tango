@@ -238,10 +238,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
             }
         }
 
-        Box::new(Poller {
-            player,
-            chip: None,
-        })
+        Box::new(Poller { player, chip: None })
     }
 }
 
@@ -497,7 +494,6 @@ pub mod priming {
         /// mid-battle) and another across every stretch of fighting,
         /// on both consoles, *and* move at the staggered commits.
         pub const BATTLE_PHASE: u32 = 0x020b_42bd;
-
 
         /// The chip a navi is using right now — one record, shared by
         /// both of them, holding the most recent use for as long as it
@@ -967,10 +963,7 @@ pub mod priming {
     /// Verdicts are console 0's reports (its local player is player 0,
     /// the game's host seat); the match end is reported from both
     /// consoles and the store dedups the second firing.
-    fn lifecycle_traps(
-        host: bool,
-        events: &tango_match::telemetry::EventSink,
-    ) -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
+    fn lifecycle_traps(host: bool, events: &tango_match::telemetry::EventSink) -> Vec<(u32, Box<dyn FnMut(&mut Nds)>)> {
         let win_sink = host.then(|| events.clone());
         let loss_sink = win_sink.clone();
         let end_sink = events.clone();

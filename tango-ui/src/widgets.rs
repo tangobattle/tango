@@ -386,10 +386,7 @@ pub fn pill_tab<'a, M: Clone + 'a>(
 /// Float a 7 px glowing status pip over a pill tab's top-right corner without
 /// changing the pill's layout bounds. `color` lets callers distinguish kinds
 /// of attention while sharing the same placement and glow treatment.
-pub fn pill_tab_badge<'a, M: 'a>(
-    pill: Element<'a, M>,
-    color: impl Fn(&Theme) -> iced::Color + 'a,
-) -> Element<'a, M> {
+pub fn pill_tab_badge<'a, M: 'a>(pill: Element<'a, M>, color: impl Fn(&Theme) -> iced::Color + 'a) -> Element<'a, M> {
     let pip = container(iced::widget::Space::new().width(7).height(7)).style(move |theme: &Theme| {
         let color = color(theme);
         container::Style {

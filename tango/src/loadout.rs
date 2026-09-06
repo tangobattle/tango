@@ -13,9 +13,9 @@
 //! vanilla-compatible saves just remember whatever they last ran
 //! under.
 
-use crate::library::Scanners;
 use crate::config;
 use crate::i18n::t;
+use crate::library::Scanners;
 use crate::library::{game, rom};
 use crate::ui::style::TEXT_CAPTION;
 use crate::ui::widgets;

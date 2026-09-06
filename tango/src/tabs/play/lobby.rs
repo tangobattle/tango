@@ -13,10 +13,10 @@
 //! derived lifecycle fact that keeps the verdict line and the Ready
 //! gate in agreement.
 
-use crate::library::Scanners;
 use crate::i18n::t;
 use crate::library::game;
 use crate::library::rom;
+use crate::library::Scanners;
 use crate::netplay::{self, Phase};
 use crate::session::pvp::suggest_frame_delay;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};

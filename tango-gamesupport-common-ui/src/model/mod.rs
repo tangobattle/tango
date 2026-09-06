@@ -123,8 +123,7 @@ pub fn prepare(
         .as_ref()
         .map(|p| p.rom_overrides.clone())
         .unwrap_or_default();
-    let assets: Box<dyn crate::dataview::rom::Assets + Send + Sync> =
-        Box::new(OverridenAssets::new(inner, overrides));
+    let assets: Box<dyn crate::dataview::rom::Assets + Send + Sync> = Box::new(OverridenAssets::new(inner, overrides));
 
     tango_gamesupport::PreparedSave {
         game,

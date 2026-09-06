@@ -21,8 +21,9 @@
 //! the time a rewind lands there is nothing in a core to take back and
 //! the ring answers for it instead.
 
+use num_rational::Ratio;
 use tango_match::telemetry::Telemetry;
-use tango_match::{AudioSampleRate, HostInput, Screen, ScreenLayout};
+use tango_match::{HostInput, Screen, ScreenLayout};
 
 /// Bit mask of a joyflags value: the GBA keypad is 10 bits (A, B, Select,
 /// Start, →, ←, ↑, ↓, R, L), occupying bits 0..=9. The top 6 bits are unused by
@@ -30,7 +31,8 @@ use tango_match::{AudioSampleRate, HostInput, Screen, ScreenLayout};
 /// high bits, or the netplay wire's CONT/MARK entry tags.
 pub const JOYFLAGS_MASK: u32 = 0x03ff;
 
-pub const EXPECTED_FPS: f64 = 16777216.0 / 280896.0;
+/// Native ticks per second: one video frame spans 280,896 GBA clock cycles.
+pub const TPS: Ratio<u32> = Ratio::new_raw(16_777_216, 280_896);
 
 /// The GBA's single screen.
 const SCREEN: Screen = Screen {
@@ -157,8 +159,8 @@ impl tango_match::Side for GbaSide<'_> {
         self.link.export_save(self.player)
     }
 
-    fn audio_sample_rate(&mut self) -> AudioSampleRate {
-        AudioSampleRate::integer(self.link.core(self.player).audio_sample_rate())
+    fn audio_sample_rate(&mut self) -> Ratio<u32> {
+        Ratio::from_integer(self.link.core(self.player).audio_sample_rate())
     }
 
     fn drain_audio(&mut self, out: &mut [i16]) -> usize {

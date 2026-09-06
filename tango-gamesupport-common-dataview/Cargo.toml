@@ -11,16 +11,16 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 tango-gamesupport = { path = "../tango-gamesupport" }
-bytemuck = { version = "1", features = ["derive", "const_zeroed"] }
-byteorder = "1"
-c2rust-bitfields = "0.22"
+bytemuck = { workspace = true, features = ["derive", "const_zeroed"] }
+byteorder.workspace = true
+c2rust-bitfields.workspace = true
 image.workspace = true
-itertools = "0.13"
-ndarray = "0.15"
-num-derive = "0.4.2"
-num-traits = "0.2"
+itertools.workspace = true
+ndarray.workspace = true
+num-derive.workspace = true
+num-traits.workspace = true
 patricia_tree = "0.5"
-thiserror = "1"
+thiserror.workspace = true
 
 [lints]
 workspace = true

@@ -15,19 +15,18 @@ license = "GPL-3.0-or-later"
 tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
 tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 tango-ui = { path = "../tango-ui" }
-tango-patch = { git = "https://github.com/tangobattle/tango-patch", features = ["package", "index"] }
+tango-patch = { workspace = true, features = ["package", "index"] }
 iced.workspace = true
 iced_graphics.workspace = true
 iced_tiny_skia.workspace = true
-tiny-skia = "0.11"
+tiny-skia.workspace = true
 sweeten.workspace = true
 lucide-icons.workspace = true
 fluent-templates.workspace = true
 unic-langid.workspace = true
 image = { workspace = true, features = ["png"] }
 base64.workspace = true
-indexmap = "2"
-ndarray = "0.15"
+indexmap.workspace = true
 
 [lints]
 workspace = true

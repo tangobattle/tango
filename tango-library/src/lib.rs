@@ -14,7 +14,7 @@
 //! filesystem or the network directly: [`storage::Storage`] and
 //! [`http::Http`] are the two seams, and a frontend supplies both. The
 //! `native` feature (on by default) provides `std::fs` and reqwest
-//! implementations; a browser build turns it off and hands in OPFS and
+//! implementations; a browser build turns it off and hands in IndexedDB and
 //! `fetch` instead.
 
 pub mod config;

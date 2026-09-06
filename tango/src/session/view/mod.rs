@@ -3,7 +3,6 @@ use super::*;
 // would otherwise clash with the sweeten ones re-exported via `super::*`.
 use sweeten::widget::{column, row};
 
-
 pub mod pvp;
 pub mod replay;
 pub mod results;
@@ -299,22 +298,15 @@ fn opponent_view_icon(view: crate::config::OpponentView) -> Icon {
 /// Where the main perspective sits inside its half of a stacked layout.
 /// Docking both frames against their shared seam prevents integer scaling
 /// from leaving an empty band between them.
-fn main_frame_alignment(
-    view: crate::config::OpponentView,
-) -> (iced::alignment::Horizontal, iced::alignment::Vertical) {
+fn main_frame_alignment(view: crate::config::OpponentView) -> (iced::alignment::Horizontal, iced::alignment::Vertical) {
     match view {
-        crate::config::OpponentView::StackHorizontally => (
-            iced::alignment::Horizontal::Right,
-            iced::alignment::Vertical::Center,
-        ),
-        crate::config::OpponentView::StackVertically => (
-            iced::alignment::Horizontal::Center,
-            iced::alignment::Vertical::Bottom,
-        ),
-        _ => (
-            iced::alignment::Horizontal::Center,
-            iced::alignment::Vertical::Center,
-        ),
+        crate::config::OpponentView::StackHorizontally => {
+            (iced::alignment::Horizontal::Right, iced::alignment::Vertical::Center)
+        }
+        crate::config::OpponentView::StackVertically => {
+            (iced::alignment::Horizontal::Center, iced::alignment::Vertical::Bottom)
+        }
+        _ => (iced::alignment::Horizontal::Center, iced::alignment::Vertical::Center),
     }
 }
 
@@ -458,8 +450,7 @@ fn framebuffer_view<'a>(
                 .on_move(move |p| {
                     let nx = p.x / w * native_w as f32 - origin_x;
                     let ny = p.y / h * native_h as f32 - origin_y;
-                    let inside =
-                        (0.0..screen.width as f32).contains(&nx) && (0.0..screen.height as f32).contains(&ny);
+                    let inside = (0.0..screen.width as f32).contains(&nx) && (0.0..screen.height as f32).contains(&ny);
                     let pos = (
                         nx.clamp(0.0, (screen.width - 1) as f32) as u16,
                         ny.clamp(0.0, (screen.height - 1) as f32) as u16,
@@ -600,17 +591,18 @@ fn opponent_framebuffer_view<'a>(
         if fractional_scaling {
             centered(fb)
         } else {
-            let framed = container(fb)
-                .width(Length::Fixed(w))
-                .height(Length::Fixed(h))
-                .style(|_theme: &iced::Theme| iced::widget::container::Style {
-                    shadow: iced::Shadow {
-                        color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55),
-                        offset: iced::Vector::new(0.0, 8.0),
-                        blur_radius: 24.0,
-                    },
-                    ..Default::default()
-                });
+            let framed =
+                container(fb)
+                    .width(Length::Fixed(w))
+                    .height(Length::Fixed(h))
+                    .style(|_theme: &iced::Theme| iced::widget::container::Style {
+                        shadow: iced::Shadow {
+                            color: iced::Color::from_rgba(0.0, 0.0, 0.0, 0.55),
+                            offset: iced::Vector::new(0.0, 8.0),
+                            blur_radius: 24.0,
+                        },
+                        ..Default::default()
+                    });
             centered(framed.into())
         }
     })
@@ -1217,7 +1209,10 @@ fn priming_copy(lang: &LanguageIdentifier, state: &State) -> Option<PrimingCopy>
     // [`State::prime_wait_since`]) — shown from zero rather than
     // appearing once the wait gets long, so nothing moves under the
     // user partway through.
-    let elapsed = state.prime_wait_since.as_ref().map_or(0, |(_, at)| at.elapsed().as_secs());
+    let elapsed = state
+        .prime_wait_since
+        .as_ref()
+        .map_or(0, |(_, at)| at.elapsed().as_secs());
     Some(PrimingCopy {
         title,
         detail,

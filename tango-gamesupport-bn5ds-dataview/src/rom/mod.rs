@@ -40,8 +40,7 @@ pub mod navicust;
 use tango_gamesupport_common_dataview::nds;
 use tango_gamesupport_common_dataview::rom::LegalChips;
 
-const LEGAL_CHIPS: LegalChips =
-    LegalChips::from_ranges(&[1..=180, 187..=198, 201..=280, 301..=314]);
+const LEGAL_CHIPS: LegalChips = LegalChips::from_ranges(&[1..=180, 187..=198, 201..=280, 301..=314]);
 
 pub struct Offsets {
     legal_chips: LegalChips,
@@ -814,7 +813,9 @@ impl Navi<'_> {
                 .get(which * std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>()..)?
                 .get(..std::mem::size_of::<tango_gamesupport_common_dataview::rom::Palette>())?,
         );
-        Some(tango_gamesupport_common_dataview::rom::apply_palette(paletted, &palette))
+        Some(tango_gamesupport_common_dataview::rom::apply_palette(
+            paletted, &palette,
+        ))
     }
 }
 
@@ -928,9 +929,18 @@ const PARTY_PROGRAM_BONUSES: [crate::save::PartycustBonus; super::NUM_PARTY_PROG
         B { attack: 1, ..NONE },
         B { attack: 2, ..NONE },
         B { attack: 3, ..NONE },
-        B { chip_attack: 30, ..NONE },
-        B { chip_attack: 40, ..NONE },
-        B { chip_attack: 50, ..NONE },
+        B {
+            chip_attack: 30,
+            ..NONE
+        },
+        B {
+            chip_attack: 40,
+            ..NONE
+        },
+        B {
+            chip_attack: 50,
+            ..NONE
+        },
         B {
             max_hp: 50,
             attack: 1,

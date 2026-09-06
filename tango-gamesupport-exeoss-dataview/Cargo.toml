@@ -10,9 +10,9 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
-image = { version = "0.25", default-features = false, features = ["png"] }
-bytemuck = { version = "1", features = ["derive", "const_zeroed", "min_const_generics"] }
-num-traits = "0.2"
+image = { workspace = true, features = ["png"] }
+bytemuck = { workspace = true, features = ["derive", "const_zeroed", "min_const_generics"] }
+num-traits.workspace = true
 # The bank headers' integrity stamps are stock CRC32s.
 crc32fast.workspace = true
 

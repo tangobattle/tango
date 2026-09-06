@@ -24,31 +24,28 @@
 //! - [`throttler`]: the clock-sync governor both engines pace with.
 //! - [`keys`]: the joypad bit vocabulary.
 
-pub mod engine;
-#[cfg(target_arch = "wasm32")]
-pub mod hosting;
-pub mod link;
 pub mod analysis;
 pub mod audio;
 pub mod battle;
+pub mod engine;
+#[cfg(target_arch = "wasm32")]
+pub mod hosting;
 pub mod input;
+pub mod link;
 pub mod replay;
 pub mod seek;
 pub mod solo;
 pub mod telemetry;
 pub mod throttler;
 
-pub use solo::{Console, Solo, SoloConfig};
-pub use engine::{Advance, Match};
 pub use audio::{AudioIn, AudioOut};
-pub use link::{
-    AudioSampleRate, Backend, FrameTiming, Link, PeerRom, Screen, ScreenLayout, SessionMode, Side, Snapshot,
-    StartConfig,
-};
+pub use engine::{Advance, Match};
+pub use input::HostInput;
+pub use link::{Backend, Link, PeerRom, Screen, ScreenLayout, SessionMode, Side, Snapshot, StartConfig};
 pub use replay::{
     BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,
 };
-pub use input::HostInput;
+pub use solo::{Console, Solo, SoloConfig};
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`
 /// each frame and shave the returned fps off the tick rate. Shared by

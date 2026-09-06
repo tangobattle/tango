@@ -13,6 +13,7 @@
 //! pumps, slicing the seek chase and the prefetch pass so neither can
 //! monopolise the frame.
 
+use num_traits::ToPrimitive;
 use std::sync::Arc;
 
 use tango_library::game;
@@ -71,7 +72,7 @@ pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
         replay,
         // Both seats always share one engine, so either seat's rate is
         // the session's.
-        games[0].pvp.frame_timing().fps() as f32,
+        games[0].pvp.tps().to_f32().unwrap(),
         crate::audio::sample_rate(),
         // No picture-in-picture: the inset is a second screen's worth
         // of pixels on a display that hasn't room for the first.

@@ -698,7 +698,16 @@ impl App {
                 clip,
                 swap_sides,
             } => self
-                .spawn_replay_render(replay, output, settings, rounds, round_marks, has_setup, clip, swap_sides)
+                .spawn_replay_render(
+                    replay,
+                    output,
+                    settings,
+                    rounds,
+                    round_marks,
+                    has_setup,
+                    clip,
+                    swap_sides,
+                )
                 .map(Message::Replays),
             E::AnalyzeReplay(path) => {
                 // Full re-simulation of the replay — seconds of CPU on a

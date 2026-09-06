@@ -214,7 +214,9 @@ impl Save {
         // cart that has ever been saved, and picking either is right if
         // one ever did.
         banks.sort_by_key(|bank| std::cmp::Reverse(bank.generation));
-        let newest = *banks.first().ok_or_else(|| Error::InvalidGameName(BANK_MAGIC.to_vec()))?;
+        let newest = *banks
+            .first()
+            .ok_or_else(|| Error::InvalidGameName(BANK_MAGIC.to_vec()))?;
         let live = banks
             .into_iter()
             .find(|bank| checksum(bank.payload(&buf)) == bank.payload_checksum)
@@ -281,8 +283,7 @@ impl save::Save for Save {
         let payload = checksum(self.payload());
         self.live.payload_checksum = payload;
         let at = self.live.at;
-        self.buf[at + PAYLOAD_CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]
-            .copy_from_slice(&payload.to_le_bytes());
+        self.buf[at + PAYLOAD_CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(&payload.to_le_bytes());
         let header = header_checksum(&self.buf[at..][..BANK_HEADER_SIZE]);
         self.buf[at + HEADER_CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(&header.to_le_bytes());
     }
@@ -357,8 +358,7 @@ pub struct ChipsView<S> {
 /// Where slot `chip_index` of folder `folder_index` sits in the
 /// payload, or `None` if the cart has no such slot.
 fn folder_slot(folder_index: usize, chip_index: usize) -> Option<usize> {
-    (folder_index < NUM_FOLDERS && chip_index < FOLDER_SIZE)
-        .then_some(FOLDER_OFFSET + chip_index * FOLDER_ENTRY_SIZE)
+    (folder_index < NUM_FOLDERS && chip_index < FOLDER_SIZE).then_some(FOLDER_OFFSET + chip_index * FOLDER_ENTRY_SIZE)
 }
 
 impl<S: std::ops::Deref<Target = Save>> save::ChipsView for ChipsView<S> {
@@ -470,10 +470,7 @@ impl<S: std::ops::Deref<Target = Save>> save::NaviView for NaviView<S> {
     /// [`NAVI_LIMIT`]. They are the cart's own and don't move: it has
     /// no styles, no NaviCust and no patch cards to raise or lower them
     /// with, which is why nothing about the save is read to answer this.
-    fn folder_limits(
-        &self,
-        _assets: &dyn tango_gamesupport_common_dataview::rom::Assets,
-    ) -> save::FolderLimits {
+    fn folder_limits(&self, _assets: &dyn tango_gamesupport_common_dataview::rom::Assets) -> save::FolderLimits {
         save::FolderLimits {
             navi_limit: Some(NAVI_LIMIT),
             max_copies: |_| MAX_COPIES,
@@ -613,8 +610,20 @@ mod tests {
     fn an_edited_folder_reads_back_and_restamps() {
         let mut save = Save::new(&cart([2, 1])).unwrap();
         let edits = [
-            (0, save::Chip { id: 33, code: save::ChipCode::B }),
-            (29, save::Chip { id: 119, code: save::ChipCode::Star }),
+            (
+                0,
+                save::Chip {
+                    id: 33,
+                    code: save::ChipCode::B,
+                },
+            ),
+            (
+                29,
+                save::Chip {
+                    id: 119,
+                    code: save::ChipCode::Star,
+                },
+            ),
         ];
         {
             let mut view = save.view_chips_mut().unwrap();
@@ -643,10 +652,7 @@ mod tests {
         // And the result is a save again, on the bank the edit went to.
         let reparsed = Save::new(&save.to_sram_dump()).unwrap();
         assert_eq!(reparsed.generation(), 2);
-        assert_eq!(
-            reparsed.view_chips().unwrap().chip(0, 0).as_ref(),
-            Some(&edits[0].1)
-        );
+        assert_eq!(reparsed.view_chips().unwrap().chip(0, 0).as_ref(), Some(&edits[0].1));
     }
 
     /// The navi answers with the HP the cart hands him and the rules

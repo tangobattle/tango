@@ -10,6 +10,7 @@
 //! unchanged signal is not a re-render.
 
 use dioxus::prelude::*;
+use num_traits::ToPrimitive;
 
 use crate::engine;
 use crate::link::Snapshot;
@@ -240,7 +241,7 @@ fn start_single_player(loadout: Loadout, mut screen: Signal<Screen>) {
             // that PvP negotiates has a single-player counterpart: pin
             // it to now, once, at boot.
             Some(now()),
-            game.pvp.frame_timing().fps() as f32,
+            game.pvp.tps().to_f32().unwrap(),
             crate::audio::sample_rate(),
         );
         match session {

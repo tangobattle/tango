@@ -1,6 +1,7 @@
 use std::{cmp::Ordering, collections::HashMap, io::Cursor};
 
 use super::*;
+use crate::widgets::muted_color;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use sweeten::widget::{column, row};
 

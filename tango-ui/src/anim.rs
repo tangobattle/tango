@@ -266,4 +266,3 @@ pub fn exit_fade<'a, M: 'a>(
         });
     iced::widget::Stack::new().push(content.into()).push(wash).into()
 }
-

@@ -38,26 +38,26 @@ pub enum NavicustEffect {
 pub fn navicust_part_effects(id: usize) -> &'static [NavicustEffect] {
     use NavicustEffect::*;
     match id >> 2 {
-        1 => &[Other],                       // SprArmr
-        2 => &[Other],                       // Custom1
-        3 => &[Other],                       // Custom2
-        4 => &[MegaLimit(1)],                // MegFldr1
-        5 => &[MegaLimit(2)],                // MegFldr2
-        6 => &[GigaLimit(1)],                // GigFldr1
-        7..=34 => &[Other],                  // FstBarr … GigaVirs
-        35..=41 => &[Other],                 // Attck+1 … ChargMAX
-        42 => &[MaxHp(50)],                  // HP+50
-        43 => &[MaxHp(100)],                 // HP+100
-        44 => &[MaxHp(200)],                 // HP+200
-        45 => &[MaxHp(300)],                 // HP+300
-        46 => &[MaxHp(400)],                 // HP+400
-        47 => &[MaxHp(500)],                 // HP+500
+        1 => &[Other],        // SprArmr
+        2 => &[Other],        // Custom1
+        3 => &[Other],        // Custom2
+        4 => &[MegaLimit(1)], // MegFldr1
+        5 => &[MegaLimit(2)], // MegFldr2
+        6 => &[GigaLimit(1)], // GigFldr1
+        7..=34 => &[Other],   // FstBarr … GigaVirs
+        35..=41 => &[Other],  // Attck+1 … ChargMAX
+        42 => &[MaxHp(50)],   // HP+50
+        43 => &[MaxHp(100)],  // HP+100
+        44 => &[MaxHp(200)],  // HP+200
+        45 => &[MaxHp(300)],  // HP+300
+        46 => &[MaxHp(400)],  // HP+400
+        47 => &[MaxHp(500)],  // HP+500
         // The port's own four, past where the GBA game's table stops:
         // two that buy Navi Changes in a battle, one that buys support
         // from the team, and one that runs. None of them moves HP or a
         // folder limit.
-        48..=51 => &[Other],                 // NavChg+1, NavChg+2, Spport, RUN!
-        _ => &[],                            // 0 = None / unknown
+        48..=51 => &[Other], // NavChg+1, NavChg+2, Spport, RUN!
+        _ => &[],            // 0 = None / unknown
     }
 }
 
