@@ -49,5 +49,8 @@ jobs:
           sudo apt-get install -y clang cmake ninja-build pkg-config libssl-dev
       - name: Test portable core without native library adapters
         run: cargo test --locked --no-default-features -p tango-library -p tango-match -p tango-net-protocol -p tango-replay -p tango-gamesupport-common-dataview
-      - name: Test native library, sessions, and save editor
-        run: cargo test --locked --lib -p tango-library --features tango-library/gamesupport-bn6 -p tango-session -p tango-gamesupport-common-ui
+      # Keep headless game registrations separate from the editor's UI features.
+      - name: Test native library and sessions
+        run: cargo test --locked --lib -p tango-library --features tango-library/gamesupport-bn6 -p tango-session
+      - name: Test save editor
+        run: cargo test --locked --lib -p tango-gamesupport-common-ui

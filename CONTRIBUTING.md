@@ -21,13 +21,19 @@ cargo test --locked --no-default-features \
 ```
 
 Exercise the real filesystem/HTTP patch adapter, a registered game, the
-session drivers, and save editor with:
+session drivers, and save editor with separate commands:
 
 ```sh
 cargo test --locked --lib -p tango-library \
   --features tango-library/gamesupport-bn6 \
-  -p tango-session -p tango-gamesupport-common-ui
+  -p tango-session
+cargo test --locked --lib -p tango-gamesupport-common-ui
 ```
+
+Keep these commands separate: Cargo unifies features across the selected
+packages. The editor enables `tango-gamesupport/ui`, which requires any
+game aggregator in the same build to enable its own `ui` feature too.
+The native library check intentionally exercises headless BN6 support.
 
 For wider native coverage, including every game, use:
 
