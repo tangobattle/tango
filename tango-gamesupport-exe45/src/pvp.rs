@@ -96,7 +96,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
         let disable_bgm = config.disable_bgm;
-        let match_type = config.match_type.0;
+        let match_type = config.match_type;
         // Seed the rngs per core once, at save load (see module docs).
         let rng1 = config.core_rng_seed(player, 0);
         let rng2 = config.core_rng_seed(player, 1);

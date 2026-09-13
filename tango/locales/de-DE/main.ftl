@@ -415,3 +415,23 @@ playback-priming-elapsed = { $secs } s
 playback-priming-failed = Die Spiele haben ihren Kampf nicht erreicht.
 settings-data-folder = Datenordner
 settings-data-folder-change = Ändern…
+
+## Package editor host
+
+package-editor-title = Paketeditor
+package-editor-undo = Rückgängig
+package-editor-redo = Wiederholen
+package-editor-save = Speichern
+package-editor-save-as = Speichern unter…
+package-editor-reload = Pakete neu laden
+package-editor-reload-dirty = Speichere deine Änderungen, bevor du die Pakete neu lädst.
+package-editor-read-only = Dieses Dokument ist schreibgeschützt.
+package-editor-saved = Gespeichert.
+package-editor-close-prompt = Änderungen vor dem Schließen speichern?
+package-editor-save-close = Speichern und schließen
+package-editor-discard = Änderungen verwerfen
+package-editor-keep-editing = Weiter bearbeiten
+package-editor-error = Der Vorgang konnte nicht abgeschlossen werden: { $error }
+package-editor-unknown-action = Unbekannte Host-Aktion: { $id }
+package-editor-not-configured = Der Editor wurde noch nicht konfiguriert.
+package-editor-no-save-path = Dieser Spielstand hat keine zugehörige Datei.

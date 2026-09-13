@@ -1,0 +1,9 @@
+telemetry-hp = HP
+telemetry-x = Column
+telemetry-y = Row
+telemetry-you = You
+telemetry-opponent = Opponent
+telemetry-chips = { $count } chips used
+telemetry-empty = No telemetry was recorded.
+telemetry-incomplete = Some telemetry could not be collected.
+telemetry-time = { $seconds } s

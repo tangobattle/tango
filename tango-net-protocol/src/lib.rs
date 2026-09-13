@@ -107,4 +107,8 @@ pub mod derive;
 // bytes — the file the game itself calls most recently saved — so the
 // choice travels inside `save_data` and priming reads it there on both
 // peers.
-pub const PROTOCOL_VERSION: u32 = 0x56;
+// 0x57: Settings carries a pinned package gamemode and its option values;
+// the commit reveal binds the sender's exact simulation settings by digest.
+// Bincode has no absent trailing fields, so older settings cannot decode it.
+// 0x58: flat native gamemode choices and an explicit package BGM setting.
+pub const PROTOCOL_VERSION: u32 = 0x58;

@@ -13,19 +13,22 @@ publish = false
 # std implementations are behind the default `native` feature. Builds
 # for native AND wasm32.
 [dependencies]
-futures.workspace = true
+futures = { workspace = true, optional = true }
 log.workspace = true
 mailparse.workspace = true
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha3.workspace = true
 thiserror.workspace = true
 unic-langid.workspace = true
 
 bps.workspace = true
 tango-gamesupport = { path = "../tango-gamesupport" }
+tango-match = { path = "../tango-match", optional = true }
 tango-patch = { workspace = true, features = ["package", "index"] }
 tango-replay = { path = "../tango-replay" }
+tango-script = { path = "../tango-script", optional = true }
 
 fluent-templates.workspace = true
 
@@ -34,9 +37,7 @@ tango-gamesupport-bn1 = { path = "../tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../tango-gamesupport-bn2", optional = true }
 tango-gamesupport-bn3 = { path = "../tango-gamesupport-bn3", optional = true }
 tango-gamesupport-bn4 = { path = "../tango-gamesupport-bn4", optional = true }
-tango-gamesupport-bn5 = { path = "../tango-gamesupport-bn5", optional = true }
 tango-gamesupport-bn5ds = { path = "../tango-gamesupport-bn5ds", optional = true }
-tango-gamesupport-bn6 = { path = "../tango-gamesupport-bn6", optional = true }
 tango-gamesupport-exe45 = { path = "../tango-gamesupport-exe45", optional = true }
 tango-gamesupport-exeoss = { path = "../tango-gamesupport-exeoss", optional = true }
 
@@ -47,12 +48,15 @@ reqwest = { workspace = true, features = ["stream"], optional = true }
 steamlocate = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["time"], optional = true }
 walkdir = { workspace = true, optional = true }
+# Directory snapshots use capability-based traversal on native filesystems.
+cap-fs-ext = { version = "4", optional = true }
+cap-std = { version = "4", optional = true }
 # Preserve the archive formats supported by the desktop library.
 zip = { workspace = true, features = ["aes-crypto", "bzip2", "deflate64", "deflate", "lzma", "time", "zstd", "xz"], optional = true }
 
 [dev-dependencies]
-# The library never writes a package; the patch tests build one to scan,
-# and stand up a real HTTP server to fetch it from.
+tempfile = "3"
+# Legacy patch tests build fixtures and serve them over local HTTP.
 tango-patch = { workspace = true, features = ["package", "index", "bundle"] }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
 
@@ -60,15 +64,16 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-
 default = ["native"]
 # std filesystem + reqwest HTTP + Steam (BNLC) discovery. A wasm build
 # turns this off and supplies its own IndexedDB / fetch implementations.
-native = ["dep:reqwest", "dep:steamlocate", "dep:tokio", "dep:walkdir", "dep:zip", "reqwest/native-tls"]
+native = ["packages", "dep:cap-std", "dep:cap-fs-ext", "dep:reqwest", "dep:steamlocate", "dep:tokio", "dep:walkdir", "dep:zip", "reqwest/native-tls"]
+# Package execution uses upstream Luau's C++ runtime. The existing browser
+# frontend does not embed editors and keeps its wasm-bindgen target.
+packages = ["dep:tango-script", "dep:tango-match", "dep:futures"]
 gamesupport-bcc = ["dep:tango-gamesupport-bcc"]
 gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
 gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]
 gamesupport-bn3 = ["dep:tango-gamesupport-bn3"]
 gamesupport-bn4 = ["dep:tango-gamesupport-bn4"]
-gamesupport-bn5 = ["dep:tango-gamesupport-bn5"]
 gamesupport-bn5ds = ["dep:tango-gamesupport-bn5ds"]
-gamesupport-bn6 = ["dep:tango-gamesupport-bn6"]
 gamesupport-exe45 = ["dep:tango-gamesupport-exe45"]
 gamesupport-exeoss = ["dep:tango-gamesupport-exeoss"]
 gamesupport-all = [
@@ -77,9 +82,7 @@ gamesupport-all = [
     "gamesupport-bn2",
     "gamesupport-bn3",
     "gamesupport-bn4",
-    "gamesupport-bn5",
     "gamesupport-bn5ds",
-    "gamesupport-bn6",
     "gamesupport-exe45",
     "gamesupport-exeoss",
 ]

@@ -206,7 +206,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         let music_tracks = ewram.music_tracks;
         // Mode menu cursor: 0 = Normal, 1 = Random. Anything else the
         // host might send (there is no third netplay mode) walks Normal.
-        let mode = if config.match_type.0 == 1 { 1u8 } else { 0u8 };
+        let mode = if config.match_type == 1 { 1u8 } else { 0u8 };
 
         // The game's own result bookkeeping, reported from core 0 only
         // (core 1's would be the same match seen from the other side).

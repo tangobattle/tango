@@ -5,7 +5,7 @@ use super::*;
 impl App {
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
-        let family_before = self.loadout.family;
+        let game_before = self.loadout.choice();
         // Candidate snapshot for the lobby's exit animation — taken
         // before dispatch (the handler about to run may reset the
         // phase/lobby), kept only if the lobby actually left.
@@ -59,7 +59,7 @@ impl App {
         // within the family only re-renders the save's content, and
         // that entrance rides in with the reloaded save itself: its
         // view state is minted by the load and starts its own rise.
-        if family_before != self.loadout.family {
+        if game_before != self.loadout.choice() {
             self.play.animate_family_switch(now);
         }
         task
@@ -102,13 +102,12 @@ impl App {
                 // way back.
                 self.settings.held = Default::default();
                 // Clicking a scanner-backed tab re-runs the scan in the
-                // background — there are no Rescan buttons; this is how
-                // new files on disk get noticed. Cheap when nothing
+                // background so new files on disk get noticed. Cheap when nothing
                 // changed (stat-fingerprint gated, see Scanners::rescan).
                 // Deliberately not limited to *entering* the tab: pressing
                 // the tab you are already on is what a user reaches for
                 // when they have just dropped a file in, and it is the
-                // only gesture left that means "look again".
+                // a direct way to ask the tab to look again.
                 // Play additionally throws away the loaded bundle after
                 // the scan, even when the selected paths did not change:
                 // the click is an explicit reload from disk, including
@@ -134,6 +133,7 @@ impl App {
                 let task = self.update_play(m);
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
+            Message::Packages(m) => self.update_packages(m),
             Message::Patches(m) => self.update_patches(m),
             Message::DiscordTick => {
                 self.handle_discord_tick();
@@ -220,7 +220,16 @@ impl App {
                 iced::Task::none()
             }
             Message::Replays(m) => self.update_replays(m),
-            Message::Settings(m) => self.update_settings(m).map(Message::Settings),
+            Message::Settings(m) => {
+                let task = self.update_settings(m).map(Message::Settings);
+                self.loadout.gamemodes.refresh(
+                    &self.scanners,
+                    self.loadout.rom(&self.scanners),
+                    self.loadout.patch.is_some(),
+                    self.config.disable_bgm_in_pvp,
+                );
+                iced::Task::batch([task, self.resend_settings_if_lobby()])
+            }
             Message::Welcome(m) => self.update_welcome(m),
             Message::Session(m) => {
                 // In-match frame-delay slider: persist the new value to config so
@@ -355,7 +364,8 @@ impl App {
                             duty.job,
                             duty.round_boundaries,
                         ) {
-                            Ok((s, audio, threads)) => {
+                            Ok((s, game, audio, threads)) => {
+                                self.session.local_game = game;
                                 self.session.replay_path = Some(path.clone());
                                 self.session.active = Some(Box::new(s));
                                 self.session.audio_binding = audio;
@@ -393,7 +403,12 @@ impl App {
                 let was_pvp = self.session.active_as::<session::pvp::PvpSession>().is_some();
                 let task = self
                     .session
-                    .update(m, &self.config.input_mapping, &self.config.language)
+                    .update(
+                        m,
+                        &self.config.input_mapping,
+                        &self.config.language,
+                        &crate::ui::theme::theme_for(&self.config),
+                    )
                     .map(Message::Session);
                 // A replay that just played out hands off to the queue. Done
                 // here rather than through `Session::is_ended` on purpose:
@@ -502,6 +517,7 @@ impl App {
                         // their setup is actually visible.
                         let auto_open = self.config.show_opponent_setup && panes.opponent_loaded.is_some();
                         self.session.active = Some(Box::new(session));
+                        self.session.local_game = panes.local_game;
                         self.session.pvp_panes = Some(panes);
                         self.session.audio_binding = audio;
                         self.session.attach_drive_threads([drive]);
@@ -538,7 +554,7 @@ impl App {
                         log::info!(
                             "initial scan: {} rom(s), {} save game(s), {} patch(es)",
                             self.scanners.roms.read().len(),
-                            self.scanners.saves.read().values().map(|v| v.len()).sum::<usize>(),
+                            self.scanners.saves.read().files().len(),
                             self.scanners.patches.read().installed.len(),
                         );
                         self.restore_selection();
@@ -587,6 +603,8 @@ impl App {
                         iced::Task::none()
                     }
                 };
+                let package_scan = self.rescan_packages_when_idle();
+                let task = iced::Task::batch([task, package_scan]);
                 // One rule for every landing: the selection's patch
                 // should be on disk. At startup that's the restored
                 // selection, which resolves against the repo index and

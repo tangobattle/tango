@@ -1,3 +1,4 @@
+pub mod packages;
 pub mod patches;
 pub mod play;
 pub mod replays;

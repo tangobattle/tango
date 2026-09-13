@@ -93,9 +93,9 @@ pub async fn rescan() {
     let config = &library.config;
 
     let rom_listing = library.files.list(&rom::scan_roots(&config.roms_path())).await;
-    library
-        .roms
-        .rescan_if_changed(&rom_listing, || Some(rom::scan_roms(&library.files, &rom_listing)));
+    library.roms.rescan_if_changed(&rom_listing, || {
+        Some(rom::scan_roms(&library.files, &rom_listing, &config.roms_path()))
+    });
 
     let save_listing = library.files.list(&[config.saves_path()]).await;
     library

@@ -1,7 +1,7 @@
 name = Mega Man Battle Network 2
 short = BN2
 variant-0 = Mega Man Battle Network 2
-match-type-0-0 = Single
+match-type-single = Single
 save-hub = Hub/Normal
 save-guts = Guts
 save-custom = Custom

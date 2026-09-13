@@ -52,6 +52,8 @@
 //! a link cable has no detach signal), so whichever core leaves first is
 //! the match end.
 
+pub mod stream;
+
 use std::sync::{Arc, Mutex};
 
 /// How a finished round came out, in **absolute** player terms; hosts
@@ -199,7 +201,7 @@ pub trait CorePoller<Core>: PollerState {
 /// `Clone + Send` poller — a game writes `#[derive(Clone)]` and is
 /// done. The collector holds the clones type-erased, so a [`Store`]
 /// never learns what console (let alone what game) it belongs to.
-pub trait PollerState: Send {
+pub trait PollerState: Send + std::any::Any {
     fn capture(&self) -> PollerSnapshot;
     fn restore(&mut self, snapshot: &PollerSnapshot);
 }
@@ -406,9 +408,94 @@ pub struct Telemetry<Core> {
     /// first observation: the store's ring starts at tick 1, and this
     /// is what sits under it.
     fresh: [PollerSnapshot; 2],
+    checkpoint_history: Option<Arc<SnapshotHistory>>,
+    observed_through: Option<u32>,
 }
 
-impl<Core> Telemetry<Core> {
+struct SnapshotHistory {
+    events: Vec<(u32, Event)>,
+    outcomes: Vec<(u32, Outcome)>,
+    round_open: bool,
+    round_started_at: u32,
+    aborted: bool,
+    rounds: u32,
+}
+
+/// Sparse lifecycle history is shared between captures until an event changes
+/// it. Dense observations stay in the consumer's timeline. Pending startup
+/// reports and private poller state travel with the emulator capture too.
+pub struct Snapshot {
+    history: Arc<SnapshotHistory>,
+    pending: Vec<Report>,
+    pollers: Mutex<[PollerSnapshot; 2]>,
+    poller_types: [std::any::TypeId; 2],
+    observed_through: Option<u32>,
+}
+
+impl<Core: 'static> Telemetry<Core> {
+    pub fn snapshot(&mut self) -> Snapshot {
+        let history = self
+            .checkpoint_history
+            .get_or_insert_with(|| {
+                let store = self.store.lock().unwrap();
+                Arc::new(SnapshotHistory {
+                    events: store.events.clone(),
+                    outcomes: store.outcome_reports.clone(),
+                    round_open: store.round_open,
+                    round_started_at: store.round_started_at,
+                    aborted: store.aborted,
+                    rounds: self.rounds,
+                })
+            })
+            .clone();
+        Snapshot {
+            history,
+            pending: self.events.queue.lock().unwrap().clone(),
+            pollers: Mutex::new(self.pollers.each_ref().map(|poller| poller.capture())),
+            poller_types: self.pollers.each_ref().map(|poller| poller.as_ref().type_id()),
+            observed_through: self.observed_through,
+        }
+    }
+
+    pub fn validate_snapshot(&self, snapshot: &Snapshot) -> Result<(), crate::Error> {
+        if self.pollers.each_ref().map(|poller| poller.as_ref().type_id()) != snapshot.poller_types {
+            return Err(crate::Error::Unsupported("capture has different lifecycle pollers"));
+        }
+        Ok(())
+    }
+
+    pub fn restore(&mut self, snapshot: &Snapshot) -> Result<(), crate::Error> {
+        self.validate_snapshot(snapshot)?;
+        let pollers = snapshot
+            .pollers
+            .lock()
+            .map_err(|_| crate::Error::Unsupported("lifecycle capture lock poisoned"))?;
+        self.on_rewind(snapshot.observed_through.unwrap_or(0));
+        let history = &snapshot.history;
+        let mut store = self.store.lock().unwrap();
+        if snapshot.observed_through.is_none() {
+            store.samples.clear();
+            store.poller_states.clear();
+        }
+        store.events = history.events.clone();
+        store.events_drained = store.events_drained.min(store.events.len());
+        store.outcome_reports = history.outcomes.clone();
+        store.round_open = history.round_open;
+        store.round_started_at = history.round_started_at;
+        store.aborted = history.aborted;
+        self.rounds = history.rounds;
+        self.observed_through = snapshot.observed_through;
+        for (poller, state) in self.pollers.iter_mut().zip(pollers.iter()) {
+            poller.restore(state);
+        }
+        *self.events.queue.lock().unwrap() = snapshot.pending.clone();
+        self.checkpoint_history = Some(history.clone());
+        Ok(())
+    }
+    /// Lifecycle count before this tick's observations are folded.
+    pub fn round(&self) -> u32 {
+        self.rounds
+    }
     /// Read one console's battle state. Engines call this per core —
     /// a link hands out one core at a time, so the two reads cannot
     /// share a borrow.
@@ -420,6 +507,7 @@ impl<Core> Telemetry<Core> {
     /// drain the sink's edge reports and stamp them with the tick.
     /// Everything from here on is the same arithmetic for any console.
     pub fn observe(&mut self, obs0: Option<CoreObs>, obs1: Option<CoreObs>, tick: u32) {
+        self.observed_through = Some(tick);
         let obs = match (obs0, obs1) {
             (Some(c0), Some(c1)) => Some(BattleObs {
                 // The sim's own readings come from player 0's core; the
@@ -431,6 +519,9 @@ impl<Core> Telemetry<Core> {
         };
 
         let reports = self.events.take();
+        if !reports.is_empty() {
+            self.checkpoint_history = None;
+        }
         let mut store = self.store.lock().unwrap();
         // Reports process by kind, not arrival order — the one order
         // that composes when several fire in one tick: the verdict
@@ -493,6 +584,8 @@ impl<Core> Telemetry<Core> {
     /// Revoke everything an engine speculated past `tick`. Called when
     /// a rollback discards work: also engine-neutral.
     pub fn on_rewind(&mut self, tick: u32) {
+        self.checkpoint_history = None;
+        self.observed_through = self.observed_through.map(|last| last.min(tick));
         let mut store = self.store.lock().unwrap();
         let s = store.samples.partition_point(|(t, _)| *t <= tick);
         store.samples.truncate(s);
@@ -569,6 +662,8 @@ impl<Core> Telemetry<Core> {
                 events,
                 store: store.clone(),
                 rounds,
+                checkpoint_history: None,
+                observed_through: None,
             },
             store,
         )

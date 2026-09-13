@@ -19,16 +19,25 @@ pub mod pvp;
 use std::sync::LazyLock;
 use tango_gamesupport::{BackgroundRef, Family, Game, LazyImage, Region, SaveTemplates, Volume};
 
-/// Single Battle and Triple Battle, each in a plain and a Team subtype.
-/// The two kinds are separate routes off the Network board rather than
-/// separate modes on one screen — Team Battle is its own board button,
-/// and the mode chooser past it offers the same two buttons the plain
-/// route's does, which is what makes team a subtype of each rather than
-/// a third and fourth mode.
-///
-/// All four run as Practice: Real Thing spends the players' own records
-/// on the result, which is not netplay's to spend.
-const MATCH_TYPES: &[usize] = &[2, 2];
+/// Each selectable battle is a top-level gamemode. Team variants use both screens.
+const MATCH_TYPES: &[tango_gamesupport::MatchType] = &[
+    tango_gamesupport::MatchType {
+        name: "single-team",
+        legacy_replay_code: (0, 0),
+    },
+    tango_gamesupport::MatchType {
+        name: "single",
+        legacy_replay_code: (0, 1),
+    },
+    tango_gamesupport::MatchType {
+        name: "triple-team",
+        legacy_replay_code: (1, 0),
+    },
+    tango_gamesupport::MatchType {
+        name: "triple",
+        legacy_replay_code: (1, 1),
+    },
+];
 
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol2,
@@ -184,6 +193,7 @@ pub static BN5DS_FAMILY: Family = Family {
     id: "bn5ds",
     games: &[&BN5DS],
     match_types: MATCH_TYPES,
+    default_gamemode: 2,
     players_colored_by_seat: false,
     #[cfg(feature = "ui")]
     save_editor: &ui::SAVE_EDITOR,
@@ -194,6 +204,7 @@ pub static EXE5DS_FAMILY: Family = Family {
     id: "exe5ds",
     games: &[&EXE5DS],
     match_types: MATCH_TYPES,
+    default_gamemode: 2,
     players_colored_by_seat: false,
     #[cfg(feature = "ui")]
     save_editor: &ui::SAVE_EDITOR,

@@ -1,0 +1,25 @@
+[package]
+name = "tango-script-iced"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+iced.workspace = true
+iced_tiny_skia.workspace = true
+serde_json.workspace = true
+sha3.workspace = true
+sweeten.workspace = true
+tango-script = { path = "../tango-script" }
+tango-ui = { path = "../tango-ui" }
+tiny-skia.workspace = true
+
+[dev-dependencies]
+tango-match = { path = "../tango-match" }
+iced_runtime.workspace = true
+image = { workspace = true, features = ["png"] }
+lucide-icons.workspace = true
+
+[lints]
+workspace = true

@@ -5,6 +5,7 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 
 [dependencies]
+tango-match = { path = "../tango-match" }
 byteorder.workspace = true
 prost.workspace = true
 serde.workspace = true

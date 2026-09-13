@@ -1,7 +1,7 @@
 name = Rockman EXE 2
 short = EXE2
 variant-0 = Rockman EXE 2
-match-type-0-0 = BO1
+match-type-single = BO1
 save-hub = Saito/Normal
 save-guts = Guts
 save-custom = Custom

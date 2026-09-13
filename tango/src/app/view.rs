@@ -278,16 +278,28 @@ impl App {
                     !self.replays_scanned,
                 )
                 .map(Message::Replays),
-            Tab::Patches => self
-                .patches
-                .view(
-                    lang,
-                    &self.scanners,
-                    &self.config,
-                    &self.downloads,
-                    !self.library_scanned,
-                )
-                .map(Message::Patches),
+            Tab::Packages => self
+                .packages
+                .view(lang, &self.scanners, !self.library_scanned || self.is_rescanning())
+                .map(Message::Packages),
+            Tab::Patches => column![
+                iced::widget::button(iced::widget::text(t!(lang, "packages-back")))
+                    .on_press(Message::TabSelected(Tab::Packages))
+                    .padding(crate::ui::style::STANDARD_PADDING)
+                    .style(widgets::neutral),
+                self.patches
+                    .view(
+                        lang,
+                        &self.scanners,
+                        &self.config,
+                        &self.downloads,
+                        !self.library_scanned
+                    )
+                    .map(Message::Patches),
+            ]
+            .spacing(crate::ui::style::PANE_GAP)
+            .height(Fill)
+            .into(),
             Tab::Settings => {
                 tabs::settings::view(lang, &self.config, &self.settings, self.updater.status_blocking(), None)
                     .map(Message::Settings)
@@ -393,9 +405,9 @@ fn top_bar(lang: &LanguageIdentifier, active: Tab, lobby_badge: bool, fullscreen
         // label exposed as a hover tooltip.
         widgets::nav_icon_tab_button(
             Icon::Puzzle,
-            t!(lang, "tab-patches"),
-            Message::TabSelected(Tab::Patches),
-            Tab::Patches == active,
+            t!(lang, "tab-packages"),
+            Message::TabSelected(Tab::Packages),
+            matches!(active, Tab::Packages | Tab::Patches),
         ),
         widgets::nav_icon_tab_button(
             Icon::Settings,

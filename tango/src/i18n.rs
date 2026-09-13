@@ -27,6 +27,18 @@ pub const SUPPORTED_LANGS: &[unic_langid::LanguageIdentifier] = &[
     unic_langid::langid!("vi-VN"),
 ];
 
+/// Match CLI locale tags (including language-only tags) to the app catalogs.
+/// Package catalogs negotiate independently against their own supported set.
+pub fn negotiate_lang(requested: &unic_langid::LanguageIdentifier) -> unic_langid::LanguageIdentifier {
+    fluent_langneg::negotiate_languages(
+        std::slice::from_ref(requested),
+        SUPPORTED_LANGS,
+        Some(&FALLBACK_LANG),
+        fluent_langneg::NegotiationStrategy::Lookup,
+    )[0]
+    .clone()
+}
+
 fluent_templates::static_loader! {
     static LOCALES = {
         locales: "./locales",

@@ -5,7 +5,7 @@
 //! console's frame into the session's own
 //! [`Framebuffer`](crate::Framebuffer).
 //!
-//! The console comes from the game's own registration
+//! The console comes from the host-selected backend
 //! ([`start_solo`](tango_match::Backend::start_solo)), so this
 //! session never learns which emulator is underneath and a game whose
 //! engine offers no single-player ride simply says so.
@@ -29,7 +29,7 @@ use std::sync::Arc;
 use crate::InputCell;
 
 pub struct SinglePlayerSession {
-    game: &'static tango_gamesupport::Game,
+    backend: crate::SessionBackend,
     /// The seam's solo ride, clone-shared with whatever drives it (the
     /// session reads the save off its own handle).
     console: tango_match::Solo,
@@ -59,7 +59,7 @@ impl SinglePlayerSession {
     /// what a desktop wants and what a browser (where there is no such
     /// clock to read) must fill in.
     pub fn new(
-        game: &'static tango_gamesupport::Game,
+        backend: crate::SessionBackend,
         rom: Arc<Vec<u8>>,
         save: Option<Vec<u8>>,
         rtc: Option<std::time::SystemTime>,
@@ -70,14 +70,14 @@ impl SinglePlayerSession {
         // tick; the stream plays the other end without ever reaching
         // for the console.
         let (audio_in, audio_out) = crate::audio::ring();
-        let console = game.pvp.start_solo(tango_match::SoloConfig {
+        let console = backend.start_solo(tango_match::SoloConfig {
             rom: rom.as_ref(),
             save: save.as_deref(),
             rtc,
             audio: Some(audio_in),
         })?;
 
-        let layout = game.pvp.screen_layout(tango_match::SessionMode::Solo);
+        let layout = backend.screen_layout(tango_match::SessionMode::Solo);
         let input = InputCell::new();
         let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
         let stop = Arc::new(AtomicBool::new(false));
@@ -101,7 +101,7 @@ impl SinglePlayerSession {
 
         Ok((
             Self {
-                game,
+                backend,
                 console,
                 layout,
                 input,
@@ -126,8 +126,8 @@ impl SinglePlayerSession {
 }
 
 impl crate::Session for SinglePlayerSession {
-    fn local_game(&self) -> &'static tango_gamesupport::Game {
-        self.game
+    fn backend(&self) -> &(dyn tango_match::Backend + Send + Sync) {
+        &*self.backend
     }
 
     fn frame(&self) -> Vec<u8> {

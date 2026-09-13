@@ -85,7 +85,7 @@ pub struct BackgroundRef {
 /// A parsed save, as [`Game::parse_save`] hands it out. Implemented
 /// only by the private gamesupport layer — the full view surface behind
 /// it is private knowledge; the app clones it, serializes it, and hands
-/// it back to [`SaveEditor::load`].
+/// it back to [`SaveEditorFactory::load`].
 pub trait SaveData: std::any::Any + Send + Sync {
     /// Serialize back to a cartridge SRAM dump.
     fn to_sram_dump(&self) -> Vec<u8>;
@@ -123,7 +123,7 @@ pub mod save_editor;
 #[cfg(feature = "ui")]
 pub use save_editor::{
     AppliedPatch, BuildWarnings, ChipDisplay, LoadedSave, LoadedSavePayload, OpaqueBuildWarnings, PreparedSave,
-    SaveEditor, SaveEditorEvent, SaveEditorMessage, SaveEditorState,
+    SaveEditor, SaveEditorEvent, SaveEditorFactory, SaveEditorMessage, SaveEditorState,
 };
 
 /// One ROM revision Tango supports, with all of its per-game info.
@@ -244,25 +244,24 @@ impl std::fmt::Debug for Game {
 /// A reference to a registered game. Cheap to copy and used as a map key.
 pub type GameRef = &'static Game;
 
-/// A game family — a region/title grouping (e.g. `"bn6"` / `"exe6"`) that
-/// owns its variant [`Game`]s and its localized strings. Each
-/// `tango-gamesupport-<game>` crate exports its families as `FAMILIES`;
-/// the app aggregates those into the single registry and the game-name
-/// localizer, so games and their translations stay together and are
-/// enabled by one feature.
+/// One selectable native gamemode, retained while games migrate to packages.
+#[derive(Clone, Copy, Debug)]
+pub struct MatchType {
+    pub name: &'static str,
+    /// Only for reading/writing the old native replay format.
+    pub legacy_replay_code: (u8, u8),
+}
+
+/// A game family owns its variant games, gamemodes and localized strings.
 pub struct Family {
     /// Family id, e.g. `"bn6"` / `"exe6"`. Equal to the `family` field of
     /// every game in [`games`](Self::games).
     pub id: &'static str,
     /// The variants in this family (its `Game` registrations).
     pub games: &'static [GameRef],
-    /// Length-per-mode list. Entry `i` is how many subtypes mode `i` has —
-    /// e.g. BN6 is `[1, 1]`. Drives the match-type pick_list in the lobby.
-    ///
-    /// A family property, not a per-version one: the two versions of a
-    /// family offer the same modes, and the lobby's picker is offered
-    /// against the family.
-    pub match_types: &'static [usize],
+    /// Flat selectable gamemodes, shared by this family's ROM variants.
+    pub match_types: &'static [MatchType],
+    pub default_gamemode: u8,
     /// Whether these games color their players by *seat* rather than by
     /// field half. The BN games put your own navi on the red half
     /// whichever seat you take, so their panels lead with your side;
@@ -270,7 +269,7 @@ pub struct Family {
     /// players, and its panels follow that fixed order.
     pub players_colored_by_seat: bool,
     /// The family's save editor — a real, renderable
-    /// [`save_editor::SaveEditor`] (load / render / update; every shape
+    /// [`save_editor::SaveEditorFactory`] (load / render / update; every shape
     /// behind it is opaque). Exists only when this crate's `ui` feature
     /// is on — headless builds (the pvp probes, engine hosts) have no
     /// field. A game crate built alongside a `ui` consumer must have its
@@ -284,7 +283,7 @@ pub struct Family {
     /// save's own game info for anything version-specific, so one per
     /// family is one per version too.
     #[cfg(feature = "ui")]
-    pub save_editor: &'static dyn save_editor::SaveEditor,
+    pub save_editor: &'static dyn save_editor::SaveEditorFactory,
     /// Per-locale Fluent fragments for this family, one `(lang, source)`
     /// entry per locale. Keys are *bare* (`name`, `short`,
     /// `variant-<n>`, `variant-<n>-short`, `match-type-<m>-<s>`,
@@ -350,4 +349,18 @@ pub fn detect(games: &[GameRef], rom: &mut Vec<u8>) -> Option<GameRef> {
         rom.truncate(trimmed_len);
     }
     None
+}
+
+impl Family {
+    /// Convert only at the native replay compatibility boundary. Runtime choices
+    /// are flat indices into this family's declared gamemodes.
+    pub fn match_type_from_replay(&self, mode: u32, variant: u32) -> Option<u8> {
+        self.match_types
+            .iter()
+            .position(|choice| {
+                let (m, v) = choice.legacy_replay_code;
+                u32::from(m) == mode && u32::from(v) == variant
+            })
+            .map(|index| index as u8)
+    }
 }

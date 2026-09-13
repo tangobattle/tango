@@ -14,11 +14,12 @@ built from source. Platform package lists and release setup are in
 cargo run --release --bin tango
 ```
 
-The desktop app enables all supported games by default. For a build with
-only one game, disable the defaults explicitly:
+The desktop app includes BN5 and BN6 as bundled Luau packages. The other games still
+use native support, enabled by default. To restrict those native games, disable
+the defaults explicitly:
 
 ```sh
-cargo run --release --bin tango --no-default-features --features gamesupport-bn6
+cargo run --release --bin tango --no-default-features --features gamesupport-bn4
 ```
 
 Use `cargo build --release --bin tango` to build without launching.
@@ -28,11 +29,21 @@ and server requirements; see [its build instructions](tango-lite-web/README.md).
 
 ## Find your way around
 
+The [scripted package platform](tango-script/README.md) is under development.
+It uses upstream Luau with mlua and strict typing for game-owned editors, ROM transformations, and telemetry,
+with `.tangopkg` packages intended to replace Tango patches. The Packages tab
+installs local archives with dependency checking and manages installed versions. BN5 and BN6 use packages
+for save editing, save creation, single-player launch, and online play; their Rust
+game, data-view, and editor crates have been removed. The remaining games keep
+native support until their packages are implemented. Unpatched legacy BN5/BN6 replays import through their packages; legacy patches still
+need import support.
+
 | Area | Location | Responsibility |
 | --- | --- | --- |
 | Desktop app | `tango` | Application state, tabs, native input/audio/video, updates |
 | Browser app | `tango-lite-web` | Browser UI, canvas, audio worklet, IndexedDB |
 | Library | `tango-library` | Game registry, ROM/save/patch/replay scanning, shared settings |
+| Scripted packages | `tango-script`, `packages` | Strict Luau runtime, extension packages, script-owned editors and patches |
 | Sessions | `tango-session` | Single-player, netplay, training, replay drivers and transport |
 | Match engine | `tango-match` | Backend interfaces, rollback coordination, audio, telemetry |
 | Emulators | `tango-backend-mgba`, `tango-backend-melonds` | GBA and DS implementations |

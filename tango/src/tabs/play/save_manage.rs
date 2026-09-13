@@ -30,6 +30,10 @@ pub enum SaveAction {
     /// `template`/`game` stay `None` until the user picks (auto-selected
     /// when only one option exists). The Confirm button is disabled in
     /// that state — there's no "default" template to fall back on.
+    NewPackageSave {
+        draft: String,
+        template: Option<String>,
+    },
     NewSave {
         draft: String,
         game: Option<rom::GameRef>,
@@ -124,6 +128,21 @@ impl State {
                 None
             }
             Message::SaveNewStart => {
+                if loadout.package_rom.is_some() {
+                    let templates = &loadout.editors.templates;
+                    let template = (templates.len() == 1).then(|| templates[0].name.clone());
+                    let title = loadout
+                        .editors
+                        .profile
+                        .as_ref()
+                        .map(|profile| profile.display_name())
+                        .unwrap_or("save");
+                    self.save_action = SaveAction::NewPackageSave {
+                        draft: disambiguate_save_name(&config.saves_path(), &sanitize_filename(title)),
+                        template,
+                    };
+                    return None;
+                }
                 let saves_dir = config.saves_path();
                 // Candidate (variant, template) options span every
                 // owned-ROM variant in the family — so you can bootstrap
@@ -165,6 +184,10 @@ impl State {
                 None
             }
             Message::SaveNewDraftChanged(s) => {
+                if let SaveAction::NewPackageSave { draft, .. } = &mut self.save_action {
+                    *draft = s;
+                    return None;
+                }
                 if let SaveAction::NewSave {
                     draft, auto_default, ..
                 } = &mut self.save_action
@@ -173,6 +196,17 @@ impl State {
                         *auto_default = None;
                     }
                     *draft = s;
+                }
+                None
+            }
+            Message::SaveNewPackageTemplateSelected(name) => {
+                if let SaveAction::NewPackageSave { template, .. } = &mut self.save_action {
+                    *template = loadout
+                        .editors
+                        .templates
+                        .iter()
+                        .find(|template| template.name == name)
+                        .map(|template| template.name.clone());
                 }
                 None
             }
@@ -198,6 +232,18 @@ impl State {
                 None
             }
             Message::SaveNewConfirm => {
+                if let SaveAction::NewPackageSave {
+                    draft,
+                    template: Some(template),
+                } = &self.save_action
+                {
+                    let effect = (!draft.trim().is_empty()).then(|| Effect::SaveNewPackage {
+                        name: draft.trim().to_owned(),
+                        template: template.clone(),
+                    });
+                    self.save_action = SaveAction::None;
+                    return effect;
+                }
                 let SaveAction::NewSave {
                     draft,
                     game: Some(game),
@@ -352,6 +398,38 @@ impl State {
                 .align_y(Alignment::Center)
                 .into()
             }
+            SaveAction::NewPackageSave { draft, template } => {
+                let options: Vec<_> = loadout
+                    .editors
+                    .templates
+                    .iter()
+                    .map(|template| widgets::Choice::new(template.name.clone(), template.label.clone()))
+                    .collect();
+                let selected = options
+                    .iter()
+                    .find(|choice| Some(&choice.value) == template.as_ref())
+                    .cloned();
+                let confirm = (selected.is_some() && !draft.trim().is_empty()).then_some(Message::SaveNewConfirm);
+                row![
+                    widgets::picker(options, selected, |choice| Message::SaveNewPackageTemplateSelected(
+                        choice.value
+                    ))
+                    .placeholder(t!(lang, "save-template-pick"))
+                    .width(Length::Fixed(180.0)),
+                    save_name_input(lang, draft, Message::SaveNewDraftChanged, Message::SaveNewConfirm),
+                    save_action_cancel_button(lang),
+                    widgets::labeled_icon_button_maybe(
+                        Icon::FilePlus,
+                        t!(lang, "save-new-confirm"),
+                        confirm,
+                        STANDARD_PADDING,
+                        widgets::primary_button
+                    ),
+                ]
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into()
+            }
             SaveAction::NewSave {
                 draft, game, template, ..
             } => {
@@ -412,9 +490,10 @@ impl State {
         scanners: &'a Scanners,
         loadout: &'a Loadout,
     ) -> Element<'a, Message> {
-        let can_new = creation_games(loadout, scanners).iter().any(|g| {
-            templates_for_game(g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners).is_some()
-        });
+        let can_new = !loadout.editors.templates.is_empty()
+            || creation_games(loadout, scanners).iter().any(|g| {
+                templates_for_game(g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners).is_some()
+            });
         widgets::icon_button_maybe(
             Icon::FilePlus,
             t!(lang, "save-new"),
@@ -747,6 +826,16 @@ pub fn create_new_save(
     name: &str,
     template: &dyn tango_gamesupport::SaveData,
 ) -> anyhow::Result<std::path::PathBuf> {
+    let mut save = template.clone_box();
+    save.rebuild_checksum();
+    create_new_save_bytes(saves_dir, name, &save.to_sram_dump())
+}
+
+pub fn create_new_save_bytes(
+    saves_dir: &std::path::Path,
+    name: &str,
+    sram: &[u8],
+) -> anyhow::Result<std::path::PathBuf> {
     let name = name.trim();
     if name.is_empty() {
         anyhow::bail!("empty save name");
@@ -764,10 +853,9 @@ pub fn create_new_save(
         anyhow::bail!("destination already exists");
     }
     std::fs::create_dir_all(saves_dir)?;
-    let mut save = template.clone_box();
-    save.rebuild_checksum();
-    let sram = save.to_sram_dump();
-    std::fs::write(&dst, sram)?;
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&dst)?;
+    file.write_all(sram)?;
     Ok(dst)
 }
 

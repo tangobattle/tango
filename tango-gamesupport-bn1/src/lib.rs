@@ -13,7 +13,10 @@ pub mod pvp;
 use std::sync::LazyLock;
 use tango_gamesupport::{BackgroundRef, Error, Family, Game, LazyImage, Region, SaveTemplates, Volume};
 
-const MATCH_TYPES: &[usize] = &[1];
+const MATCH_TYPES: &[tango_gamesupport::MatchType] = &[tango_gamesupport::MatchType {
+    name: "single",
+    legacy_replay_code: (0, 0),
+}];
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol1,
     tga: "01.tga",
@@ -156,6 +159,7 @@ pub static EXE1_FAMILY: Family = Family {
     id: "exe1",
     games: &[&EXE1],
     match_types: MATCH_TYPES,
+    default_gamemode: 0,
     players_colored_by_seat: false,
     #[cfg(feature = "ui")]
     save_editor: &ui::SAVE_EDITOR,
@@ -166,6 +170,7 @@ pub static BN1_FAMILY: Family = Family {
     id: "bn1",
     games: &[&BN1],
     match_types: MATCH_TYPES,
+    default_gamemode: 0,
     players_colored_by_seat: false,
     #[cfg(feature = "ui")]
     save_editor: &ui::SAVE_EDITOR,

@@ -100,6 +100,7 @@ impl Screens {
 struct DsSnapshot {
     snap: melonds_rollback::Snapshot,
     tick: u32,
+    telemetry: Option<tango_match::telemetry::Snapshot>,
 }
 
 /// The raw whole-link bytes inside a seam snapshot this engine
@@ -209,7 +210,7 @@ impl tango_match::Link for Link {
         sanitize(input)
     }
 
-    fn tick(&mut self, inputs: [HostInput; 2]) {
+    fn tick(&mut self, inputs: [HostInput; 2]) -> Result<(), tango_match::Error> {
         self.inner.tick(inputs.map(input_of));
         // Observations are stamped with the just-simulated tick's own
         // index — the first session tick is tick 0, the mgba engine's
@@ -223,6 +224,7 @@ impl tango_match::Link for Link {
             telemetry.observe(obs0, obs1, self.live_tick);
         }
         self.live_tick += 1;
+        Ok(())
     }
 
     fn snapshot(
@@ -237,6 +239,7 @@ impl tango_match::Link for Link {
         Ok(Box::new(DsSnapshot {
             snap,
             tick: self.live_tick,
+            telemetry: self.telemetry.as_mut().map(Telemetry::snapshot),
         }))
     }
 
@@ -244,6 +247,9 @@ impl tango_match::Link for Link {
         let snapshot = snapshot
             .downcast_ref::<DsSnapshot>()
             .expect("a melonDS link can only restore its own snapshots");
+        if let (Some(telemetry), Some(state)) = (&self.telemetry, &snapshot.telemetry) {
+            telemetry.validate_snapshot(state)?;
+        }
         self.inner
             .restore(&snapshot.snap)
             .map_err(|e| tango_match::Error::Backend(Box::new(e)))?;
@@ -256,7 +262,11 @@ impl tango_match::Link for Link {
             // restoring the pre-first-tick capture — over-keeps tick
             // 0's observation; the re-simulated tick 0 re-observes it
             // identically and the fold's same-tick dedup absorbs it.
-            telemetry.on_rewind(snapshot.tick.saturating_sub(1));
+            if let Some(state) = &snapshot.telemetry {
+                telemetry.restore(state)?;
+            } else {
+                telemetry.on_rewind(snapshot.tick.saturating_sub(1));
+            }
         }
         Ok(())
     }

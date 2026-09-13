@@ -1,0 +1,15 @@
+api = 1
+name = "bn5-method-extension"
+version = "1.0.0"
+default_gamemode = "input"
+
+[[editor]]
+name = "main"
+path = "./init"
+
+[[gamemode]]
+name = "input"
+path = "./input"
+
+[dependencies]
+bn5 = "0.1.0"

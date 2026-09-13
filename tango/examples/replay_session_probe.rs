@@ -56,19 +56,24 @@ fn open_session(arg: &str, tag: &str) -> Opened {
         done: Arc::new(Mutex::new(None)),
         stats_file: std::env::temp_dir().join(format!("replay_session_probe-{tag}.stats")),
     });
-    let (session, workers, stream) = tango_session::replay::ReplaySession::new(
-        [game, game],
-        [rom.clone(), rom.clone()],
-        replay,
-        fps,
-        48_000,
-        true,
-        stats_job,
-        // Nothing analyzed up front: the probe wants the prefetch pass to
-        // find the round boundaries itself.
-        vec![],
-    )
-    .expect("session open");
+    let (session, workers, stream) =
+        tango_session::replay::ReplaySession::new(tango_session::replay::ReplaySessionArgs {
+            backend: tango_session::SessionBackend::Static(game.pvp),
+            match_type: tango_library::game::replay_match_type(&replay.metadata, game).expect("replay gamemode"),
+            peer_rom: Some(tango_match::PeerRom {
+                code: *game.rom_code,
+                revision: game.revision,
+            }),
+            roms: [rom.clone(), rom.clone()],
+            replay,
+            expected_fps: fps,
+            sample_rate: 48_000,
+            show_pip: true,
+            stats_job,
+            round_boundaries: vec![],
+            record_factory: None,
+        })
+        .expect("session open");
     Opened {
         session,
         driver: workers.into_driver(),

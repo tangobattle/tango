@@ -586,7 +586,7 @@ impl<W: Writer> Render<W> {
                 return Ok(true);
             }
             self.canceller.check()?;
-            if !self.playback.step() {
+            if !self.playback.step()? {
                 return Ok(false);
             }
             let tick = self.playback.cursor();

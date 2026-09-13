@@ -308,7 +308,10 @@ pub enum Effect {
     /// pipe so save_editor-internal side effects (currently just
     /// the scroll-to-top snap on tab changes) flow through here
     /// without per-feature Effect variants.
-    SaveEditorTask(iced::Task<Message>),
+    SaveEditorEvents {
+        task: iced::Task<Message>,
+        events: Vec<tango_gamesupport::SaveEditorEvent>,
+    },
 }
 
 impl ReplaysState {
@@ -452,18 +455,13 @@ impl ReplaysState {
                     BuildSide::You => self.loaded.as_mut(),
                     BuildSide::Opponent => self.opponent_loaded.as_mut(),
                 }?;
-                let (sv_task, outcome) = data.editor.update(&config.language, data, &*msg);
-                match outcome {
-                    Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
-                    Some(tango_gamesupport::SaveEditorEvent::CopyHtml { text, html }) => {
-                        Some(Effect::CopyHtml { text, html })
-                    }
-                    Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),
-                    Some(_) => None,
-                    None => Some(Effect::SaveEditorTask(
-                        sv_task.map(move |msg| Message::SaveEditor(side, msg)),
-                    )),
-                }
+                let (task, events) =
+                    data.editor
+                        .update(&config.language, data, &*msg, &crate::ui::theme::theme_for(config));
+                Some(Effect::SaveEditorEvents {
+                    task: task.map(move |msg| Message::SaveEditor(side, msg)),
+                    events,
+                })
             }
             Message::Export(m) => self.update_export(m),
             Message::StatsLoaded(path, s) => {
@@ -972,6 +970,7 @@ impl ReplaysState {
             .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
             .map(|g| crate::library::game::short_name(lang, g))
             .or_else(|| local_gi.map(|g| g.rom_family.clone()))
+            .or_else(|| crate::package::replay::recorded_name(r.local_side()))
             .unwrap_or_default();
         let nick_pair = if remote_nick.is_empty() && local_nick.is_empty() {
             link_code_display(lang, &md.link_code).into_owned()
@@ -1066,7 +1065,7 @@ impl ReplaysState {
         // Match-type name (e.g. "Triple") for the stats line.
         let family = local_gi.map(|g| g.rom_family.clone()).unwrap_or_default();
         let type_name =
-            crate::library::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
+            crate::library::game::replay_match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
         // Stats line: "Triple (2 rounds) · 0:42" once the lazy
         // stats worker gets here, with " · incomplete" tacked on
         // when the recorded stream didn't reach END_OF_REPLAY.
@@ -1242,13 +1241,21 @@ fn replay_detail<'a>(
     // Playback needs a scanned ROM for the local-side game; without
     // one the emulator session would error on construction. Resolve
     // now so the Watch button can disable + explain.
-    let local_rom_present = r
-        .local_side()
-        .and_then(|s| s.game_info.as_ref())
-        .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-        .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
-        .map(|g| scanners.roms.read().contains_key(&g))
-        .unwrap_or(false);
+    let package = crate::package::replay::resolve(scanners, &r.metadata);
+    let imported_side = package
+        .as_ref()
+        .ok()
+        .and_then(Option::as_ref)
+        .and_then(|package| package.metadata.side(r.local_player_index));
+    let local_rom_present = match &package {
+        Ok(Some(_)) => true,
+        Ok(None) => [r.local_side(), r.remote_side()].into_iter().all(|side| {
+            side.and_then(|side| side.game_info.as_ref())
+                .and_then(|game| crate::library::game::find_for_replay_side(game).ok())
+                .is_some_and(|game| scanners.roms.read().contains_key(&game))
+        }),
+        Err(_) => false,
+    };
     let md = &r.metadata;
     let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S %z");
 
@@ -1267,6 +1274,7 @@ fn replay_detail<'a>(
                 }
                 s
             })
+            .or_else(|| crate::package::replay::recorded_name(side))
             .unwrap_or_default();
         let selector: Element<'static, Message> = if available {
             iced::widget::radio(label, build, Some(state.viewed_build), Message::BuildSelected)
@@ -1304,6 +1312,8 @@ fn replay_detail<'a>(
         .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
         .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
         .map(|g| crate::library::game::short_name(lang, g))
+        .or_else(|| crate::package::replay::recorded_name(imported_side))
+        .or_else(|| crate::package::replay::recorded_name(r.local_side()))
         .unwrap_or_else(|| "?".to_string());
     let title = format!("{game_short} @ {}", link_code_display(lang, &md.link_code));
 
@@ -1414,12 +1424,16 @@ fn replay_detail<'a>(
                         .and_then(|s| s.game_info.as_ref())
                         .map(|g| g.rom_family.clone())
                         .unwrap_or_default();
-                    let type_name = crate::library::game::match_type_name(
-                        lang,
-                        &family,
-                        md.match_type as u8,
-                        md.match_subtype as u8,
-                    );
+                    let type_name = crate::package::replay::recorded_name(imported_side)
+                        .or_else(|| crate::package::replay::recorded_name(r.local_side()))
+                        .unwrap_or_else(|| {
+                            crate::library::game::replay_match_type_name(
+                                lang,
+                                &family,
+                                md.match_type as u8,
+                                md.match_subtype as u8,
+                            )
+                        });
                     // "Triple (2 rounds)" for a replay whose telemetry
                     // analysis is cached — a recording doesn't say how
                     // many rounds it holds. Just "Triple" otherwise.
@@ -1620,6 +1634,9 @@ fn search_haystack(lang: &LanguageIdentifier, replays_path: &std::path::Path, r:
     let mut parts: Vec<String> = Vec::new();
     for side in [md.side(0), md.side(1)].into_iter().flatten() {
         parts.push(side.nickname.clone());
+        if let Some(name) = crate::package::replay::recorded_name(Some(side)) {
+            parts.push(name);
+        }
         if let Some(gi) = side.game_info.as_ref() {
             parts.push(gi.rom_family.clone());
             parts.push(family_display_name(lang, &gi.rom_family, gi.rom_variant));

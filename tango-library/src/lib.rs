@@ -22,6 +22,8 @@ pub mod game;
 pub mod http;
 pub mod lang;
 pub mod marker;
+#[cfg(feature = "packages")]
+pub mod package;
 pub mod patch;
 pub mod replays;
 pub mod rom;

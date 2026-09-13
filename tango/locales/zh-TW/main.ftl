@@ -430,3 +430,23 @@ rescan = 重新掃描
 # Game names live in games.ftl — same Fluent attribute scheme the
 # legacy app uses (game-<family> = base name; .variant-N for each
 # regional/colour variant; .match-type-X-Y for per-mode labels).
+
+## Package editor host
+
+package-editor-title = 套件編輯器
+package-editor-undo = 復原
+package-editor-redo = 重做
+package-editor-save = 儲存
+package-editor-save-as = 另存新檔…
+package-editor-reload = 重新載入套件
+package-editor-reload-dirty = 請先儲存變更，再重新載入套件。
+package-editor-read-only = 此文件為唯讀。
+package-editor-saved = 已儲存。
+package-editor-close-prompt = 關閉前要儲存變更嗎？
+package-editor-save-close = 儲存並關閉
+package-editor-discard = 捨棄變更
+package-editor-keep-editing = 繼續編輯
+package-editor-error = 無法完成操作：{ $error }
+package-editor-unknown-action = 未知的主程式操作：{ $id }
+package-editor-not-configured = 編輯器尚未設定。
+package-editor-no-save-path = 此存檔沒有對應的檔案。

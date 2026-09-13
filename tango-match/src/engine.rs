@@ -88,7 +88,10 @@ impl getgud::World for World {
             side.set_render(render && self.visible[player].load(Ordering::Relaxed));
             side.set_displayed_screens(screens);
         }
-        link.tick(inputs);
+        if let Err(error) = link.tick(inputs) {
+            crate::audio::drop_link_audio(&mut *link);
+            return Err(error);
+        }
         // Straight after the tick, with the link still in hand: this is
         // the one moment its lock is certainly free, and audio that does
         // not cross here waits behind it for as long as the drive loop
@@ -180,6 +183,7 @@ pub struct Match {
     /// The telemetry this match publishes, when its engine reads any —
     /// installed by the backend that wired the link's pollers up.
     telemetry: Option<crate::telemetry::TelemetryHandle>,
+    records: Option<crate::telemetry::stream::Handle>,
 }
 
 impl Match {
@@ -239,6 +243,7 @@ impl Match {
             last_rollback_depth: 0,
             audio_seat,
             telemetry: None,
+            records: None,
         })
     }
 
@@ -248,6 +253,14 @@ impl Match {
     /// shared store.
     pub fn set_telemetry(&mut self, telemetry: crate::telemetry::TelemetryHandle) {
         self.telemetry = Some(telemetry);
+    }
+
+    pub fn set_records(&mut self, records: crate::telemetry::stream::Handle) {
+        self.records = Some(records);
+    }
+
+    pub fn records(&self) -> Option<&crate::telemetry::stream::Handle> {
+        self.records.as_ref()
     }
 
     /// Advance one frame with the local console's input: settle what

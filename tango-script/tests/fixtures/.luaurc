@@ -1,0 +1,8 @@
+{
+  "aliases": {
+    "bn6": "../../../packages/bn6",
+    "bn-common": "../../../packages/bn-common",
+    "editor-common": "../../../packages/editor-common",
+    "gba": "../../../packages/gba"
+  }
+}

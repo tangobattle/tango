@@ -44,7 +44,7 @@ pub(crate) fn view<'a>(s: &'a TrainingSession, ctx: Ctx<'a>) -> Element<'a, Sess
     let (main_horizontal, main_vertical) = main_frame_alignment(ctx.opponent_view);
     let frame = framebuffer_view(ctx, None, main_horizontal, main_vertical);
     let frame = stacked_framebuffers(ctx, frame, None, ctx.opponent_view);
-    let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
+    let body = emulator_body(state.local_game, frame, ctx.hide_emulator_border, [None, None]);
     let mut stacked = stack![body];
     // Opponent-screen PiP — outside the controls gate, so it doesn't tuck
     // away with the idle cursor (same treatment as replay).

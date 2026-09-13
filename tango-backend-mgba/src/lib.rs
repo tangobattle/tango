@@ -24,6 +24,7 @@
 
 pub mod analysis;
 pub mod backend;
+pub mod gamemode;
 pub mod link;
 pub mod solo;
 
@@ -45,6 +46,9 @@ pub enum Error {
     /// The caller's cancel flag flipped mid-simulation.
     #[error("cancelled")]
     Cancelled,
+
+    #[error("gamemode: {0}")]
+    GameMode(String),
 }
 
 impl From<Error> for tango_match::Error {
@@ -53,6 +57,7 @@ impl From<Error> for tango_match::Error {
             Error::PrimeTimeout(ticks) => tango_match::Error::PrimeTimeout(ticks),
             Error::Cancelled => tango_match::Error::Cancelled,
             Error::Mgba(e) => tango_match::Error::Backend(Box::new(e)),
+            error @ Error::GameMode(_) => tango_match::Error::Backend(Box::new(error)),
         }
     }
 }
@@ -88,9 +93,8 @@ impl PrimedLatch {
 /// Match parameters the primer needs before the games can negotiate the
 /// rest themselves over the emulated cable.
 pub struct PrimeConfig {
-    /// The game's link-battle mode selection (same encoding as
-    /// `battle::MatchType`: type and subtype).
-    pub match_type: (u8, u8),
+    /// Flat gamemode index from the game's declaration.
+    pub match_type: u8,
     /// The negotiated match seed. Both cores boot bit-identically, so
     /// without reseeding the two games' RNGs hold the same state and
     /// both players get identical draws; the primer traps seed each

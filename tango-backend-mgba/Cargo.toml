@@ -23,4 +23,5 @@ workspace = true
 # The examples re-simulate recorded matches, so they read replay files.
 [dev-dependencies]
 tango-replay = { path = "../tango-replay" }
+tango-script = { path = "../tango-script" }
 tango-session = { path = "../tango-session" }

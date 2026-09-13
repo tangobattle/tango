@@ -1,0 +1,9 @@
+unknown-save = Unrecognized Battle Network 5 save.
+unsupported-rom = Unsupported Battle Network 5 ROM.
+rom-save-mismatch = The ROM and save belong to different game versions.
+unknown-action = Unknown editor action.
+rom-required = Load a matching ROM to edit this save.
+invalid-equipped-folder = Invalid equipped folder.
+invalid-navi = Invalid selected Navi.
+save-dark = Dark
+save-light = Light

@@ -5,7 +5,7 @@
 //! [OPFS](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system)
 //! in a browser build.
 //!
-//! # Why the file operations are synchronous and only `list` is not
+//! # Why reads are synchronous but directory enumeration is not
 //!
 //! OPFS exposes `createSyncAccessHandle()`, which gives genuinely
 //! synchronous reads and writes — but *only inside a dedicated Worker*.
@@ -17,11 +17,15 @@
 //!
 //! Directory *enumeration* has no synchronous form — `FileSystemDirectoryHandle`
 //! is async-iterated whatever thread you are on — so [`Storage::list`]
-//! alone returns a future. That is the one thing the scanners already do
-//! off the UI thread, so it costs nothing.
+//! and [`Storage::snapshot_tree`] return futures. Scanners already enumerate
+//! off the UI thread; package snapshots use the same asynchronous boundary.
 
 use crate::marker::{BoxFuture, WasmNotSend, WasmNotSync};
 use std::path::{Path, PathBuf};
+
+mod tree;
+pub use tree::{snapshot_files, FileTree, TreeLimits};
+pub type TreeFuture<'a> = BoxFuture<'a, std::io::Result<FileTree>>;
 
 /// Future returned by [`Storage::list`]. Boxed so `Storage` stays object
 /// safe; `Send` off wasm, where the backing JS promises aren't.
@@ -103,14 +107,21 @@ pub trait Storage: WasmNotSend + WasmNotSync + 'static {
     /// than failing — the content directories are all created lazily,
     /// and a per-root error is not worth failing a whole rescan over.
     ///
-    /// The only operation here that is async, and the reason is
-    /// external: `FileSystemDirectoryHandle` iterates asynchronously
+    /// Like `snapshot_tree`, enumeration is async because
+    /// `FileSystemDirectoryHandle` iterates asynchronously
     /// whatever thread you are on, so a browser backend has no
     /// synchronous form to offer. Everything downstream — the scans
     /// themselves — works from the returned snapshot and stays
     /// synchronous, which is what keeps a rescan a plain blocking call
     /// rather than an async pipeline.
     fn list<'a>(&'a self, roots: &'a [PathBuf]) -> ListFuture<'a>;
+
+    /// Capture every regular file beneath a chosen root, within the limits.
+    /// Unlike discovery, this fails on unreadable entries and symlinks. Native
+    /// implementations must use directory capabilities so concurrent path
+    /// replacement cannot redirect a read outside the root. Enumeration may
+    /// await on browser storage; reads of the resulting snapshot are synchronous.
+    fn snapshot_tree<'a>(&'a self, root: &'a Path, limits: TreeLimits) -> TreeFuture<'a>;
 }
 
 /// Read a file, mapping `NotFound` to `None` — the shape nearly every
@@ -153,6 +164,10 @@ mod std_impl {
     pub struct StdStorage;
 
     impl Storage for StdStorage {
+        fn snapshot_tree<'a>(&'a self, root: &'a Path, limits: super::TreeLimits) -> super::TreeFuture<'a> {
+            Box::pin(async move { super::tree::native(root, limits) })
+        }
+
         fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
             std::fs::read(path)
         }

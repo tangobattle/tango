@@ -40,6 +40,10 @@ message Metadata {
     // reused, since recorders written while it existed still put it on the
     // wire.
     reserved 5;
+    // Versioned tango_match::gamemode::Configuration payload. Package replays
+    // use container version 0x1F so old readers cannot ignore this field and
+    // select native game support instead. Both seats must carry a configuration.
+    bytes gamemode = 6;
   }
 
   uint64 ts = 1;

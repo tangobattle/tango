@@ -55,6 +55,9 @@ pub const EXTENSION: &str = "tangoreplay";
 /// round. A bump would instead have [`read_metadata`] reject every
 /// replay already on disk.
 pub const VERSION: u8 = 0x1E;
+/// Package-driven simulations, with each seat's exact gamemode configuration.
+/// The SRAM and input framing is unchanged; native recordings retain VERSION.
+pub const PACKAGE_VERSION: u8 = 0x1F;
 
 pub struct Writer {
     /// Everything after the header framing is the shared stream
@@ -90,10 +93,56 @@ impl Metadata {
             _ => self.p2_side.as_ref(),
         }
     }
+
+    /// Both configurations in absolute player order. A partial declaration is
+    /// an invalid recording, never permission to fall back to native support.
+    pub fn gamemodes(&self) -> std::io::Result<Option<[tango_match::gamemode::Configuration; 2]>> {
+        let modes =
+            [self.p1_side.as_ref(), self.p2_side.as_ref()].map(|side| side.filter(|side| !side.gamemode.is_empty()));
+        match modes {
+            [None, None] => Ok(None),
+            [Some(p1), Some(p2)] => {
+                if p1.game_info.is_some() || p2.game_info.is_some() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "package replay seats cannot also declare native game support",
+                    ));
+                }
+                let decode = |side: &metadata::Side| {
+                    tango_match::gamemode::Configuration::decode(&side.gamemode)
+                        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+                };
+                Ok(Some([decode(p1)?, decode(p2)?]))
+            }
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "both replay seats must declare a gamemode",
+            )),
+        }
+    }
+
+    pub fn container_version(&self) -> std::io::Result<u8> {
+        Ok(if self.gamemodes()?.is_some() {
+            PACKAGE_VERSION
+        } else {
+            VERSION
+        })
+    }
+
+    /// Legacy session entry points must not silently ignore a package profile.
+    pub fn require_native(&self) -> std::io::Result<()> {
+        if self.gamemodes()?.is_some() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "this replay requires its recorded package gamemodes",
+            ));
+        }
+        Ok(())
+    }
 }
 
-/// Ceiling on the declared metadata length. The proto is two sides'
-/// nicknames plus their game info — hundreds of bytes, not megabytes —
+/// Ceiling on the declared metadata length. Package configurations are each
+/// bounded to 64 KiB, and native game metadata is much smaller,
 /// so a length past this is a corrupt header rather than a big match,
 /// and reading it as one would mean allocating whatever the file says.
 const MAX_METADATA_LEN: u32 = 1024 * 1024;
@@ -106,10 +155,17 @@ fn unsupported_version(version: u8) -> std::io::Error {
 }
 
 pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
-    Ok(match version {
-        VERSION => protos::replay11::Metadata::decode(raw)?,
+    let metadata = match version {
+        VERSION | PACKAGE_VERSION => protos::replay11::Metadata::decode(raw)?,
         _ => return Err(unsupported_version(version)),
-    })
+    };
+    if metadata.container_version()? != version {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "replay version does not match its gamemode declarations",
+        ));
+    }
+    Ok(metadata)
 }
 
 /// The cheap header read for listings: everything before the SRAM
@@ -129,7 +185,7 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(u8, u8, Metadata), s
     // proto's leading field tag as its high byte and asks for ~128 MiB
     // per file, which is what made scanning a library carried across
     // the 0x1D bump take minutes.
-    if version != VERSION {
+    if version != VERSION && version != PACKAGE_VERSION {
         return Err(unsupported_version(version));
     }
     let local_player_index = r.read_u8()?;
@@ -188,7 +244,7 @@ impl Replay {
 
     pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
         let mut r = std::io::BufReader::new(r);
-        // Rejects anything but the current schema.
+        // Validates the native or package schema before reading save data.
         let (_, local_player_index, metadata) = read_metadata(&mut r)?;
 
         let mut rng_seed = [0u8; 16];
@@ -212,8 +268,7 @@ impl Replay {
 }
 
 impl Writer {
-    /// `version` is the container schema to stamp — [`VERSION`] is
-    /// the only one readers accept. Arguments follow the file layout;
+    /// `version` must match [`Metadata::container_version`]. Arguments follow the file layout;
     /// `metadata` sides and `srams` are in absolute player order.
     pub fn new(
         mut writer: impl Write + Send + 'static,
@@ -223,10 +278,22 @@ impl Writer {
         rng_seed: [u8; 16],
         srams: [&[u8]; 2],
     ) -> std::io::Result<Self> {
+        if metadata.container_version()? != version {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "replay version does not match its gamemode declarations",
+            ));
+        }
+        let raw_metadata = metadata.encode_to_vec();
+        if raw_metadata.len() > MAX_METADATA_LEN as usize {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "replay metadata exceeds its size limit",
+            ));
+        }
         writer.write_all(HEADER)?;
         writer.write_u8(version)?;
         writer.write_u8(local_player_index)?;
-        let raw_metadata = metadata.encode_to_vec();
         writer.write_u32::<byteorder::LittleEndian>(raw_metadata.len() as u32)?;
         writer.write_all(&raw_metadata[..])?;
 
@@ -321,6 +388,141 @@ mod tests {
         w.finish().unwrap();
         let bytes = buf.lock().unwrap().clone();
         bytes
+    }
+
+    fn package_metadata() -> Metadata {
+        use tango_match::gamemode::{
+            identity::{Identity, Package, Runtime},
+            Configuration, OptionValue,
+        };
+        let side = |rom: u8| metadata::Side {
+            gamemode: Configuration {
+                disable_bgm: false,
+                identity: Identity {
+                    engine: Runtime {
+                        name: "test".into(),
+                        revision: 1,
+                    },
+                    script: Runtime {
+                        name: "luau".into(),
+                        revision: 1,
+                    },
+                    package: Package {
+                        name: "game".into(),
+                        version: "1.0.0".into(),
+                        digest: [1; 32],
+                    },
+                    export: "main".into(),
+                    dependencies: vec![],
+                    rom: [rom; 32],
+                    environment: [rom + 1; 32],
+                },
+                options: [
+                    ("zero".into(), OptionValue::Number(-0.0)),
+                    ("mode".into(), OptionValue::String("alternate".into())),
+                ]
+                .into(),
+            }
+            .encode()
+            .unwrap(),
+            ..Default::default()
+        };
+        Metadata {
+            p1_side: Some(side(7)),
+            p2_side: Some(side(9)),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn package_replay_preserves_exact_configurations_in_absolute_seat_order() {
+        let metadata = package_metadata();
+        let configurations = metadata.gamemodes().unwrap().unwrap();
+        assert_eq!(metadata.container_version().unwrap(), PACKAGE_VERSION);
+        assert!(metadata.require_native().is_err());
+        let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut writer = Writer::new(
+            SharedVec(output.clone()),
+            PACKAGE_VERSION,
+            0,
+            metadata,
+            [5; 16],
+            [&[1], &[2]],
+        )
+        .unwrap();
+        writer
+            .write_input([stream::Input::keys(1), stream::Input::keys(2)])
+            .unwrap();
+        writer.finish().unwrap();
+        let mut bytes = output.lock().unwrap().clone();
+        for perspective in [0, 1] {
+            bytes[5] = perspective;
+            let replay = Replay::decode(&bytes[..]).unwrap();
+            assert_eq!(replay.local_player_index, perspective);
+            assert_eq!(replay.metadata.gamemodes().unwrap().unwrap(), configurations);
+            assert_eq!(replay.srams, [vec![1], vec![2]]);
+            assert_eq!(replay.inputs, [[stream::Input::keys(1), stream::Input::keys(2)]]);
+            assert!(replay.is_complete);
+        }
+        // An old client must encounter a new header version, not ignored proto
+        // fields that would let it pick a native implementation.
+        bytes[4] = VERSION;
+        assert!(read_metadata(&mut &bytes[..]).is_err());
+        let mut native = write_replay(0);
+        native[4] = PACKAGE_VERSION;
+        assert!(read_metadata(&mut &native[..]).is_err());
+    }
+
+    #[test]
+    fn package_headers_reject_partial_dual_or_malformed_declarations() {
+        for mutate in [
+            |metadata: &mut Metadata| {
+                metadata.p2_side.as_mut().unwrap().gamemode.clear();
+            },
+            |metadata: &mut Metadata| {
+                metadata.p2_side = None;
+            },
+            |metadata: &mut Metadata| {
+                metadata.p1_side.as_mut().unwrap().gamemode[4] = 0xff;
+            },
+            |metadata: &mut Metadata| {
+                metadata.p1_side.as_mut().unwrap().game_info = Some(Default::default());
+            },
+        ] {
+            let mut metadata = package_metadata();
+            mutate(&mut metadata);
+            for version in [VERSION, PACKAGE_VERSION] {
+                assert!(decode_metadata(version, &metadata.encode_to_vec()).is_err());
+                let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+                assert!(Writer::new(
+                    SharedVec(output.clone()),
+                    version,
+                    0,
+                    metadata.clone(),
+                    [0; 16],
+                    [&[], &[]]
+                )
+                .is_err());
+                assert!(output.lock().unwrap().is_empty());
+            }
+        }
+        let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        assert!(Writer::new(
+            SharedVec(output.clone()),
+            VERSION,
+            0,
+            package_metadata(),
+            [0; 16],
+            [&[], &[]]
+        )
+        .is_err());
+        assert!(output.lock().unwrap().is_empty());
+        let oversized = Metadata {
+            link_code: "x".repeat(MAX_METADATA_LEN as usize + 1),
+            ..Default::default()
+        };
+        assert!(Writer::new(SharedVec(output.clone()), VERSION, 0, oversized, [0; 16], [&[], &[]]).is_err());
+        assert!(output.lock().unwrap().is_empty());
     }
 
     #[test]

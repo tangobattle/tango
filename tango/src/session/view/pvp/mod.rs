@@ -62,7 +62,12 @@ pub enum Message {
 
 /// Apply a PvP-view message. Takes the whole session [`State`] because the
 /// setup drawers and disconnect/build-warning overlays live beside the slot.
-pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::LanguageIdentifier) -> iced::Task<Message> {
+pub(crate) fn update(
+    state: &mut State,
+    msg: Message,
+    lang: &unic_langid::LanguageIdentifier,
+    theme: &iced::Theme,
+) -> iced::Task<Message> {
     match msg {
         Message::SetFrameDelay(d) => {
             // Purely local frame delay — apply straight to the running
@@ -105,7 +110,7 @@ pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::Langua
             // mint an edit to stage into this side's loaded save.
             if let Some(panes) = state.pvp_panes.as_mut() {
                 if let Some(data) = panes.opponent_loaded.as_mut() {
-                    let (task, _) = data.editor.update(lang, data, &*msg);
+                    let (task, _) = data.editor.update(lang, data, &*msg, theme);
                     return task.map(Message::OpponentSaveView);
                 }
             }
@@ -113,7 +118,7 @@ pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::Langua
         Message::SelfSaveView(msg) => {
             if let Some(panes) = state.pvp_panes.as_mut() {
                 if let Some(data) = panes.local_loaded.as_mut() {
-                    let (task, _) = data.editor.update(lang, data, &*msg);
+                    let (task, _) = data.editor.update(lang, data, &*msg, theme);
                     return task.map(Message::SelfSaveView);
                 }
             }
@@ -212,7 +217,7 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
             .filter(|p| p.opponent_loaded.is_some() && state.opponent_panel.shown())
             .map(|p| p.pane_widths[1]),
     ];
-    let body = emulator_body(p.local_game(), frame, ctx.hide_emulator_border, slots);
+    let body = emulator_body(state.local_game, frame, ctx.hide_emulator_border, slots);
     let mut game_stack = stack![body];
     // A drawer pane mid-animation draws in iced's floating layer, above every
     // base stack layer. The build warning is hoisted alongside it so the
@@ -837,6 +842,8 @@ mod build_warning_tests {
     fn blinded_opponent_still_gets_an_exact_warning() {
         let mut state = State::new();
         state.pvp_panes = Some(crate::session::PvpPanes {
+            local_game: None,
+            telemetry_factory: None,
             local_loaded: None,
             // `None` is exactly how a blinded opponent is represented.
             opponent_loaded: None,
@@ -876,6 +883,7 @@ mod build_warning_tests {
             &mut state,
             Message::ToggleBuildWarningViolations,
             &crate::i18n::FALLBACK_LANG,
+            &iced::Theme::Dark,
         );
         assert!(state.pvp_panes.as_ref().unwrap().build_warning_violations_expanded);
     }

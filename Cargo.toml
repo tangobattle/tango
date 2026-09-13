@@ -1,5 +1,6 @@
 [workspace]
 resolver = "2"
+exclude = ["vendor/iced_tiny_skia"]
 members = [
     "tango",
     "tango-gamesupport",
@@ -16,6 +17,8 @@ members = [
     "tango-replay",
     "tango-replay-renderer",
     "tango-session",
+    "tango-script",
+    "tango-script-iced",
     "tango-ui",
 ]
 # The per-game `tango-gamesupport-*` crates auto-join this workspace as
@@ -33,8 +36,14 @@ default-members = [
     "tango-replay",
     "tango-replay-renderer",
     "tango-session",
+    "tango-script",
+    "tango-script-iced",
     "tango-ui",
 ]
+[patch.crates-io]
+# Correct translated canvas clipping in the software backend. See its patch note.
+iced_tiny_skia = { path = "vendor/iced_tiny_skia" }
+
 # Shared external dependency versions. Members inherit these and enable
 # only the features they need. Keep this list alphabetical.
 [workspace.dependencies]
@@ -52,11 +61,15 @@ crc32fast = "1"
 datachannel-wrapper = { git = "https://github.com/tangobattle/datachannel-wrapper" }
 encoder-facade = { git = "https://github.com/tangobattle/encoder-facade" }
 fluent-templates = "0.14"
+fluent-bundle = "0.16"
+fluent-langneg = "0.13"
+fluent-syntax = "0.12"
 futures = "0.3"
 gamepad-facade = { git = "https://github.com/tangobattle/gamepad-facade", default-features = false }
 getgud = { git = "https://github.com/tangobattle/getgud" }
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "markdown", "canvas", "advanced"] }
 iced_graphics = { version = "0.14", features = ["geometry"] }
+iced_runtime = "0.14"
 iced_tiny_skia = { version = "0.14", features = ["geometry"] }
 image = { version = "0.25", default-features = false }
 indexmap = "2"
@@ -90,6 +103,7 @@ thiserror = "1"
 tiny-skia = "0.11"
 tokio = "1"
 tokio-util = "0.7"
+toml = "0.8"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
 walkdir = "2"
 wasm-bindgen-futures = "0.4"

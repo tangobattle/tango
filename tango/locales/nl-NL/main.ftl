@@ -415,3 +415,23 @@ playback-priming-elapsed = { $secs } s
 playback-priming-failed = De spellen hebben hun gevecht niet bereikt.
 settings-data-folder = Gegevensmap
 settings-data-folder-change = Wijzigen…
+
+## Package editor host
+
+package-editor-title = Pakketeditor
+package-editor-undo = Ongedaan maken
+package-editor-redo = Opnieuw
+package-editor-save = Opslaan
+package-editor-save-as = Opslaan als…
+package-editor-reload = Pakketten herladen
+package-editor-reload-dirty = Sla je wijzigingen op voordat je de pakketten herlaadt.
+package-editor-read-only = Dit document is alleen-lezen.
+package-editor-saved = Opgeslagen.
+package-editor-close-prompt = Wijzigingen opslaan voordat je sluit?
+package-editor-save-close = Opslaan en sluiten
+package-editor-discard = Wijzigingen verwerpen
+package-editor-keep-editing = Verder bewerken
+package-editor-error = De bewerking kon niet worden voltooid: { $error }
+package-editor-unknown-action = Onbekende hostactie: { $id }
+package-editor-not-configured = De editor is nog niet ingesteld.
+package-editor-no-save-path = Deze opgeslagen game heeft geen bijbehorend bestand.

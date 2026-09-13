@@ -1,0 +1,215 @@
+[
+  {
+    "name": "viewer repeated cell",
+    "setup": [
+      {
+        "id": "editor.tab:navicust",
+        "kind": "activate",
+        "value": ""
+      }
+    ],
+    "actions": [
+      {
+        "id": "navicust.viewer",
+        "kind": "pointer",
+        "phase": "move",
+        "x": 40,
+        "y": 100,
+        "dx": 0,
+        "dy": 0,
+        "button": "none",
+        "modifiers": {
+          "shift": false,
+          "control": false,
+          "alt": false,
+          "command": false
+        }
+      },
+      {
+        "id": "navicust.viewer",
+        "kind": "pointer",
+        "phase": "move",
+        "x": 41,
+        "y": 101,
+        "dx": 0,
+        "dy": 0,
+        "button": "none",
+        "modifiers": {
+          "shift": false,
+          "control": false,
+          "alt": false,
+          "command": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "viewer across cells",
+    "setup": [
+      {
+        "id": "editor.tab:navicust",
+        "kind": "activate",
+        "value": ""
+      }
+    ],
+    "actions": [
+      {
+        "id": "navicust.viewer",
+        "kind": "pointer",
+        "phase": "move",
+        "x": 40,
+        "y": 100,
+        "dx": 0,
+        "dy": 0,
+        "button": "none",
+        "modifiers": {
+          "shift": false,
+          "control": false,
+          "alt": false,
+          "command": false
+        }
+      },
+      {
+        "id": "navicust.viewer",
+        "kind": "pointer",
+        "phase": "move",
+        "x": 130,
+        "y": 190,
+        "dx": 0,
+        "dy": 0,
+        "button": "none",
+        "modifiers": {
+          "shift": false,
+          "control": false,
+          "alt": false,
+          "command": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "editor repeated cell",
+    "setup": [
+      {
+        "id": "editor.tab:navicust",
+        "kind": "activate",
+        "value": ""
+      },
+      {
+        "id": "editor.session:begin",
+        "kind": "activate",
+        "value": ""
+      }
+    ],
+    "actions": [
+      {
+        "id": "navicust.board",
+        "kind": "pointer",
+        "phase": "move",
+        "x": 40,
+        "y": 100,
+        "dx": 0,
+        "dy": 0,
+        "button": "none",
+        "modifiers": {
+          "shift": false,
+          "control": false,
+          "alt": false,
+          "command": false
+        }
+      },
+      {
+        "id": "navicust.board",
+        "kind": "pointer",
+        "phase": "move",
+        "x": 41,
+        "y": 101,
+        "dx": 0,
+        "dy": 0,
+        "button": "none",
+        "modifiers": {
+          "shift": false,
+          "control": false,
+          "alt": false,
+          "command": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "editor across cells",
+    "setup": [
+      {
+        "id": "editor.tab:navicust",
+        "kind": "activate",
+        "value": ""
+      },
+      {
+        "id": "editor.session:begin",
+        "kind": "activate",
+        "value": ""
+      }
+    ],
+    "actions": [
+      {
+        "id": "navicust.board",
+        "kind": "pointer",
+        "phase": "move",
+        "x": 40,
+        "y": 100,
+        "dx": 0,
+        "dy": 0,
+        "button": "none",
+        "modifiers": {
+          "shift": false,
+          "control": false,
+          "alt": false,
+          "command": false
+        }
+      },
+      {
+        "id": "navicust.board",
+        "kind": "pointer",
+        "phase": "move",
+        "x": 130,
+        "y": 190,
+        "dx": 0,
+        "dy": 0,
+        "button": "none",
+        "modifiers": {
+          "shift": false,
+          "control": false,
+          "alt": false,
+          "command": false
+        }
+      }
+    ]
+  },
+  {
+    "name": "editor filter",
+    "setup": [
+      {
+        "id": "editor.tab:navicust",
+        "kind": "activate",
+        "value": ""
+      },
+      {
+        "id": "editor.session:begin",
+        "kind": "activate",
+        "value": ""
+      }
+    ],
+    "actions": [
+      {
+        "id": "navicust.filter",
+        "kind": "change",
+        "value": "a"
+      },
+      {
+        "id": "navicust.filter",
+        "kind": "change",
+        "value": ""
+      }
+    ]
+  }
+]

@@ -1,0 +1,7 @@
+api = 1
+name = "bn-common"
+version = "0.1.0"
+
+[dependencies]
+"editor-common" = "0.1.0"
+gba = "0.1.0"

@@ -409,3 +409,23 @@ playback-priming-elapsed = { $secs } giây
 playback-priming-failed = Các game không đến được trận chiến.
 settings-data-folder = Thư mục dữ liệu
 settings-data-folder-change = Thay đổi…
+
+## Package editor host
+
+package-editor-title = Trình chỉnh sửa gói
+package-editor-undo = Hoàn tác
+package-editor-redo = Làm lại
+package-editor-save = Lưu
+package-editor-save-as = Lưu thành…
+package-editor-reload = Tải lại các gói
+package-editor-reload-dirty = Hãy lưu thay đổi trước khi tải lại các gói.
+package-editor-read-only = Tài liệu này chỉ cho phép đọc.
+package-editor-saved = Đã lưu.
+package-editor-close-prompt = Lưu thay đổi trước khi đóng?
+package-editor-save-close = Lưu và đóng
+package-editor-discard = Bỏ thay đổi
+package-editor-keep-editing = Tiếp tục chỉnh sửa
+package-editor-error = Không thể hoàn tất thao tác: { $error }
+package-editor-unknown-action = Thao tác ứng dụng không xác định: { $id }
+package-editor-not-configured = Trình chỉnh sửa chưa được cấu hình.
+package-editor-no-save-path = Bản lưu này không có tệp tương ứng.

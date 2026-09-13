@@ -18,6 +18,7 @@ pub fn build(
     save: tango_gamesupport::BoxedSave,
     patches_path: &std::path::Path,
     patch: Option<(String, semver::Version, Arc<crate::library::patch::Version>)>,
+    packages: &crate::library::package::Catalog,
 ) -> LoadedSave {
     let (rom, applied_patch) = match patch {
         Some((name, version, meta)) => {
@@ -48,7 +49,7 @@ pub fn build(
         }
         None => (rom, None),
     };
-    from_patched_rom(game, rom, save_path, save, applied_patch)
+    from_patched_rom(game, rom, save_path, save, applied_patch, packages)
 }
 
 /// Build from a ROM that's *already* had its patch applied, plus the
@@ -62,8 +63,12 @@ pub fn from_patched_rom(
     save_path: std::path::PathBuf,
     save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
+    packages: &crate::library::package::Catalog,
 ) -> LoadedSave {
-    prepare_from_patched_rom(game, rom, save_path, save, applied_patch).load()
+    let sram = save.to_sram_dump();
+    let mut loaded = prepare_from_patched_rom(game, rom.clone(), save_path, save, applied_patch).load();
+    crate::package::editor::embedded::attach(&mut loaded, &rom, &sram, packages);
+    loaded
 }
 
 /// Prepare the parsed save and effective patched-ROM assets for callers that
@@ -87,6 +92,22 @@ pub fn for_replay_player(
     replay: &tango_replay::Replay,
     player_index: u8,
 ) -> anyhow::Result<LoadedSave> {
+    anyhow::ensure!(player_index < 2, "replay player index out of range");
+    if let Some(package) = crate::package::replay::resolve(scanners, &replay.metadata)? {
+        let player = player_index as usize;
+        return crate::package::editor::embedded::open_sram(
+            scanners
+                .roms
+                .read()
+                .image(package.roms[player])
+                .and_then(|image| image.native_game),
+            package.seats[player].rom(),
+            &replay.srams[player],
+            &scanners.packages.read(),
+            crate::package::editor::selection::remembered(config, package.roms[player]).as_ref(),
+        )?
+        .ok_or_else(|| anyhow::anyhow!("no package editor recognizes this replay's ROM"));
+    }
     let side = replay
         .metadata
         .side(player_index)
@@ -129,6 +150,7 @@ pub fn for_replay_player(
         save,
         &config.patches_path(),
         patch_meta,
+        &scanners.packages.read(),
     ))
 }
 

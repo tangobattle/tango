@@ -30,6 +30,10 @@ impl App {
                 return self.install_patch(key);
             }
             loadout::Effect::SelectionChanged => {
+                if self.netplay.local_ready() {
+                    self.netplay.uncommit();
+                }
+                self.play.cancel_save_action();
                 self.refresh_loaded();
                 self.persist_selection();
                 // Game might have just changed — if so, the lobby
@@ -51,7 +55,20 @@ impl App {
         else {
             return iced::Task::none();
         };
+        self.apply_play_effect(effect)
+    }
+
+    fn apply_play_effect(&mut self, effect: tabs::play::Effect) -> iced::Task<Message> {
         use tabs::play::Effect as E;
+        // Recheck launch availability for queued or repeated package requests.
+        // An earlier event in this update may already have installed a session.
+        if matches!(effect, E::StartSinglePlayer | E::StartTraining)
+            && (self.session.is_active()
+                || !matches!(self.netplay.phase, netplay::Phase::Idle)
+                || !loadout::patch_ready(&self.loadout, &self.scanners))
+        {
+            return iced::Task::none();
+        }
         match effect {
             E::SetFrameDelay(d) => {
                 // Lobby slider. Persisted to config; it's this side's local
@@ -98,11 +115,14 @@ impl App {
                 iced::Task::none()
             }
             E::SetMatchType(mt) => {
+                if self.loadout.gamemodes.selected.is_some() {
+                    return iced::Task::none();
+                }
                 self.netplay.set_match_type(mt);
                 // An explicit user pick of match type pre-Lobby
                 // would otherwise be clobbered the first time
                 // `resend_settings_if_lobby` runs in Lobby —
-                // that helper's "default to Triple" policy
+                // that helper's declared-default policy
                 // fires whenever `default_mt_for_family` doesn't
                 // match the current game, which is the case
                 // when the user picked their match type before
@@ -114,7 +134,11 @@ impl App {
                     self.netplay.lobby.default_mt_for_family = Some(fam.to_string());
                     // And remember it for the next time this family
                     // comes up, here or in a future launch.
-                    self.config.last_match_type_per_family.insert(fam.to_string(), mt);
+                    if let Some(choice) = g.family.match_types.get(mt as usize) {
+                        self.config
+                            .last_gamemode_per_family
+                            .insert(fam.to_string(), choice.name.into());
+                    }
                     self.persist_config();
                 }
                 self.resend_settings_if_lobby()
@@ -132,14 +156,25 @@ impl App {
                 iced::Task::none()
             }
             E::ReadyWithSave => {
+                let (Some(local), Some(remote)) = (&self.netplay.lobby.local, &self.netplay.lobby.remote) else {
+                    return iced::Task::none();
+                };
+                if crate::package::gamemode::verdict(&self.scanners, local, remote)
+                    != netplay::compat::Verdict::Compatible
+                {
+                    return iced::Task::none();
+                }
                 // The editor's copy, so a staged edit is what gets
                 // committed rather than the file it was staged against.
                 // View-time gating disables Ready with no save selected,
                 // so the None arm is defense in depth.
-                let Some(loaded) = self.loaded.as_ref() else {
-                    return iced::Task::none();
+                let save_sram = match self.loadout.save_sram(self.loaded.as_ref()) {
+                    Ok(sram) => sram,
+                    Err(error) => {
+                        log::error!("snapshot edited save: {error}");
+                        return iced::Task::none();
+                    }
                 };
-                let save_sram = loaded.editor.sram(loaded);
                 match self.netplay.commit(save_sram) {
                     Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
                     None => iced::Task::none(),
@@ -157,12 +192,21 @@ impl App {
                 iced::Task::none()
             }
             E::StartSinglePlayer => {
-                let Some(loaded) = self.loaded.as_ref() else {
+                if !matches!(self.netplay.phase, netplay::Phase::Idle) || !self.loadout.has_save(self.loaded.as_ref()) {
+                    return iced::Task::none();
+                }
+                let Some(save_path) = self.loadout.save.clone() else {
                     return iced::Task::none();
                 };
-                let save_path = loaded.save_path.clone();
-                match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
+                match session::spawn_singleplayer(
+                    &self.scanners,
+                    &self.config,
+                    &self.audio_binder,
+                    &self.loadout,
+                    self.loaded.as_ref(),
+                ) {
                     Ok((s, audio, save, drive)) => {
+                        self.session.local_game = self.loaded.as_ref().and_then(|loaded| loaded.native_game);
                         self.session.active = Some(Box::new(s));
                         self.session.audio_binding = audio;
                         self.session.attach_save_backup(save_path, save);
@@ -188,6 +232,7 @@ impl App {
                 };
                 match session::spawn_training(&self.scanners, &self.config, &self.audio_binder, loaded) {
                     Ok((s, audio, drive)) => {
+                        self.session.local_game = loaded.native_game;
                         self.session.active = Some(Box::new(s));
                         self.session.audio_binding = audio;
                         self.session.attach_drive_threads([drive]);
@@ -247,6 +292,25 @@ impl App {
                 }
                 iced::Task::none()
             }
+            E::SaveNewPackage { name, template } => {
+                let result = self
+                    .loadout
+                    .editors
+                    .profile
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("no editor selected"))
+                    .and_then(|profile| Ok(profile.create_save(&template)?))
+                    .and_then(|bytes| tabs::play::create_new_save_bytes(&self.config.saves_path(), &name, &bytes));
+                match result {
+                    Ok(path) => {
+                        self.loadout.save = Some(path);
+                        self.persist_selection();
+                        return self.rescan_off_thread(RescanFollowup::Refresh);
+                    }
+                    Err(error) => log::error!("create package save: {error}"),
+                }
+                iced::Task::none()
+            }
             E::SaveNew { name, template, game } => {
                 // The new save is created for `game` (the variant the
                 // user picked), which may differ from the currently
@@ -283,27 +347,22 @@ impl App {
                 iced::Task::none()
             }
             E::SaveEditCommit { sram } => {
-                // The edit session already staged everything into the
-                // in-memory save, recomputed the checksum, and serialized
-                // it — all that's left app-side is the disk write.
-                // `Some(sram)` once written; the SRAM is reused below to
-                // refresh a live netplay commitment.
-                let saved_sram = match self.loaded.as_ref().map(|l| l.save_path.as_path()) {
-                    Some(path) if !path.as_os_str().is_empty() => match std::fs::write(path, &sram) {
-                        Ok(()) => {
-                            log::info!("saved edited save: {}", path.display());
-                            Some(sram)
-                        }
-                        Err(e) => {
-                            log::error!("save edited save: {e}");
-                            None
-                        }
-                    },
-                    _ => None,
-                };
-                let Some(sram) = saved_sram else {
+                let Some(loaded) = self.loaded.as_mut() else {
                     return iced::Task::none();
                 };
+                let written = if loaded.save_path.as_os_str().is_empty() {
+                    Err(t!(&self.config.language, "package-editor-no-save-path"))
+                } else {
+                    crate::library::storage::write_atomic(crate::library::storage(), &loaded.save_path, &sram)
+                        .map_err(|error| error.to_string())
+                };
+                loaded.editor.save_finished(loaded, written.clone());
+                if let Err(error) = written {
+                    log::error!("save edited save: {error}");
+                    return iced::Task::none();
+                }
+                log::info!("saved edited save: {}", loaded.save_path.display());
+                self.loadout.package_save.saved(&sram);
                 // If we're in a lobby and already committed (Ready), the saved
                 // edits changed the save our commitment was made over — re-commit
                 // so the opponent gets the new commitment (and chunks) instead of
@@ -338,7 +397,23 @@ impl App {
                 }
                 iced::Task::none()
             }
-            E::SaveEditorTask(t) => t.map(Message::Play),
+            E::SaveEditorEvents { task, events } => {
+                use tango_gamesupport::SaveEditorEvent as S;
+                let mut tasks = vec![task.map(Message::Play)];
+                for event in events {
+                    let effect = match event {
+                        S::CopyText(text) => E::CopyText(text),
+                        S::CopyHtml { text, html } => E::CopyHtml { text, html },
+                        S::CopyImage(image) => E::CopyImage(image),
+                        S::Play => E::StartSinglePlayer,
+                        S::Training => E::StartTraining,
+                        S::Commit { sram } => E::SaveEditCommit { sram },
+                        S::Cancel => E::SaveEditCancel,
+                    };
+                    tasks.push(self.apply_play_effect(effect));
+                }
+                iced::Task::batch(tasks)
+            }
         }
     }
 
@@ -590,7 +665,8 @@ impl App {
             duty.job,
             duty.round_boundaries,
         ) {
-            Ok((s, audio, threads)) => {
+            Ok((s, game, audio, threads)) => {
+                self.session.local_game = game;
                 self.session.replay_path = Some(p.clone());
                 self.session.active = Some(Box::new(s));
                 // A queue handoff carries the speed of the replay it
@@ -658,6 +734,10 @@ impl App {
         let Some(effect) = effect else {
             return iced::Task::none();
         };
+        self.apply_replays_effect(effect)
+    }
+
+    fn apply_replays_effect(&mut self, effect: tabs::replays::Effect) -> iced::Task<Message> {
         use tabs::replays::Effect as E;
         match effect {
             E::OpenPath(p) => open_path(p),
@@ -779,7 +859,20 @@ impl App {
                 self.replay_analysis_jobs.insert(path, (cancel, handle));
                 task
             }
-            E::SaveEditorTask(t) => t.map(Message::Replays),
+            E::SaveEditorEvents { task, events } => {
+                use tango_gamesupport::SaveEditorEvent as S;
+                let mut tasks = vec![task.map(Message::Replays)];
+                for event in events {
+                    let effect = match event {
+                        S::CopyText(text) => E::CopyText(text),
+                        S::CopyHtml { text, html } => E::CopyHtml { text, html },
+                        S::CopyImage(image) => E::CopyImage(image),
+                        _ => continue,
+                    };
+                    tasks.push(self.apply_replays_effect(effect));
+                }
+                iced::Task::batch(tasks)
+            }
         }
     }
 
@@ -858,49 +951,10 @@ impl App {
         // Decode just enough of the replay to get both sides' game
         // registrations + raw ROM bytes. Failures show up as a
         // Done(Err) status — same as runtime errors below.
-        let prep = (|| -> anyhow::Result<ExportPrep> {
+        let prep = (|| -> anyhow::Result<crate::library::replays::Resolved> {
             let f = std::fs::File::open(&replay_path)?;
-            let replay = tango_replay::Replay::decode(f)?;
-            // The export re-simulates both sides from the recorded
-            // inputs, so each side's ROM must be the exact patched ROM
-            // that was used when the match was recorded — otherwise the
-            // re-sim desyncs. Mirror `session::build_playback`'s
-            // `resolve_rom`: apply the side's patch from disk before
-            // handing the bytes to export.
-            let patches_path = self.config.patches_path();
-            let resolve = |side: Option<&tango_replay::metadata::Side>| -> anyhow::Result<(
-                crate::library::rom::GameRef,
-                Vec<u8>,
-            )> {
-                let gi = side
-                    .and_then(|s| s.game_info.as_ref())
-                    .ok_or_else(|| anyhow::anyhow!("replay side missing game info"))?;
-                // The export re-sim is as version-sensitive as playback,
-                // so this resolve also enforces the family's replay
-                // version.
-                let entry = crate::library::game::find_for_replay_side(gi)?;
-                let rom = self
-                    .scanners
-                    .roms
-                    .read()
-                    .get(&entry)
-                    .cloned()
-                    .ok_or_else(|| anyhow::anyhow!("rom for {:?} not scanned", entry.family_and_variant()))?;
-                let rom = if let Some(patch_info) = gi.patch.as_ref() {
-                    let v = semver::Version::parse(&patch_info.version)?;
-                    patch::apply_patch(crate::library::storage(), &rom, entry, &patches_path, &patch_info.name, &v)?
-                } else {
-                    rom
-                };
-                Ok((entry, rom))
-            };
-            let (p1_game, p1_rom) = resolve(replay.metadata.side(0))?;
-            let (p2_game, p2_rom) = resolve(replay.metadata.side(1))?;
-            Ok(ExportPrep {
-                games: [p1_game, p2_game],
-                roms: [p1_rom, p2_rom],
-                replay,
-            })
+            let replay = std::sync::Arc::new(tango_replay::Replay::decode(f)?);
+            crate::library::replays::resolve(&self.scanners, &self.config.patches_path(), replay)
         })();
         let prep = match prep {
             Ok(p) => p,
@@ -962,7 +1016,14 @@ impl App {
         std::thread::Builder::new()
             .name("replay-export".to_string())
             .spawn(move || {
-                let ExportPrep { games, roms, replay } = prep;
+                let crate::library::replays::Resolved {
+                    replay,
+                    backend,
+                    match_type,
+                    peer_rom,
+                    roms,
+                    ..
+                } = prep;
                 // scale == 0 is the slider's raw-output stop (RGB24
                 // + PCM, no upscale); 1..=10 is a lossy render at that
                 // nearest-neighbor upscale. The exporter picks the
@@ -1001,19 +1062,16 @@ impl App {
                 // The same boot the player uses, through the local
                 // seat's own engine door — which engine that is stays
                 // the game's business.
-                let backend = games[local_player].pvp;
                 let config = tango_match::ReplayConfig {
+                    record_factory: None,
                     roms,
                     saves: replay.srams.clone(),
                     inputs: std::sync::Arc::new(inputs),
                     rng_seed: replay.rng_seed,
                     rtc: replay.rtc_time(),
-                    match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+                    match_type,
                     local_player,
-                    peer_rom: tango_match::PeerRom {
-                        code: *games[1 - local_player].rom_code,
-                        revision: games[1 - local_player].revision,
-                    },
+                    peer_rom,
                     want_stats: false,
                     disable_bgm: user_settings.disable_bgm,
                 };
@@ -1042,7 +1100,7 @@ impl App {
                     clip.snapshot = None;
                 }
                 let request = crate::replay_render::Request {
-                    backend,
+                    backend: &*backend,
                     config,
                     rounds_mask: &rounds_mask,
                     round_titles: &round_titles,

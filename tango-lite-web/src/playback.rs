@@ -27,6 +27,7 @@ use tango_library::rom::GameRef;
 /// re-simulates the same match through a different pipeline and so
 /// needs the identical pair.
 pub fn resolve(replay: &tango_replay::Replay) -> Result<([GameRef; 2], [Arc<Vec<u8>>; 2]), String> {
+    replay.metadata.require_native().map_err(|error| error.to_string())?;
     let sides = [replay.metadata.p1_side.as_ref(), replay.metadata.p2_side.as_ref()];
     let mut games: Vec<GameRef> = Vec::new();
     let mut roms: Vec<Arc<Vec<u8>>> = Vec::new();
@@ -66,26 +67,30 @@ pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
     let (games, roms) = resolve(&replay)?;
 
     let sink = crate::audio::sink().await;
-    let (session, workers, stream) = tango_session::replay::ReplaySession::new(
-        games,
-        roms,
-        replay,
-        // Both seats always share one engine, so either seat's rate is
-        // the session's.
-        games[0].pvp.tps().to_f32().unwrap(),
-        crate::audio::sample_rate(),
-        // No picture-in-picture: the inset is a second screen's worth
-        // of pixels on a display that hasn't room for the first.
-        false,
-        // No stats prefetch — there is no results screen here to feed,
-        // and the pass is a whole second simulation of the match. That
-        // also means no round boundaries: this frontend caches no
-        // analyses, so there is nothing to hand in and no pass to
-        // discover them.
-        None,
-        vec![],
-    )
-    .map_err(|e| e.to_string())?;
+    let local_player = replay.local_player_index as usize;
+    let local = *games
+        .get(local_player)
+        .ok_or_else(|| "bad local player index".to_string())?;
+    let peer = games[1 - local_player];
+    let (session, workers, stream) =
+        tango_session::replay::ReplaySession::new(tango_session::replay::ReplaySessionArgs {
+            backend: tango_session::SessionBackend::Static(local.pvp),
+            match_type: tango_library::game::replay_match_type(&replay.metadata, local).map_err(|e| e.to_string())?,
+            peer_rom: Some(tango_match::PeerRom {
+                code: *peer.rom_code,
+                revision: peer.revision,
+            }),
+            roms,
+            replay,
+            expected_fps: local.pvp.tps().to_f32().unwrap(),
+            sample_rate: crate::audio::sample_rate(),
+            // Keep one screen and omit statistics on the small browser canvas.
+            show_pip: false,
+            stats_job: None,
+            round_boundaries: vec![],
+            record_factory: None,
+        })
+        .map_err(|e| e.to_string())?;
 
     // Priming happens on the first ticks, so let the screen change
     // before the main thread goes away for a moment.

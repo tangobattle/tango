@@ -1,0 +1,10 @@
+api = 1
+name = "bn4"
+version = "0.1.0"
+
+[dependencies]
+bn-common = "0.1.0"
+editor-common = "0.1.0"
+gba = "0.1.0"
+
+# Exports are declared when the editor and gamemodes pass their migration checks.

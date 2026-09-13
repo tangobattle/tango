@@ -89,20 +89,13 @@ impl tango_backend_mgba::GameSupport for Pvp {
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
         let disable_bgm = config.disable_bgm;
-        // The game's battle-kind byte (`submenu_control + 0x1c`, read as a
-        // halfword by the settings parse): 0 = lightweight, 1 = midweight,
-        // 2 = heavyweight, 3 = tri-battle (a best-of-three set). Tango's
-        // (mode, subtype) selection maps onto it exactly as the trap
-        // engine's `bn3_match_type` did: mode 0 = single battle with
-        // subtype 1/2/3 = light/mid/heavy and subtype 0 = a random weight
-        // (drawn from the shared match seed — identical on both cores and
-        // both peers); mode 1 = tri-battle.
+        // Flat choices: random-weight Single, Light, Middle, Heavy, Triple.
         let battle_kind = match config.match_type {
-            (0, 1) => 0,
-            (0, 2) => 1,
-            (0, 3) => 2,
-            (0, _) => (config.core_rng_seed(0, 4) % 3) as u8,
-            (1, _) => 3,
+            0 => (config.core_rng_seed(0, 4) % 3) as u8,
+            1 => 0,
+            2 => 1,
+            3 => 2,
+            4 => 3,
             _ => 0,
         };
         // Seed both rngs per core once, at save load (see module docs).

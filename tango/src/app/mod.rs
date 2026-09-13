@@ -21,19 +21,11 @@ const PVP_EXIT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(1
 
 mod dispatch;
 mod message;
+mod packages;
 mod update;
 mod view;
 
 pub use message::{Message, RescanFollowup, Tab};
-
-/// Bundle of decoded-replay state the export task needs.
-/// Pulled together synchronously in `start_replay_render` so the
-/// spawned future doesn't have to touch `&self`.
-struct ExportPrep {
-    games: [crate::library::rom::GameRef; 2],
-    roms: [Vec<u8>; 2],
-    replay: tango_replay::Replay,
-}
 
 pub struct App {
     config: config::Config,
@@ -72,6 +64,7 @@ pub struct App {
         std::path::PathBuf,
         (std::sync::Arc<std::sync::atomic::AtomicBool>, iced::task::Handle),
     >,
+    packages: tabs::packages::State,
     patches: PatchesState,
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
@@ -381,6 +374,7 @@ impl App {
         // until this returns. The selection restore that needs the
         // results moves with it, into `RescanFollowup::Boot`.
         let restored = loadout::Loadout {
+            package_rom: config.last_package_rom,
             // Restore the selected family (drives the picker even when no
             // owned-ROM game resolves under it); falls back to the family of
             // `last_game` for configs written before `last_family` existed.
@@ -455,6 +449,7 @@ impl App {
             replay_analysis_jobs: Default::default(),
             queue_carry_speed: None,
             replay_was_playing: false,
+            packages: tabs::packages::State::default(),
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
@@ -526,6 +521,10 @@ impl App {
     /// without a scan (see [`App::new`]); the game, its save and that
     /// save's patch overlay each have to still exist to come back.
     fn restore_selection(&mut self) {
+        if let Some(rom) = self.config.last_package_rom {
+            self.loadout.select_package(rom, &self.scanners, &self.config);
+            return;
+        }
         let Some((family, variant)) = self.config.last_game.as_ref() else {
             return;
         };
@@ -631,6 +630,11 @@ impl App {
     /// save carries the patch it was last used with, including the
     /// patch a template-created save was born under.
     fn persist_selection(&mut self) {
+        self.loadout.remember_package(&mut self.config);
+        if self.loadout.package_rom.is_some() {
+            self.persist_config();
+            return;
+        }
         self.config.last_family = self.loadout.family.map(|f| f.to_string());
         self.config.last_game = self
             .loadout
@@ -653,52 +657,27 @@ impl App {
 
     /// Snapshot of the inputs that determine `loaded`, used to skip
     /// rebuilds when nothing relevant changed.
-    /// Default match-type policy:
-    ///   - Family JUST changed (or first selection in this lobby):
-    ///     the mode this family was last picked in
-    ///     ([`Config::last_match_type_per_family`]), or, failing that,
-    ///     Triple (mode=1) if the game supports it, else Single.
-    ///     Keyed off `default_mt_for_family` so it only fires once per
-    ///     (lobby, family) pair.
-    ///   - Same family, current value invalid for this game: same
-    ///     fallback (paranoia — the versions of a family can differ).
-    ///   - Same family, valid value: leave alone — sticky user pick.
-    ///
-    /// Called any time the current game or lobby state could have
-    /// changed in a way that affects the right default: on Connect
-    /// (cancel_and_renew wiped the lobby), on selection change,
-    /// and defensively inside `resend_settings_if_lobby`.
+    /// Keep a valid saved choice, otherwise use the game's declared default.
+    /// Called after game/lobby changes, before advertising local settings.
     fn apply_default_match_type(&mut self) {
+        if self.loadout.gamemodes.selected.is_some() {
+            self.netplay.lobby.match_type = 0;
+            return;
+        }
         let Some(game) = self.loadout.game else { return };
-        let mt_table = game::from_gamedb_entry(game)
-            .map(|g| g.family.match_types)
-            .unwrap_or(&[]);
+        let Some(game_impl) = game::from_gamedb_entry(game) else {
+            return;
+        };
+        let choices = game_impl.family.match_types;
         let family = game.family_and_variant().0;
         let family_changed = self.netplay.lobby.default_mt_for_family.as_deref() != Some(family);
-        let (mode, sub) = self.netplay.lobby.match_type;
-        let current_valid =
-            (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
-        if family_changed || !current_valid {
-            // What this family was last played in, if the game still
-            // offers it — a remembered pick outranks the built-in
-            // default, and a stale one (the table shrank under a patch)
-            // falls through to it.
+        if family_changed || usize::from(self.netplay.lobby.match_type) >= choices.len() {
             let remembered = self
                 .config
-                .last_match_type_per_family
+                .last_gamemode_per_family
                 .get(family)
-                .copied()
-                .filter(|&(mode, sub)| {
-                    (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0)
-                });
-            let new_mt = remembered.unwrap_or_else(|| {
-                if mt_table.get(1).copied().unwrap_or(0) > 0 {
-                    (1, 0) // Triple
-                } else {
-                    (0, 0) // Single
-                }
-            });
-            self.netplay.lobby.match_type = new_mt;
+                .and_then(|name| choices.iter().position(|choice| choice.name == name));
+            self.netplay.lobby.match_type = remembered.map(|i| i as u8).unwrap_or(game_impl.family.default_gamemode);
             self.netplay.lobby.default_mt_for_family = Some(family.to_string());
         }
     }
@@ -723,12 +702,7 @@ impl App {
         let local_game = self.loadout.game;
         let local_patch = self.loadout.patch.clone().zip(self.loadout.patch_version.clone());
         iced::Task::perform(
-            async move {
-                let Some(local_game) = local_game else {
-                    return Err(anyhow::anyhow!("no local game selected"));
-                };
-                session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await
-            },
+            async move { session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await },
             move |result| Message::PvpSessionBuilt(attempt, std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
         )
     }
@@ -799,10 +773,8 @@ impl App {
             else {
                 return;
             };
-            let roms = self.scanners.roms.read();
-            let patches = self.scanners.patches.read();
             matches!(
-                netplay::compat::check(local, remote, &roms, &patches),
+                crate::package::gamemode::verdict(&self.scanners, local, remote),
                 netplay::compat::Verdict::Compatible
             )
         };
@@ -826,11 +798,7 @@ impl App {
         else {
             return iced::Task::none();
         };
-        let verdict = {
-            let roms = self.scanners.roms.read();
-            let patches = self.scanners.patches.read();
-            netplay::compat::check(local, remote, &roms, &patches)
-        };
+        let verdict = crate::package::gamemode::verdict(&self.scanners, local, remote);
         let Some((name, version)) = verdict.fetchable() else {
             return iced::Task::none();
         };
@@ -840,7 +808,7 @@ impl App {
     }
 
     /// Build a `protocol::Settings` packet from the App's current
-    /// state: nickname from config, match_type defaults to (0, 0),
+    /// state: nickname from config, match_type is the selected flat gamemode,
     /// game_info from the local loadout. (No available-games /
     /// available-patches lists cross the wire — possession of the
     /// peer's setup is checked locally by `compat::check`.)
@@ -863,6 +831,17 @@ impl App {
     /// ROM/assets need a fresh parse (BPS + asset parsing + icon
     /// decode), which is why we don't call it from view().
     fn refresh_loaded(&mut self) {
+        self.loadout.gamemodes.refresh(
+            &self.scanners,
+            self.loadout.rom(&self.scanners),
+            self.loadout.patch.is_some(),
+            self.config.disable_bgm_in_pvp,
+        );
+        if self.loadout.package_rom.is_some() {
+            self.loadout
+                .refresh_package(&self.scanners, &self.config, &mut self.loaded);
+            return;
+        }
         let Some((game, save_path, patch)) = self.loaded_key() else {
             self.loaded = None;
             return;
@@ -871,7 +850,7 @@ impl App {
         // Reuse existing if all inputs still match.
         if let Some(l) = &self.loaded {
             let cur_patch = l.patch.as_ref().map(|p| (p.name.clone(), p.version.clone()));
-            if l.game == game && l.save_path == save_path && cur_patch == patch {
+            if l.native_game == Some(game) && l.save_path == save_path && cur_patch == patch {
                 return;
             }
         }
@@ -920,7 +899,15 @@ impl App {
         // A disk load carries no session payload — the editor opens on
         // the game's own default and the file picker takes it from
         // there.
-        self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta));
+        self.loaded = Some(selection::build(
+            game,
+            rom,
+            save_path,
+            save,
+            &patches_path,
+            patch_meta,
+            &self.scanners.packages.read(),
+        ));
     }
 }
 
@@ -1078,6 +1065,7 @@ mod tests {
     #[test]
     fn clicking_play_forces_the_loaded_selection_to_be_rebuilt() {
         assert_eq!(Tab::Play.rescan_followup(), Some(RescanFollowup::ForceRebuildLoaded));
+        assert_eq!(Tab::Packages.rescan_followup(), Some(RescanFollowup::Refresh));
         assert_eq!(Tab::Patches.rescan_followup(), Some(RescanFollowup::Refresh));
         assert_eq!(Tab::Settings.rescan_followup(), None);
     }

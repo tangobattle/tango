@@ -8,6 +8,7 @@ pub enum Tab {
     #[default]
     Play,
     Replays,
+    Packages,
     Patches,
     Settings,
 }
@@ -22,7 +23,7 @@ impl Tab {
         match self {
             Self::Play => Some(RescanFollowup::ForceRebuildLoaded),
             Self::Replays => Some(RescanFollowup::RefreshAndReplayStats),
-            Self::Patches => Some(RescanFollowup::Refresh),
+            Self::Packages | Self::Patches => Some(RescanFollowup::Refresh),
             Self::Settings => None,
         }
     }
@@ -44,6 +45,7 @@ pub enum Message {
     AnimTick,
     TabSelected(Tab),
     Play(tabs::play::Message),
+    Packages(tabs::packages::Message),
     Patches(tabs::patches::Message),
     Replays(tabs::replays::Message),
     Settings(tabs::settings::Message),

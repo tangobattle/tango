@@ -19,10 +19,13 @@ pub mod pvp;
 use std::sync::LazyLock;
 use tango_gamesupport::{BackgroundRef, Family, Game, Region, SaveTemplates, Volume};
 
-/// One mode with one subtype, until the cart's own comm screens say
+/// One gamemode, until the cart's own comm screens say
 /// otherwise. BN1 had a single battle mode and this is its remake; what
 /// the wireless menus actually offer is a question for the walk.
-const MATCH_TYPES: &[usize] = &[1];
+const MATCH_TYPES: &[tango_gamesupport::MatchType] = &[tango_gamesupport::MatchType {
+    name: "single",
+    legacy_replay_code: (0, 0),
+}];
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol1,
     tga: "01.tga",
@@ -126,6 +129,7 @@ pub static EXEOSS_FAMILY: Family = Family {
     id: "exeoss",
     games: &[&EXEOSS],
     match_types: MATCH_TYPES,
+    default_gamemode: 0,
     players_colored_by_seat: false,
     #[cfg(feature = "ui")]
     save_editor: &ui::SAVE_EDITOR,

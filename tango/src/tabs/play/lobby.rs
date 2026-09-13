@@ -59,6 +59,7 @@ pub(super) struct Lobby<'a> {
     pub(super) ready: netplay::ReadyView,
     pub(super) phase: &'a netplay::Phase,
     pub(super) local_game: Option<rom::GameRef>,
+    pub(super) gamemodes: &'a crate::package::gamemode::Selection,
     pub(super) scanners: &'a Scanners,
     pub(super) has_save: bool,
     /// Local-side Settings synthesized from the current loadout, used
@@ -126,11 +127,7 @@ impl<'a> Lobby<'a> {
             } => Status::WaitingForOpponent,
             Phase::Negotiating { .. } => Status::Negotiating,
             _ => match (self.state.local.as_ref(), self.state.remote.as_ref()) {
-                (Some(l), Some(r)) => {
-                    let roms = self.scanners.roms.read();
-                    let patches = self.scanners.patches.read();
-                    Status::Verdict(netplay::compat::check(l, r, &roms, &patches))
-                }
+                (Some(l), Some(r)) => Status::Verdict(crate::package::gamemode::verdict(self.scanners, l, r)),
                 _ => Status::Handshake,
             },
         }
@@ -152,6 +149,13 @@ impl<'a> Lobby<'a> {
         let mut status_col = column![self.status_line(status)].spacing(4);
         if let Some(line) = self.connection_line() {
             status_col = status_col.push(line);
+        }
+        if let Some(error) = &self.gamemodes.error {
+            status_col = status_col.push(
+                text(t!(self.lang, "lobby-gamemode-error", error = error.clone()))
+                    .size(TEXT_CAPTION)
+                    .style(widgets::danger_text_style),
+            );
         }
         // Leave's wrapper carries the bar's fixed content height (see
         // COMMAND_BAR_CONTENT) — a strut, not a clip: if the failure
@@ -555,45 +559,55 @@ impl<'a> Lobby<'a> {
             .into()
     }
 
-    /// Match-type pick_list — options pulled from the current local
-    /// game's Game::match_types() table (mode + subtype counts),
-    /// labeled with the per-game Fluent strings via
-    /// game::match_type_name. Renders an empty disabled pick_list when
-    /// no game is selected (Game::match_types() can't be queried until
-    /// we know the game) — gives the row a stable shape so the
-    /// surrounding layout doesn't jump once the user picks a game.
+    /// Package exports supply the choices and their localized labels. Games
+    /// awaiting migration retain their native match-type picker.
     fn match_type_picker(&self) -> Element<'a, Message> {
         let lang = self.lang;
+        if !self.gamemodes.choices.is_empty() || self.gamemodes.selected.is_some() {
+            let options: Vec<_> = self
+                .gamemodes
+                .choices
+                .iter()
+                .map(|choice| GameModeOption {
+                    reference: choice.reference.clone(),
+                    label: choice.label(&lang.to_string()),
+                })
+                .collect();
+            let selected = options
+                .iter()
+                .find(|choice| Some(&choice.reference) == self.gamemodes.selected.as_ref())
+                .cloned();
+            let on_change = gated(self.inert(), |reference| {
+                Message::Loadout(crate::loadout::Message::GameModeSelected(reference))
+            });
+            return widgets::picker(options, selected, move |choice| on_change(choice.reference))
+                .placeholder(t!(lang, "lobby-gamemode-unavailable"))
+                .into();
+        }
         let Some(g) = self.local_game else {
             let empty: Vec<MatchTypeOption> = Vec::new();
             return widgets::picker(empty, None::<MatchTypeOption>, |o: MatchTypeOption| {
-                Message::SetMatchType((o.mode, o.subtype))
+                Message::SetMatchType(o.id)
             })
             .into();
         };
         let game_impl = game::from_gamedb_entry(g);
         let mt_table = game_impl.map(|gi| gi.family.match_types).unwrap_or(&[]);
         let mut options = Vec::new();
-        for (mode, subtype_count) in mt_table.iter().enumerate() {
-            for sub in 0..*subtype_count {
-                options.push(MatchTypeOption {
-                    mode: mode as u8,
-                    subtype: sub as u8,
-                    label: game::match_type_name(lang, g.family_and_variant().0, mode as u8, sub as u8),
-                });
-            }
+        for (id, _) in mt_table.iter().enumerate() {
+            options.push(MatchTypeOption {
+                id: id as u8,
+                label: game::match_type_name(lang, g.family_and_variant().0, id as u8),
+            });
         }
         if options.is_empty() {
             return text(t!(lang, "lobby-no-match-types"))
                 .style(widgets::muted_text_style)
                 .into();
         }
-        let selected = options
-            .iter()
-            .find(|o| o.mode == self.state.match_type.0 && o.subtype == self.state.match_type.1)
-            .cloned();
+        let selected = options.iter().find(|o| o.id == self.state.match_type).cloned();
         let on_change = gated(self.inert(), Message::SetMatchType);
-        widgets::picker(options, selected, move |o| on_change((o.mode, o.subtype))).into()
+        widgets::picker(options, selected, move |o| on_change(o.id)).into()
     }
 
     /// Big single toggle: Ready → Unready → Starting…, switching
@@ -894,11 +908,11 @@ fn ready_dot(ready: bool) -> Element<'static, Message> {
     .into()
 }
 
-/// The card's caption line: "<game name> · <patch> · <match-type>"
-/// packed onto a single row so the card stays compact. Match-type is
-/// meaningless without a game (no Game::match_types table to look the
-/// name up against), so it's omitted then.
+/// Package identity or the legacy game, patch, and match type in one caption.
 fn side_card_subline(lang: &LanguageIdentifier, settings: &Settings) -> String {
+    if let Some(mode) = &settings.gamemode {
+        return format!("{} / {}", mode.identity.package.name, mode.identity.export);
+    }
     let mut subline = settings
         .game_info
         .as_ref()
@@ -913,21 +927,26 @@ fn side_card_subline(lang: &LanguageIdentifier, settings: &Settings) -> String {
         subline.push_str(&format!(" · {} v{}", p.name, p.version));
     }
     if let Some(gi) = settings.game_info.as_ref() {
-        let mt = game::match_type_name(
-            lang,
-            gi.family_and_variant.0.as_str(),
-            settings.match_type.0,
-            settings.match_type.1,
-        );
+        let mt = game::match_type_name(lang, gi.family_and_variant.0.as_str(), settings.match_type);
         subline.push_str(&format!(" · {mt}"));
     }
     subline
 }
 
+#[derive(Clone, PartialEq, Eq)]
+struct GameModeOption {
+    reference: crate::library::package::ExportRef,
+    label: String,
+}
+impl std::fmt::Display for GameModeOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.label)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct MatchTypeOption {
-    mode: u8,
-    subtype: u8,
+    id: u8,
     label: String,
 }
 impl std::fmt::Display for MatchTypeOption {

@@ -79,11 +79,25 @@ pub enum Packet {
 
 impl Packet {
     pub fn serialize(&self) -> bincode::Result<Vec<u8>> {
+        self.validate()?;
         BINCODE_OPTIONS.serialize(self)
     }
 
     pub fn deserialize(d: &[u8]) -> bincode::Result<Self> {
-        BINCODE_OPTIONS.deserialize(d)
+        let packet: Self = BINCODE_OPTIONS.deserialize(d)?;
+        packet.validate()?;
+        Ok(packet)
+    }
+
+    fn validate(&self) -> bincode::Result<()> {
+        if let Self::Settings(settings) = self {
+            if let Some(gamemode) = &settings.gamemode {
+                gamemode
+                    .validate()
+                    .map_err(|error| Box::new(bincode::ErrorKind::Custom(error.to_string())))?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -150,9 +164,120 @@ pub struct GameInfo {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub nickname: String,
-    pub match_type: (u8, u8),
+    pub match_type: u8,
     pub game_info: Option<GameInfo>,
     pub blind_setup: bool,
+    /// Exact package simulation configuration. Native game metadata is only
+    /// descriptive when this is present; it must never select a fallback.
+    pub gamemode: Option<tango_match::gamemode::Configuration>,
+}
+
+impl Settings {
+    /// Commit to simulation terms without nickname or setup-visibility churn.
+    pub fn simulation_digest(&self) -> bincode::Result<[u8; 32]> {
+        use sha3::{Digest, Sha3_256};
+        Packet::Settings(self.clone()).validate()?;
+        let bytes = BINCODE_OPTIONS.serialize(&(&self.game_info, self.match_type, &self.gamemode))?;
+        let mut hash = Sha3_256::new();
+        hash.update(b"tango-lobby-simulation-v1\0");
+        hash.update(bytes);
+        Ok(hash.finalize().into())
+    }
+}
+
+#[cfg(test)]
+mod gamemode_tests {
+    use super::*;
+    use tango_match::gamemode::{
+        identity::{Identity, Package, Runtime},
+        Configuration, OptionValue,
+    };
+
+    fn settings() -> Settings {
+        Settings {
+            gamemode: Some(Configuration {
+                disable_bgm: false,
+                identity: Identity {
+                    engine: Runtime {
+                        name: "test".into(),
+                        revision: 1,
+                    },
+                    script: Runtime {
+                        name: "luau".into(),
+                        revision: 1,
+                    },
+                    package: Package {
+                        name: "game".into(),
+                        version: "1.0.0".into(),
+                        digest: [7; 32],
+                    },
+                    export: "main".into(),
+                    dependencies: vec![],
+                    rom: [8; 32],
+                    environment: [9; 32],
+                },
+                options: [
+                    ("choice".into(), OptionValue::String("alternate".into())),
+                    ("value".into(), OptionValue::Number(-0.0)),
+                ]
+                .into(),
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn settings_roundtrip_pinned_gamemode_and_validate_before_use() {
+        for settings in [Settings::default(), settings()] {
+            let encoded = Packet::Settings(settings.clone()).serialize().unwrap();
+            let Packet::Settings(decoded) = Packet::deserialize(&encoded).unwrap() else {
+                panic!("settings packet")
+            };
+            assert_eq!(decoded, settings);
+        }
+        let mut invalid = settings();
+        invalid
+            .gamemode
+            .as_mut()
+            .unwrap()
+            .options
+            .insert("value".into(), OptionValue::Number(f64::NAN));
+        assert!(Packet::Settings(invalid.clone()).serialize().is_err());
+        let bytes = BINCODE_OPTIONS.serialize(&Packet::Settings(invalid)).unwrap();
+        assert!(Packet::deserialize(&bytes).is_err());
+    }
+
+    #[test]
+    fn simulation_digest_binds_options_and_pins_but_not_display_preferences() {
+        let settings = settings();
+        let digest = settings.simulation_digest().unwrap();
+        let mut cosmetic = settings.clone();
+        cosmetic.nickname = "new nickname".into();
+        cosmetic.blind_setup = true;
+        assert_eq!(cosmetic.simulation_digest().unwrap(), digest);
+        for mutate in [
+            |s: &mut Settings| {
+                s.match_type = 1;
+            },
+            |s: &mut Settings| {
+                s.gamemode = None;
+            },
+            |s: &mut Settings| {
+                s.gamemode.as_mut().unwrap().identity.package.digest[0] ^= 1;
+            },
+            |s: &mut Settings| {
+                s.gamemode
+                    .as_mut()
+                    .unwrap()
+                    .options
+                    .insert("value".into(), OptionValue::Number(0.0));
+            },
+        ] {
+            let mut changed = settings.clone();
+            mutate(&mut changed);
+            assert_ne!(changed.simulation_digest().unwrap(), digest);
+        }
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -183,6 +308,8 @@ pub struct NegotiatedState {
     /// and on playback.
     pub ts: u64,
     pub save_data: Vec<u8>,
+    /// Binds this reveal to the sender's exact advertised simulation settings.
+    pub settings_digest: [u8; 32],
 }
 
 impl NegotiatedState {

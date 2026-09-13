@@ -1,0 +1,9 @@
+{
+  "luau-lsp.platform.type": "standard",
+  "luau-lsp.sourcemap.enabled": false,
+  "luau-lsp.require.useOriginalRequireByStringSemantics": true,
+  "luau-lsp.types.definitionFiles": {
+    "tango": "tango-script/sdk/tango.d.luau"
+  },
+  "luau-lsp.fflags.enableNewSolver": true
+}

@@ -182,6 +182,31 @@ pub fn list_item(selected: bool, idx: usize) -> impl Fn(&Theme, button::Status) 
     }
 }
 
+/// Zebra row style for data tables. Odd rows get a faint text-
+/// tinted wash (alpha 0.05 dark / 0.04 light); even rows are
+/// transparent and show the pane plate. Flat — no rounded corners
+/// — since rows sit flush against the pane edges and rounded
+/// per-row corners look like accidental indents.
+pub fn zebra_row(idx: usize) -> impl Fn(&Theme) -> iced::widget::container::Style {
+    move |theme: &Theme| {
+        let p = theme.extended_palette();
+        let text = theme.palette().text;
+        let stripe = if idx % 2 == 1 {
+            Some(iced::Background::Color(iced::Color {
+                a: if p.is_dark { 0.05 } else { 0.04 },
+                ..text
+            }))
+        } else {
+            None
+        };
+        iced::widget::container::Style {
+            background: stripe,
+            text_color: Some(text),
+            ..Default::default()
+        }
+    }
+}
+
 /// Theme-aware "neutral" button style for low-emphasis toolbar
 /// actions. Two-stop vertical gradient (lighter top → darker
 /// bottom) so it reads as a 3D plastic button rather than a
@@ -1044,5 +1069,27 @@ pub fn chunky_pick_list(
             width,
             color: border_color,
         },
+    }
+}
+
+/// Shared reorderable-list styling: transparent shifted rows and a softened
+/// floating panel, so dragging retains the row's own colors.
+pub fn reorder_drag_style(theme: &iced::Theme) -> sweeten::widget::column::Style {
+    let ep = theme.extended_palette();
+    let ghost = {
+        let mut c = ep.background.weak.color;
+        c.a = 0.92;
+        c
+    };
+    sweeten::widget::column::Style {
+        scale: 1.02,
+        // No tint on the rows that move to open a gap.
+        moved_item_overlay: iced::Color::TRANSPARENT,
+        ghost_border: iced::Border {
+            width: 1.0,
+            color: ep.background.strong.color,
+            radius: 4.0.into(),
+        },
+        ghost_background: iced::Background::Color(ghost),
     }
 }

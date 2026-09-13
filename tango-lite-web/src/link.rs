@@ -57,7 +57,7 @@ pub struct Snapshot {
     pub verdict: Option<Verdict>,
     pub latency_ms: Option<u32>,
     pub relayed: Option<bool>,
-    pub match_type: (u8, u8),
+    pub match_type: u8,
     pub error: Option<String>,
 }
 
@@ -258,7 +258,7 @@ pub fn set_loadout(loadout: Loadout) {
     }
 }
 
-pub fn set_match_type(match_type: (u8, u8)) {
+pub fn set_match_type(match_type: u8) {
     LINK.with(|l| l.borrow_mut().net.set_match_type(match_type));
     // The resend's material-difference check does the auto-unready, so
     // it deliberately isn't done here.
@@ -279,23 +279,12 @@ fn apply_default_match_type() {
     LINK.with(|l| {
         let mut link = l.borrow_mut();
         let Some(game) = link.loadout.game else { return };
-        // Entry `i` is how many subtypes mode `i` has; mode 1 is Triple.
-        let table = game.family.match_types;
         let family = game.family_and_variant().0;
-
         let family_changed = link.net.lobby.default_mt_for_family.as_deref() != Some(family);
-        let (mode, subtype) = link.net.lobby.match_type;
-        let in_range = table
-            .get(mode as usize)
-            .is_some_and(|subtypes| (subtype as usize) < *subtypes);
-        if !family_changed && in_range {
+        if !family_changed && usize::from(link.net.lobby.match_type) < game.family.match_types.len() {
             return;
         }
-        link.net.lobby.match_type = if table.get(1).copied().unwrap_or(0) > 0 {
-            (1, 0)
-        } else {
-            (0, 0)
-        };
+        link.net.lobby.match_type = game.family.default_gamemode;
         link.net.lobby.default_mt_for_family = Some(family.to_string());
     });
 }
@@ -308,6 +297,7 @@ fn push_settings() {
     let settings = LINK.with(|l| {
         let link = l.borrow();
         protocol::Settings {
+            gamemode: None,
             nickname: link.nickname.clone(),
             match_type: link.net.lobby.match_type,
             game_info: link.loadout.game_info(),
@@ -401,7 +391,7 @@ async fn start_match() {
     });
 }
 
-async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
+async fn build(mut pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
     let loadout = LINK.with(|l| l.borrow().loadout.clone());
     let local_game = loadout.game.ok_or_else(|| "no game selected".to_string())?;
     let local_rom = loadout.rom()?;
@@ -421,10 +411,31 @@ async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
     let remote_rom = crate::library::patched_rom(remote_game, remote_patch.as_ref())?;
 
     let sink = crate::audio::sink().await;
+    pre_match.local_save_data = local_game
+        .parse_save(&pre_match.local_save_data)
+        .map_err(|e| format!("parse local save: {e}"))?
+        .to_sram_dump();
+    pre_match.remote_save_data = remote_game
+        .parse_save(&pre_match.remote_save_data)
+        .map_err(|e| format!("parse remote save: {e}"))?
+        .to_sram_dump();
+    let legacy_replay_code = Some(
+        local_game
+            .family
+            .match_types
+            .get(pre_match.match_type as usize)
+            .ok_or_else(|| "unknown gamemode".to_string())?
+            .legacy_replay_code,
+    );
     let (session, driver, stream) = tango_session::pvp::PvpSession::new(tango_session::pvp::PvpSessionArgs {
-        local_game,
+        backend: tango_session::SessionBackend::Static(local_game.pvp),
+        record_factory: None,
+        legacy_replay_code,
         local_rom: std::sync::Arc::new(local_rom),
-        remote_game,
+        peer_rom: Some(tango_match::PeerRom {
+            code: *remote_game.rom_code,
+            revision: remote_game.revision,
+        }),
         remote_rom: std::sync::Arc::new(remote_rom),
         pre_match,
         frame_delay: frame_delay(),

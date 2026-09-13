@@ -7,7 +7,16 @@ pub mod pvp;
 use std::sync::LazyLock;
 use tango_gamesupport::{BackgroundRef, Family, Game, LazyImage, Region, SaveTemplates, Volume};
 
-const MATCH_TYPES: &[usize] = &[1, 1];
+const MATCH_TYPES: &[tango_gamesupport::MatchType] = &[
+    tango_gamesupport::MatchType {
+        name: "single",
+        legacy_replay_code: (0, 0),
+    },
+    tango_gamesupport::MatchType {
+        name: "triple",
+        legacy_replay_code: (1, 0),
+    },
+];
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol1,
     tga: "04.tga",
@@ -84,6 +93,7 @@ pub static EXE45_FAMILY: Family = Family {
     id: "exe45",
     games: &[&EXE45],
     match_types: MATCH_TYPES,
+    default_gamemode: 1,
     players_colored_by_seat: false,
     #[cfg(feature = "ui")]
     save_editor: &ui::SAVE_EDITOR,

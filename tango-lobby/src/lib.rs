@@ -276,10 +276,10 @@ pub struct LobbyState {
     /// frame-delay "suggest" button recommends a stable value rather than
     /// chasing the latest spike.
     pub latency_counter: tango_session::net::LatencyCounter,
-    /// User-picked match type (mode + subtype). Defaults to (0, 0)
+    /// User-picked flat gamemode index. Starts at zero
     /// = Single. Local-only UI state; gets folded into Settings
     /// on send.
-    pub match_type: (u8, u8),
+    pub match_type: u8,
     /// Per-lobby "blind my setup from the opponent" flag. Crosses
     /// the wire via `protocol::Settings.blind_setup`; each side
     /// picks their own independently. Setups are visible by
@@ -315,7 +315,7 @@ impl Default for LobbyState {
             // 5 marks at one Pong/second ≈ a 5 s median window, matching the
             // in-match `PvpSession` latency counter.
             latency_counter: tango_session::net::LatencyCounter::new(5),
-            match_type: (0, 0),
+            match_type: 0,
             blind_setup: false,
             default_mt_for_family: None,
             connection_kind: None,
@@ -657,12 +657,17 @@ impl State {
         self.send(Command::Settings(Box::new(settings)));
     }
 
-    /// Peer's Settings landed; record them and drop our commit if they
-    /// downgraded visibility.
+    /// Peer's Settings landed; a changed simulation or visibility downgrade
+    /// invalidates the terms under which we committed our save.
     fn on_remote_settings(&mut self, settings: tango_net_protocol::control::Settings) {
         // Visibility downgrade (peer's setup used to be visible, now
         // they've blinded it): drop our local commit so we re-commit
         // explicitly under the new visibility contract.
+        let material = self
+            .lobby
+            .remote
+            .as_ref()
+            .is_some_and(|prev| settings_materially_differ(prev, &settings));
         let downgrade = self
             .lobby
             .remote
@@ -670,15 +675,18 @@ impl State {
             .map(|prev| !prev.blind_setup && settings.blind_setup)
             .unwrap_or(false);
         self.lobby.remote = Some(settings);
-        if downgrade {
+        if material || downgrade {
             self.invalidate_local_commit();
+        }
+        if material {
+            self.handshake.remote = RemoteReady::NotReady;
         }
     }
 
     /// The user picked a match type. The host follows this with a settings
     /// resend, and `send_local_settings`'s material-diff check does the
     /// unready — so deliberately not done here.
-    pub fn set_match_type(&mut self, match_type: (u8, u8)) {
+    pub fn set_match_type(&mut self, match_type: u8) {
         self.lobby.match_type = match_type;
     }
 
@@ -848,6 +856,11 @@ impl State {
             Ok(s) => s,
             Err(e) => return self.fail_handoff(Error::Other(format!("decode peer state: {e}"))),
         };
+        if local_settings.simulation_digest().ok() != Some(local_commit.state.settings_digest)
+            || remote_settings.simulation_digest().ok() != Some(peer_state.settings_digest)
+        {
+            return self.fail_handoff(Error::Other("simulation settings changed after commitment".into()));
+        }
         // Direct codes carry no remote-discoverable identity, so the
         // replay metadata's `link_code` slot is left empty for them — the
         // replay filename and view substitute their own placeholder.
@@ -957,7 +970,7 @@ impl State {
 pub use tango_session::pvp::PreMatchData;
 
 /// Does this settings change warrant auto-unready? `true` for
-/// game-info or match-type changes (the user's effectively
+/// game-info, match-type or gamemode-configuration changes (the user's effectively
 /// changed what they're offering up), `false` for nickname /
 /// available-games churn (cosmetic / metadata-only). Lets
 /// `send_local_settings` drop stale commits without forcing
@@ -967,5 +980,5 @@ fn settings_materially_differ(
     a: &tango_net_protocol::control::Settings,
     b: &tango_net_protocol::control::Settings,
 ) -> bool {
-    a.game_info != b.game_info || a.match_type != b.match_type
+    a.game_info != b.game_info || a.match_type != b.match_type || a.gamemode != b.gamemode
 }

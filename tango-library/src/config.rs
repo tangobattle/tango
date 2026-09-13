@@ -176,6 +176,49 @@ impl std::fmt::Display for ThemeMode {
     }
 }
 
+/// Remember each cartridge's save and independent package capabilities across launches.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PackageLoadout {
+    pub rom: crate::rom::Id,
+    pub save: Option<String>,
+    pub gamemode: Option<PackageExport>,
+    #[serde(default)]
+    pub editor: Option<PackageExport>,
+}
+
+/// A pinned selection can be persisted even on hosts without a Luau runtime.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PackageExport {
+    pub package: String,
+    pub version: semver::Version,
+    pub name: String,
+}
+
+#[cfg(feature = "packages")]
+impl PackageExport {
+    pub fn reference(&self, kind: tango_script::ExportKind) -> crate::package::ExportRef {
+        crate::package::ExportRef {
+            kind,
+            package: tango_script::PackageRef {
+                name: self.package.clone(),
+                version: self.version.clone(),
+            },
+            name: self.name.clone(),
+        }
+    }
+}
+
+#[cfg(feature = "packages")]
+impl From<&crate::package::ExportRef> for PackageExport {
+    fn from(reference: &crate::package::ExportRef) -> Self {
+        Self {
+            package: reference.package.name.clone(),
+            version: reference.package.version.clone(),
+            name: reference.name.clone(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct Config {
@@ -255,6 +298,11 @@ pub struct Config {
     #[serde(default)]
     pub allow_prerelease_upgrades: bool,
 
+    /// Package selections use exact cartridge content identity, independent of filenames.
+    #[serde(default)]
+    pub last_package_rom: Option<crate::rom::Id>,
+    #[serde(default)]
+    pub package_loadouts: Vec<PackageLoadout>,
     pub last_game: Option<(String, u8)>,
     /// Last selected game *family* (region-specific gamedb family string,
     /// e.g. `"bn3"`). The family drives the picker; the concrete game is
@@ -287,20 +335,10 @@ pub struct Config {
     /// exists.
     #[serde(default)]
     pub last_patch_per_save: std::collections::BTreeMap<String, Option<(String, semver::Version)>>,
-    /// Per-family memory of the link-battle mode last picked. Key: the
-    /// gamedb family string (`"bn6"`), the same thing
-    /// [`last_family`](Self::last_family) holds; value: `(mode,
-    /// subtype)` in the encoding of the game's own `match_types` table.
-    /// Written whenever the user picks one, read when the lobby's game
-    /// changes — so coming back to a family offers the mode it was last
-    /// played in rather than the built-in default.
-    ///
-    /// Keyed by family rather than by game, because the two versions of
-    /// a family (Gregar and Falzar, say) are the same game to a player
-    /// choosing between Single and Triple. An entry the game no longer
-    /// admits — a patch shrank its table — is ignored, not repaired.
+    /// Last explicitly selected gamemode name for each native game family.
+    /// Unknown or removed names fall back to that game's declared default.
     #[serde(default)]
-    pub last_match_type_per_family: std::collections::BTreeMap<String, (u8, u8)>,
+    pub last_gamemode_per_family: std::collections::BTreeMap<String, String>,
     /// Names of patches the user has favorited — they sort to the top
     /// of pickers and get a star glyph next to their label.
     #[serde(default)]
@@ -418,11 +456,13 @@ impl Default for Config {
             pvp_setup_pane_widths: default_setup_pane_widths(),
             enable_updater: true,
             allow_prerelease_upgrades: false,
+            last_package_rom: None,
+            package_loadouts: Vec::new(),
             last_game: None,
             last_family: None,
             last_save_per_family: std::collections::BTreeMap::new(),
             last_patch_per_save: std::collections::BTreeMap::new(),
-            last_match_type_per_family: std::collections::BTreeMap::new(),
+            last_gamemode_per_family: std::collections::BTreeMap::new(),
             favorite_patches: std::collections::BTreeSet::new(),
             last_window_size: None,
             last_window_maximized: false,
@@ -459,6 +499,9 @@ impl Config {
     }
     pub fn patches_path(&self) -> std::path::PathBuf {
         self.data_path.join("patches")
+    }
+    pub fn packages_path(&self) -> std::path::PathBuf {
+        self.data_path.join("packages")
     }
     pub fn replays_path(&self) -> std::path::PathBuf {
         self.data_path.join("replays")

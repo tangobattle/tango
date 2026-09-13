@@ -90,7 +90,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
     fn prime(
         &self,
         link: &mut Link,
-        match_type: (u8, u8),
+        match_type: u8,
         rng_seed: [u8; 16],
         events: &tango_match::telemetry::EventSink,
         cancel: Option<&std::sync::atomic::AtomicBool>,
@@ -137,7 +137,7 @@ impl tango_backend_melonds::GameSupport for Pvp {
     /// screen, and carrying it would spend half the pane on a dead
     /// one. Regular play still gets both, since the same cart is a
     /// stylus game everywhere outside a link battle.
-    fn pvp_screens(&self, _match_type: (u8, u8)) -> tango_backend_melonds::Screens {
+    fn pvp_screens(&self, _match_type: u8) -> tango_backend_melonds::Screens {
         tango_backend_melonds::Screens::UPPER
     }
 

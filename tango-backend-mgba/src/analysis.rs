@@ -38,7 +38,7 @@ pub struct AnalyzeConfig<'a> {
     pub roms: [Vec<u8>; 2],
     pub saves: [Vec<u8>; 2],
     pub support: [&'a dyn GameSupport; 2],
-    pub match_type: (u8, u8),
+    pub match_type: u8,
     pub rng_seed: [u8; 16],
     pub rtc: std::time::SystemTime,
     /// Which side the stats should be from the perspective of.

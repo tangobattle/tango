@@ -60,7 +60,7 @@ impl tango_gamesupport::BuildWarnings for Warnings {
     }
 }
 
-impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorShell<G> {
+impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditorFactory for SaveEditorShell<G> {
     fn validate_save(
         &self,
         prepared: &tango_gamesupport::PreparedSave,
@@ -80,7 +80,7 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         let open = crate::editor::loaded::from_model(model, &self.0);
         LoadedSave {
             editor: self,
-            game,
+            native_game: Some(game),
             chips: crate::editor::loaded::chip_display_table(&open),
             save_path,
             patch,
@@ -88,7 +88,9 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
             payload: Box::new(open),
         }
     }
+}
 
+impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorShell<G> {
     fn view<'a>(
         &self,
         lang: &'a LanguageIdentifier,
@@ -115,14 +117,15 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
         lang: &LanguageIdentifier,
         data: &mut LoadedSave,
         msg: &dyn tango_gamesupport::SaveEditorMessage,
+        _theme: &iced::Theme,
     ) -> (
         iced::Task<std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>>,
-        Option<tango_gamesupport::SaveEditorEvent>,
+        Vec<tango_gamesupport::SaveEditorEvent>,
     ) {
         use tango_gamesupport::SaveEditorEvent as Out;
 
         let Some(action) = (msg as &dyn std::any::Any).downcast_ref::<Action>() else {
-            return (iced::Task::none(), None);
+            return (iced::Task::none(), Vec::new());
         };
         // Disjoint fields of the same save: the view state folds the
         // action, the bundle behind the payload backs it.
@@ -161,7 +164,7 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
             Some(Outcome::Training) => Some(Out::Training),
             None => None,
         };
-        (task.map(wrap), outcome)
+        (task.map(wrap), outcome.into_iter().collect())
     }
 
     fn carry_view_position(
@@ -185,8 +188,8 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
     /// staged edits deliberately leave the editor's checksum stale until
     /// Save, but starting a match must still produce valid SRAM without
     /// committing those edits to disk.
-    fn sram(&self, data: &LoadedSave) -> Vec<u8> {
-        session_sram(loaded::open(data).save.as_ref())
+    fn sram(&self, data: &LoadedSave) -> Result<Vec<u8>, String> {
+        Ok(session_sram(loaded::open(data).save.as_ref()))
     }
 }
 

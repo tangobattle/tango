@@ -211,6 +211,13 @@ impl State {
         if !matches!(self.phase, Phase::Lobby { .. }) {
             return None;
         }
+        let settings_digest = match self.lobby.local.as_ref()?.simulation_digest() {
+            Ok(digest) => digest,
+            Err(error) => {
+                self.fail(Error::Other(format!("invalid local simulation settings: {error}")));
+                return None;
+            }
+        };
         let mut nonce = [0u8; 16];
         rand::Rng::fill(&mut rand::thread_rng(), &mut nonce);
         let state = tango_net_protocol::control::NegotiatedState {
@@ -220,6 +227,7 @@ impl State {
                 .unwrap_or_default()
                 .as_millis() as u64,
             save_data: save_sram,
+            settings_digest,
         };
         let bin = match state.serialize() {
             Ok(b) => b,
@@ -298,8 +306,22 @@ impl State {
                 return None;
             }
         };
-        if let Err(e) = tango_net_protocol::control::NegotiatedState::deserialize(&peer_state_bytes) {
-            self.fail(Error::Other(format!("decode peer state: {e}")));
+        let peer_state = match tango_net_protocol::control::NegotiatedState::deserialize(&peer_state_bytes) {
+            Ok(state) => state,
+            Err(e) => {
+                self.fail(Error::Other(format!("decode peer state: {e}")));
+                return None;
+            }
+        };
+        let expected = self
+            .lobby
+            .remote
+            .as_ref()
+            .and_then(|settings| settings.simulation_digest().ok());
+        if expected != Some(peer_state.settings_digest) {
+            self.fail(Error::Other(
+                "peer reveal does not match its advertised simulation settings".into(),
+            ));
             return None;
         }
         let LocalReady::ChunksSent(commit) = std::mem::take(&mut self.handshake.local) else {
@@ -337,6 +359,11 @@ mod tests {
             phase: Phase::Lobby {
                 ident: LinkIdent::Matchmaking("test".to_string()),
             },
+            lobby: crate::LobbyState {
+                local: Some(Default::default()),
+                remote: Some(Default::default()),
+                ..Default::default()
+            },
             ..State::new()
         }
     }
@@ -348,6 +375,9 @@ mod tests {
             nonce: [nonce; 16],
             ts: 1,
             save_data: vec![0xab; 64],
+            settings_digest: tango_net_protocol::control::Settings::default()
+                .simulation_digest()
+                .unwrap(),
         };
         let compressed = zstd::stream::encode_all(std::io::Cursor::new(state.serialize().unwrap()), 3).unwrap();
         (make_commitment(&compressed), compressed)
@@ -412,5 +442,57 @@ mod tests {
         // the replacement reveal has to land and verify first.
         assert!(state.apply(Incoming(Inbound::RemoteStartMatch)).is_none());
         assert!(matches!(reveal(&mut state, &second_reveal), Some(Event::MatchReady)));
+    }
+
+    #[test]
+    fn a_reveal_for_different_simulation_settings_never_starts() {
+        let (commitment, compressed) = peer_reveal(7);
+        let mut state = lobby();
+        let (tx, mut rx) = futures::channel::mpsc::unbounded();
+        state.progress = Some(crate::Progress(tx));
+        state.lobby.remote.as_mut().unwrap().match_type = 1;
+        state.apply(Incoming(Inbound::RemoteCommit(commitment)));
+        state.commit(vec![1, 2, 3]);
+        assert!(reveal(&mut state, &compressed).is_none());
+        assert!(!state.ready_view().match_ready);
+        let Incoming(Inbound::Failed(Error::Other(message))) = rx.try_recv().unwrap() else {
+            panic!("expected failed handshake")
+        };
+        assert!(message.contains("simulation settings"), "{message}");
+    }
+
+    #[test]
+    fn changed_simulation_revokes_both_ready_states_but_cosmetic_edits_do_not() {
+        let (commitment, compressed) = peer_reveal(7);
+        let mut state = lobby();
+        state.apply(Incoming(Inbound::RemoteCommit(commitment)));
+        state.commit(vec![1, 2, 3]);
+        reveal(&mut state, &compressed);
+        assert!(state.ready_view().match_ready);
+        let mut remote = state.lobby.remote.clone().unwrap();
+        remote.nickname = "renamed".into();
+        state.apply(Incoming(Inbound::RemoteSettings(Box::new(remote.clone()))));
+        assert!(state.ready_view().match_ready);
+        remote.match_type = 1;
+        state.apply(Incoming(Inbound::RemoteSettings(Box::new(remote))));
+        assert!(!state.ready_view().local_ready);
+        assert!(!state.ready_view().remote_ready);
+        assert!(state.apply(Incoming(Inbound::RemoteStartMatch)).is_none());
+    }
+
+    #[test]
+    fn visibility_downgrade_keeps_the_peers_unchanged_save_commitment() {
+        let (commitment, compressed) = peer_reveal(7);
+        let mut state = lobby();
+        state.apply(Incoming(Inbound::RemoteCommit(commitment)));
+        state.commit(vec![1, 2, 3]);
+        reveal(&mut state, &compressed);
+        let mut remote = state.lobby.remote.clone().unwrap();
+        remote.blind_setup = true;
+        state.apply(Incoming(Inbound::RemoteSettings(Box::new(remote))));
+        assert!(!state.ready_view().local_ready);
+        assert!(state.ready_view().remote_ready);
+        state.commit(vec![1, 2, 3]);
+        assert!(state.ready_view().match_ready);
     }
 }

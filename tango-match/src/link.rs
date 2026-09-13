@@ -56,8 +56,9 @@ pub trait Link: Send + 'static {
     /// once.
     fn sanitize(&self, input: crate::HostInput) -> crate::HostInput;
 
-    /// Advance the pair one video frame.
-    fn tick(&mut self, inputs: [crate::HostInput; 2]);
+    /// Advance the pair one video frame. On failure the host must not publish
+    /// its output or advance its cursor; restore a healthy capture or stop.
+    fn tick(&mut self, inputs: [crate::HostInput; 2]) -> Result<(), crate::Error>;
 
     /// Capture the link. Reuses `recycled`'s allocations when one is
     /// offered — rollback retires a snapshot nearly every tick, and
@@ -224,7 +225,7 @@ impl ScreenLayout {
 /// it does played alone — EXE OSS runs its whole netbattle on the
 /// upper screen — and fewer in one match mode than another: BN5DS
 /// carries its touch screen for Team Battle and not for the plain
-/// subtypes. So the layout is a question about the session, and the
+/// battles. So the layout is a question about the session, and the
 /// match type is part of what a session is; carrying it here is what
 /// makes the question unaskable without the answer's input.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -233,9 +234,9 @@ pub enum SessionMode {
     /// it — everything [`Backend::start`] and
     /// [`Backend::open_replay`] produce. `match_type` is the mode the
     /// pair was primed into, indexed as the registration's
-    /// `match_types` table lists it (the same pair
+    /// `match_types` table lists it (the same index
     /// [`StartConfig::match_type`] carries).
-    PvP { match_type: (u8, u8) },
+    PvP { match_type: u8 },
     /// One console on its own, as [`Backend::start_solo`] boots it.
     /// No match type: a cart played alone is in no mode.
     Solo,
@@ -250,6 +251,12 @@ pub enum SessionMode {
 /// [`Match`](crate::Match) — the engine underneath it is erased at the
 /// [`Link`].
 pub trait Backend: Sync {
+    /// Frozen package gamemodes in absolute player order. Sessions verify these
+    /// against the lobby/replay declarations before using an owned backend.
+    fn gamemodes(&self) -> Option<&[crate::gamemode::Configuration; 2]> {
+        None
+    }
+
     /// How this build simulates this game, as one number: bumping it
     /// says "a match here no longer runs the way it used to". Both
     /// consumers of that fact use this same value.
@@ -383,6 +390,8 @@ pub struct PeerRom {
 /// Both peers pass identical values except
 /// [`local_player`](Self::local_player).
 pub struct StartConfig<'a> {
+    /// Optional host-selected, observational telemetry packages.
+    pub record_factory: Option<&'a dyn crate::telemetry::stream::Factory>,
     /// Per-console ROM images, already patched. `roms[i]` runs on
     /// console `i`; a single-cart game passes the same image twice.
     pub roms: [&'a [u8]; 2],
@@ -393,12 +402,13 @@ pub struct StartConfig<'a> {
     pub rng_seed: [u8; 16],
     /// The negotiated match clock, pinned into both consoles.
     pub rtc: std::time::SystemTime,
-    /// The game's mode selection (type and subtype).
-    pub match_type: (u8, u8),
-    /// The peer's cartridge (see [`PeerRom`](crate::PeerRom)), which
+    /// Flat index of the selected gamemode.
+    pub match_type: u8,
+    /// The legacy peer's cartridge (see [`PeerRom`](crate::PeerRom)), which
     /// the local game's crate resolves against its siblings when the
-    /// engine needs per-cartridge support for that seat.
-    pub peer_rom: crate::PeerRom,
+    /// engine needs per-cartridge support for that seat. Package backends
+    /// already own both seats' implementations and leave this unset.
+    pub peer_rom: Option<crate::PeerRom>,
     /// Which console this peer drives.
     pub local_player: usize,
     /// How many ticks behind the frontier to present. Purely local.

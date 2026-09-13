@@ -49,7 +49,7 @@ pub trait SaveEditorMessage: std::any::Any + std::fmt::Debug + Send + Sync {}
 
 /// Opaque per-save view state (active tab, edit session, scroll and
 /// animation bookkeeping), held as [`LoadedSave::state`]. Minted by
-/// [`SaveEditor::load`] and dropped with the save it belongs to, so a
+/// [`SaveEditorFactory::load`] and dropped with the save it belongs to, so a
 /// save switch or a closed view takes its view state with it and a
 /// rebuilt save can never inherit a stale one — except for where the
 /// reader was looking, which [`SaveEditor::carry_view_position`] hands
@@ -79,7 +79,8 @@ pub struct LoadedSave {
     /// The save editor driving this data — render with
     /// [`SaveEditor::view`], mutate with [`SaveEditor::update`].
     pub editor: &'static dyn SaveEditor,
-    pub game: crate::GameRef,
+    /// Optional legacy identity for native launch and presentation.
+    pub native_game: Option<crate::GameRef>,
     /// The ROM's chip table as anything outside the save view draws it
     /// (the match-analysis chart's chip lanes), indexed by chip id:
     /// name and pre-baked icon, both `None` where the game has neither.
@@ -113,6 +114,7 @@ impl PreparedSave {
 /// What the app must act on after an [`SaveEditor::update`] — deliberately
 /// app-semantic only (clipboard, launches, disk writes); staged edits
 /// are applied to the data internally and never surface.
+#[derive(Debug)]
 pub enum SaveEditorEvent {
     /// Copy plain text to the clipboard.
     CopyText(String),
@@ -126,25 +128,28 @@ pub enum SaveEditorEvent {
     Play,
     /// The embedder-defined Training button was pressed.
     Training,
-    /// The edit session committed: write `sram` to the data's
-    /// [`save_path`](LoadedSave::save_path) (the in-memory save is
-    /// already the committed state).
+    /// Write `sram` to the data's [`save_path`](LoadedSave::save_path), then
+    /// acknowledge the result through [`SaveEditor::save_finished`]. Package
+    /// editors retain their staged edits until this write succeeds.
     Commit { sram: Vec<u8> },
     /// The edit session was discarded — reload the on-disk original.
     Cancel,
 }
 
-/// A family's save editor, as [`crate::Family::save_editor`] carries it. It
-/// validates and loads prepared saves, then renders and updates the resulting
-/// editor data; every concrete model and presentation shape stays private.
-pub trait SaveEditor: Send + Sync {
+/// Native model preparation is separate from the rendered editor. A package
+/// editor can take over a loaded save without implementing native parsing.
+pub trait SaveEditorFactory: SaveEditor {
     /// Validate an already-prepared save without constructing editor state or
     /// presentation assets.
     fn validate_save(&self, prepared: &PreparedSave) -> Option<crate::OpaqueBuildWarnings>;
 
     /// Decorate an already-prepared save model with renderable state and art.
     fn load(&'static self, prepared: PreparedSave) -> LoadedSave;
+}
 
+/// Render and update an already loaded save. Concrete model and presentation
+/// shapes stay private; the same panel can host native or package-owned editors.
+pub trait SaveEditor: Send + Sync {
     /// Render the save view. `play_button`: `None` hides the Play
     /// button, `Some(enabled)` renders it. `editable` gates the whole
     /// edit affordance (only the play tab passes true).
@@ -162,21 +167,25 @@ pub trait SaveEditor: Send + Sync {
     /// save itself when the message is a staged edit (applied in place,
     /// including derived art — an `editable: false` embed can't mint
     /// one). Returns a follow-up task plus whatever the app must act
-    /// on. `lang` feeds the arms that render text (clipboard copies
-    /// localize their section headers the same way the view does).
+    /// on. Keep the task even when events are returned. `lang` feeds localized
+    /// clipboard exports; `theme` supplies the active colors for rendered images.
     fn update(
         &self,
         lang: &LanguageIdentifier,
         data: &mut LoadedSave,
         msg: &dyn SaveEditorMessage,
-    ) -> (
-        iced::Task<std::sync::Arc<dyn SaveEditorMessage>>,
-        Option<SaveEditorEvent>,
-    );
+        theme: &iced::Theme,
+    ) -> (iced::Task<std::sync::Arc<dyn SaveEditorMessage>>, Vec<SaveEditorEvent>);
 
     /// Serialize the current in-memory save (staged edits included) —
-    /// what a netplay commitment or session launch runs on.
-    fn sram(&self, data: &LoadedSave) -> Vec<u8>;
+    /// what a netplay commitment or session launch runs on. Failure must stop
+    /// the launch/commit; never substitute an older snapshot or an empty save.
+    fn sram(&self, data: &LoadedSave) -> Result<Vec<u8>, String>;
+
+    /// Complete a synchronous write requested by `Commit`. Always call this,
+    /// including for missing paths and failed writes. No further editor action
+    /// should be dispatched between the request and its acknowledgment.
+    fn save_finished(&self, _data: &mut LoadedSave, _result: Result<(), String>) {}
 
     /// Carry where the view was looking — the open tab, the sort
     /// preferences — from a state built for this same save onto a

@@ -1,0 +1,6 @@
+api = 1
+name = "bn5-editor"
+version = "1.0.0"
+
+[dependencies]
+bn5 = "0.1.0"

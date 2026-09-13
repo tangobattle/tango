@@ -1,0 +1,74 @@
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#pragma once
+
+#include "Luau/DenseHash2.h"
+#include "Luau/Error.h"
+#include "Luau/TypeFwd.h"
+
+#include <utility>
+
+namespace Luau
+{
+struct InternalErrorReporter;
+
+struct TypeIdPairHash
+{
+    size_t hashOne(Luau::TypeId key) const
+    {
+        return (uintptr_t(key) >> 4) ^ (uintptr_t(key) >> 9);
+    }
+
+    size_t operator()(const std::pair<Luau::TypeId, Luau::TypeId>& x) const
+    {
+        return hashOne(x.first) ^ (hashOne(x.second) << 1);
+    }
+};
+
+struct UnifierCounters
+{
+    int recursionCount = 0;
+    int recursionLimit = 0;
+    int iterationCount = 0;
+    int iterationLimit = 0;
+};
+
+struct UnifierSharedState
+{
+    explicit UnifierSharedState(InternalErrorReporter* iceHandler)
+        : iceHandler(iceHandler)
+    {
+    }
+
+    InternalErrorReporter* iceHandler;
+
+    DenseHashMap2<TypeId, bool> skipCacheForType;
+    DenseHashSet2<std::pair<TypeId, TypeId>, TypeIdPairHash> cachedUnify;
+    DenseHashMap2<std::pair<TypeId, TypeId>, TypeErrorData, TypeIdPairHash> cachedUnifyError;
+
+    DenseHashSet2<TypeId> tempSeenTy;
+    DenseHashSet2<TypePackId> tempSeenTp;
+
+    UnifierCounters counters;
+
+    bool reentrantTypeReduction = false;
+};
+
+struct TypeReductionReentrancyGuard final
+{
+    explicit TypeReductionReentrancyGuard(NotNull<UnifierSharedState> sharedState)
+        : sharedState{sharedState}
+    {
+        sharedState->reentrantTypeReduction = true;
+    }
+    ~TypeReductionReentrancyGuard()
+    {
+        sharedState->reentrantTypeReduction = false;
+    }
+    TypeReductionReentrancyGuard(const TypeReductionReentrancyGuard&) = delete;
+    TypeReductionReentrancyGuard(TypeReductionReentrancyGuard&&) = delete;
+
+private:
+    NotNull<UnifierSharedState> sharedState;
+};
+
+} // namespace Luau

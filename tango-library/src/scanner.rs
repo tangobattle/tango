@@ -13,6 +13,7 @@ use crate::storage::Listing;
 
 struct Inner<T> {
     items: T,
+    revision: u64,
     scanning: bool,
     /// The listing the current `items` were scanned from, if they came
     /// through [`Scanner::rescan_if_changed`].
@@ -39,6 +40,7 @@ where
         Self {
             inner: std::sync::Arc::new(std::sync::RwLock::new(Inner {
                 items: T::default(),
+                revision: 0,
                 scanning: false,
                 listing: None,
             })),
@@ -67,6 +69,7 @@ where
         let mut inner = self.inner.write().unwrap();
         if let Some(items) = items {
             inner.items = items;
+            inner.revision += 1;
         }
         inner.scanning = false;
     }
@@ -90,6 +93,7 @@ where
         let mut inner = self.inner.write().unwrap();
         if let Some(items) = items {
             inner.items = items;
+            inner.revision += 1;
             // The listing predates the reads, so a file changing
             // mid-scan errs toward one extra rescan, never a miss.
             inner.listing = Some(listing.clone());
@@ -102,6 +106,13 @@ where
 /// scanned items, hiding the wrapping `Inner` from callers.
 pub struct ScannerReadGuard<'a, T> {
     guard: std::sync::RwLockReadGuard<'a, Inner<T>>,
+}
+
+impl<T> ScannerReadGuard<'_, T> {
+    /// Changes only when a scan publishes a new content snapshot.
+    pub fn revision(&self) -> u64 {
+        self.guard.revision
+    }
 }
 
 impl<T> std::ops::Deref for ScannerReadGuard<'_, T> {

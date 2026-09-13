@@ -417,3 +417,23 @@ playback-priming-elapsed = { $secs } с
 playback-priming-failed = Игры не дошли до боя.
 settings-data-folder = Папка данных
 settings-data-folder-change = Изменить…
+
+## Package editor host
+
+package-editor-title = Редактор пакетов
+package-editor-undo = Отменить
+package-editor-redo = Повторить
+package-editor-save = Сохранить
+package-editor-save-as = Сохранить как…
+package-editor-reload = Перезагрузить пакеты
+package-editor-reload-dirty = Сохраните изменения перед перезагрузкой пакетов.
+package-editor-read-only = Этот документ доступен только для чтения.
+package-editor-saved = Сохранено.
+package-editor-close-prompt = Сохранить изменения перед закрытием?
+package-editor-save-close = Сохранить и закрыть
+package-editor-discard = Отменить изменения
+package-editor-keep-editing = Продолжить редактирование
+package-editor-error = Не удалось завершить операцию: { $error }
+package-editor-unknown-action = Неизвестное действие приложения: { $id }
+package-editor-not-configured = Редактор ещё не настроен.
+package-editor-no-save-path = У этого сохранения нет связанного файла.

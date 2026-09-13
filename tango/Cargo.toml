@@ -47,9 +47,11 @@ tango-lobby = { path = "../tango-lobby" }
 tango-patch = { workspace = true, features = ["package", "index"] }
 tango-library = { path = "../tango-library" }
 tango-match = { path = "../tango-match" }
+tango-backend-mgba = { path = "../tango-backend-mgba" }
 tango-replay = { path = "../tango-replay" }
 tango-replay-renderer = { path = "../tango-replay-renderer" }
 tango-session = { path = "../tango-session" }
+tango-script = { path = "../tango-script" }
 # Gamepad input. The crate is a facade over a gamepad-only SDL3 build
 # natively and the browser Gamepad API on wasm; all the backend glue and
 # the SDL subsystem trim live there, and tango sees only its
@@ -78,6 +80,7 @@ tokio = { workspace = true, features = ["fs", "io-util", "time", "rt", "net", "s
 tokio-util = { workspace = true, features = ["io", "rt"] }
 futures.workspace = true
 fluent-templates.workspace = true
+fluent-langneg.workspace = true
 unic-langid.workspace = true
 # `ui` for the save-editor embedding API: the app's view plumbing
 # speaks it (LoadedSave, the opaque message/state envelopes) whether or
@@ -87,14 +90,13 @@ unic-langid.workspace = true
 tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
 tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui" }
 tango-ui = { path = "../tango-ui" }
+tango-script-iced = { path = "../tango-script-iced" }
 tango-gamesupport-bcc = { path = "../tango-gamesupport-bcc", optional = true }
 tango-gamesupport-bn1 = { path = "../tango-gamesupport-bn1", optional = true }
 tango-gamesupport-bn2 = { path = "../tango-gamesupport-bn2", optional = true }
 tango-gamesupport-bn3 = { path = "../tango-gamesupport-bn3", optional = true }
 tango-gamesupport-bn4 = { path = "../tango-gamesupport-bn4", optional = true }
-tango-gamesupport-bn5 = { path = "../tango-gamesupport-bn5", optional = true }
 tango-gamesupport-bn5ds = { path = "../tango-gamesupport-bn5ds", optional = true }
-tango-gamesupport-bn6 = { path = "../tango-gamesupport-bn6", optional = true }
 tango-gamesupport-exe45 = { path = "../tango-gamesupport-exe45", optional = true }
 tango-gamesupport-exeoss = { path = "../tango-gamesupport-exeoss", optional = true }
 # Named directly only for `Container` and `Settings`, which the export
@@ -139,9 +141,7 @@ gamesupport-bn1 = ["dep:tango-gamesupport-bn1", "tango-gamesupport-bn1/ui", "tan
 gamesupport-bn2 = ["dep:tango-gamesupport-bn2", "tango-gamesupport-bn2/ui", "tango-library/gamesupport-bn2"]
 gamesupport-bn3 = ["dep:tango-gamesupport-bn3", "tango-gamesupport-bn3/ui", "tango-library/gamesupport-bn3"]
 gamesupport-bn4 = ["dep:tango-gamesupport-bn4", "tango-gamesupport-bn4/ui", "tango-library/gamesupport-bn4"]
-gamesupport-bn5 = ["dep:tango-gamesupport-bn5", "tango-gamesupport-bn5/ui", "tango-library/gamesupport-bn5"]
 gamesupport-bn5ds = ["dep:tango-gamesupport-bn5ds", "tango-gamesupport-bn5ds/ui", "tango-library/gamesupport-bn5ds"]
-gamesupport-bn6 = ["dep:tango-gamesupport-bn6", "tango-gamesupport-bn6/ui", "tango-library/gamesupport-bn6"]
 gamesupport-exe45 = ["dep:tango-gamesupport-exe45", "tango-gamesupport-exe45/ui", "tango-library/gamesupport-exe45"]
 gamesupport-exeoss = ["dep:tango-gamesupport-exeoss", "tango-gamesupport-exeoss/ui", "tango-library/gamesupport-exeoss"]
 gamesupport-all = [
@@ -150,9 +150,7 @@ gamesupport-all = [
     "gamesupport-bn2",
     "gamesupport-bn3",
     "gamesupport-bn4",
-    "gamesupport-bn5",
     "gamesupport-bn5ds",
-    "gamesupport-bn6",
     "gamesupport-exe45",
     "gamesupport-exeoss",
 ]
@@ -183,7 +181,7 @@ windows-core = "0.61"
 [package.metadata.cargo-machete]
 ignored = [
     "tango-gamesupport-bcc", "tango-gamesupport-bn1", "tango-gamesupport-bn2",
-    "tango-gamesupport-bn3", "tango-gamesupport-bn4", "tango-gamesupport-bn5",
-    "tango-gamesupport-bn5ds", "tango-gamesupport-bn6", "tango-gamesupport-exe45",
+    "tango-gamesupport-bn3", "tango-gamesupport-bn4",
+    "tango-gamesupport-bn5ds", "tango-gamesupport-exe45",
     "tango-gamesupport-exeoss",
 ]

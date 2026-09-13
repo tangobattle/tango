@@ -159,7 +159,7 @@ impl GbaBackend {
 /// an older build at once, which is the honest cost of an emulator
 /// change — the alternative is spelling it into every game's half and
 /// hoping none is missed.
-const BACKEND_SIM_VERSION: u16 = 0;
+pub(crate) const BACKEND_SIM_VERSION: u16 = 0;
 
 impl tango_match::Backend for GbaBackend {
     /// The pair's two carts can be different variants, but only the
@@ -192,7 +192,12 @@ impl tango_match::Backend for GbaBackend {
     /// initial state.
     fn start(&self, config: tango_match::StartConfig) -> Result<tango_match::Match, tango_match::Error> {
         assert!(config.local_player < 2);
-        let support = self.seats(config.peer_rom, config.local_player);
+        let support = self.seats(
+            config.peer_rom.ok_or(tango_match::Error::Unsupported(
+                "native backend requires peer cartridge identity",
+            ))?,
+            config.local_player,
+        );
 
         let (mut pair, events) = boot_pair(
             [config.roms[0].to_vec(), config.roms[1].to_vec()],
@@ -230,13 +235,17 @@ impl tango_match::Backend for GbaBackend {
         }
 
         let (telemetry, handle) = Telemetry::new([support[0].core_poller(0), support[1].core_poller(1)], events);
-        let mut match_ = tango_match::Match::new(
-            crate::link::Link::new(pair, Some(telemetry)),
-            config.local_player,
-            config.present_delay,
-            config.audio,
-        )?;
+        let mut link = crate::link::Link::new(pair, Some(telemetry));
+        let records = config.record_factory.map(|factory| {
+            let (collector, handle) = tango_match::telemetry::stream::Collector::new(factory, config.roms);
+            link.set_records(collector);
+            handle
+        });
+        let mut match_ = tango_match::Match::new(link, config.local_player, config.present_delay, config.audio)?;
         match_.set_telemetry(handle);
+        if let Some(records) = records {
+            match_.set_records(records);
+        }
         Ok(match_)
     }
 
@@ -248,8 +257,14 @@ impl tango_match::Backend for GbaBackend {
     }
 
     fn open_replay(&self, config: tango_match::ReplayConfig) -> Result<tango_match::ReplaySet, tango_match::Error> {
-        let support = self.seats(config.peer_rom, config.local_player);
+        let support = self.seats(
+            config.peer_rom.ok_or(tango_match::Error::Unsupported(
+                "native backend requires peer cartridge identity",
+            ))?,
+            config.local_player,
+        );
         let boot = Boot {
+            record_factory: config.record_factory.clone(),
             roms: config.roms.clone(),
             saves: config.saves.clone(),
             support,
@@ -320,6 +335,26 @@ fn assemble_pair(
     rtc: std::time::SystemTime,
     render: bool,
 ) -> Result<(mgba_rollback::Link, EventSink, [crate::PrimedLatch; 2]), crate::Error> {
+    let mut pair = bare_pair(roms, saves, rtc, render)?;
+
+    let events = EventSink::new();
+    let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
+    // The cores own their primer traps (see [`mgba_rollback::Link::set_traps`]):
+    // core teardown walks the trap component, so the traps must live
+    // exactly as long as their cores. They stay installed for the
+    // pair's life — inert once primed, since their boot/menu addresses
+    // never execute in battle.
+    pair.set_traps(0, support[0].primer_traps(prime, 0, &events, &primed[0]));
+    pair.set_traps(1, support[1].primer_traps(prime, 1, &events, &primed[1]));
+    Ok((pair, events, primed))
+}
+
+pub(crate) fn bare_pair(
+    roms: [Vec<u8>; 2],
+    saves: [Vec<u8>; 2],
+    rtc: std::time::SystemTime,
+    render: bool,
+) -> Result<mgba_rollback::Link, crate::Error> {
     let [rom0, rom1] = roms;
     let [save0, save1] = saves;
     let mut pair = mgba_rollback::Link::with_options(LinkOptions {
@@ -341,16 +376,7 @@ fn assemble_pair(
         pair.set_frameskip(1, i32::MAX);
     }
 
-    let events = EventSink::new();
-    let primed = [crate::PrimedLatch::new(), crate::PrimedLatch::new()];
-    // The cores own their primer traps (see [`mgba_rollback::Link::set_traps`]):
-    // core teardown walks the trap component, so the traps must live
-    // exactly as long as their cores. They stay installed for the
-    // pair's life — inert once primed, since their boot/menu addresses
-    // never execute in battle.
-    pair.set_traps(0, support[0].primer_traps(prime, 0, &events, &primed[0]));
-    pair.set_traps(1, support[1].primer_traps(prime, 1, &events, &primed[1]));
-    Ok((pair, events, primed))
+    Ok(pair)
 }
 
 /// The engine's replay boot ([`tango_match::ReplayBoot`]): prime a
@@ -360,6 +386,7 @@ fn assemble_pair(
 /// contributes to replays; the machinery above the boot is
 /// [`tango_match::ReplaySet`]'s.
 struct Boot {
+    record_factory: Option<std::sync::Arc<dyn tango_match::telemetry::stream::Factory>>,
     /// Per-seat images as the recording stood, in absolute player
     /// order (core 0 runs player 0's game).
     roms: [Vec<u8>; 2],
@@ -418,10 +445,10 @@ impl tango_match::ReplayBoot for Boot {
 
 impl Boot {
     /// The booted pair as the seam takes it — observed (pollers + the
-    /// trap-fed lifecycle sink) when the stats pass asked for it; the
-    /// display pair passes `None`, paying for no pollers and leaving
-    /// its sink a write-only stub.
+    /// trap-fed lifecycle sink) for playback and statistics. Bare linear/export
+    /// passes supply `None`, paying for no pollers and leaving the sink unused.
     fn wrap(&self, pair: mgba_rollback::Link, events: Option<EventSink>) -> tango_match::BootedReplay {
+        let observe = events.is_some();
         let (telemetry, handle) = match events {
             Some(events) => {
                 let (telemetry, handle) =
@@ -430,8 +457,20 @@ impl Boot {
             }
             None => (None, None),
         };
+        let mut link = crate::Link::new(pair, telemetry);
+        let records = if observe {
+            self.record_factory.as_ref().map(|factory| {
+                let (collector, handle) =
+                    tango_match::telemetry::stream::Collector::new(factory.as_ref(), [&self.roms[0], &self.roms[1]]);
+                link.set_records(collector);
+                handle
+            })
+        } else {
+            None
+        };
         tango_match::BootedReplay {
-            link: Box::new(crate::Link::new(pair, telemetry)),
+            records,
+            link: Box::new(link),
             telemetry: handle,
         }
     }

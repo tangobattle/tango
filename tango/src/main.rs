@@ -26,6 +26,7 @@ mod replay_render;
 // Side services, and the app shell that ties everything together.
 mod app;
 mod discord;
+mod package;
 mod updater;
 
 use app::App;
@@ -70,6 +71,11 @@ enum Command {
     /// code pre-filled. Used by `tango://join/<code>` style URI
     /// handlers + Discord "Join Game" intents.
     Join { link_code: String },
+    /// Load, check, bundle, or edit with a Luau game package.
+    Package {
+        #[command(subcommand)]
+        command: package::editor::Command,
+    },
 }
 
 pub fn main() {
@@ -87,7 +93,16 @@ pub fn main() {
     // fast without spawning a child. The parsed value is
     // re-derived in the child via `std::env::args` so we don't
     // have to serialize it through the supervisor boundary.
-    let _args = <Args as clap::Parser>::parse();
+    let args = <Args as clap::Parser>::parse();
+    if let Some(Command::Package { command }) = &args.command {
+        if let Some(result) = package::editor::run_cli(command) {
+            if let Err(error) = result {
+                eprintln!("{error:#}");
+                std::process::exit(1);
+            }
+            return;
+        }
+    }
     // Parent / supervisor — set up the log file, spawn the
     // child, and surface an rfd dialog on non-zero child exit.
     match supervisor_main() {
@@ -435,9 +450,13 @@ fn run_app() -> iced::Result {
     // it through). Bad args here would have failed in the
     // supervisor already, so unwrap is fine.
     let args = <Args as clap::Parser>::parse();
-    let init_link_code = args.command.map(|c| match c {
-        Command::Join { link_code } => link_code,
-    });
+    let init_link_code = match args.command {
+        Some(Command::Join { link_code }) => Some(link_code),
+        Some(Command::Package { command }) => {
+            return package::editor::run(command, &config::Config::load_or_create().language.to_string());
+        }
+        None => None,
+    };
     let _ = INIT_LINK_CODE.set(init_link_code);
     // Route the emulator's global logger through `c_log` too — without
     // this, the prefetcher's bare core falls through to the emulator's

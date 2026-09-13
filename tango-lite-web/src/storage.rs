@@ -113,6 +113,20 @@ fn not_found(path: &Path) -> std::io::Error {
 }
 
 impl Storage for Files {
+    fn snapshot_tree<'a>(
+        &'a self,
+        root: &'a Path,
+        limits: tango_library::storage::TreeLimits,
+    ) -> tango_library::storage::TreeFuture<'a> {
+        Box::pin(async move {
+            tango_library::storage::snapshot_files(
+                root,
+                self.inner.borrow().iter().map(|(p, b)| (p.as_path(), b.as_slice())),
+                limits,
+            )
+        })
+    }
+
     fn read(&self, path: &Path) -> std::io::Result<Vec<u8>> {
         self.inner.borrow().get(path).cloned().ok_or_else(|| not_found(path))
     }

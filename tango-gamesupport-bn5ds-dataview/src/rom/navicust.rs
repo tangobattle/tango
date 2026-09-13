@@ -5,9 +5,8 @@
 //! byte-identical to BN5's for all 192 entries (see [`super::Offsets`]),
 //! so a program's id means the same thing here and the effects it
 //! grants are the ones reverse-engineered out of the GBA build — see
-//! `tango-gamesupport-bn5-dataview`'s copy of this table for where they
-//! come from, and for the bug catalogue this one leaves out (nothing
-//! reads it).
+//! `packages/bn5/editor/navi/effects.luau` for the GBA game's complete
+//! catalogue, including bug effects this save reader does not use.
 //!
 //! Only what the save layer needs is here: the effects that move a
 //! navi's max HP and the folder's Mega/Giga limits.

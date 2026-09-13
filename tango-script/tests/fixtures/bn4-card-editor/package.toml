@@ -1,0 +1,10 @@
+api = 1
+name = "bn4-card-editor"
+version = "1.0.0"
+
+[[editor]]
+name = "main"
+path = "./init"
+
+[dependencies]
+bn4 = "0.1.0"

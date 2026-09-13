@@ -73,9 +73,14 @@ pub enum Verdict {
 pub fn check(
     local: &protocol::Settings,
     remote: &protocol::Settings,
-    roms: &std::collections::HashMap<tango_library::rom::GameRef, Vec<u8>>,
+    roms: &tango_library::rom::Catalog,
     catalog: &Catalog,
 ) -> Verdict {
+    // This path only resolves legacy registrations and patches. A package
+    // offer requires a host that resolves both exact gamemode configurations.
+    if local.gamemode.is_some() || remote.gamemode.is_some() {
+        return Verdict::DifferentVersions;
+    }
     let (Some(local_gi), Some(remote_gi)) = (local.game_info.as_ref(), remote.game_info.as_ref()) else {
         return Verdict::MissingGame;
     };

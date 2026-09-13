@@ -10,6 +10,7 @@ publish = false
 # framing by construction. Pure codecs + derivations: no transport, no
 # async, no emulator — builds for native AND wasm32.
 [dependencies]
+tango-match = { path = "../tango-match" }
 bincode.workspace = true
 serde.workspace = true
 semver.workspace = true

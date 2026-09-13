@@ -1,0 +1,10 @@
+{
+  "aliases": {
+    "bn-common": "./bn-common",
+    "bn4": "./bn4",
+    "bn5": "./bn5",
+    "bn6": "./bn6",
+    "editor-common": "./editor-common",
+    "gba": "./gba"
+  }
+}

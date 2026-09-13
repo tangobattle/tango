@@ -35,7 +35,7 @@ struct InputDisplay {
 }
 
 pub struct ReplaySession {
-    game: &'static tango_gamesupport::Game,
+    backend: crate::SessionBackend,
     /// Header carried by the recording. Playback itself only needs a
     /// handful of these fields, but the host's viewer uses the full header
     /// to identify the replay without reopening the file or reaching back
@@ -78,6 +78,7 @@ pub struct ReplaySession {
     speed: Arc<SpeedControl>,
     /// The playback machinery (pair, workers, seek state).
     engine: Engine,
+    records: Arc<Mutex<tango_match::telemetry::stream::Timeline>>,
 }
 
 /// Replay speed has two layers: the base preset selected in the transport,
@@ -215,9 +216,32 @@ impl Drop for Engine {
     }
 }
 
+/// Resolved playback inputs. The host translates legacy replay mode codes;
+/// package backends must match both recorded configurations exactly.
+pub struct ReplaySessionArgs {
+    pub backend: crate::SessionBackend,
+    pub match_type: u8,
+    pub peer_rom: Option<tango_match::PeerRom>,
+    pub roms: [Arc<Vec<u8>>; 2],
+    pub replay: Arc<tango_replay::Replay>,
+    pub expected_fps: f32,
+    pub sample_rate: u32,
+    pub show_pip: bool,
+    pub stats_job: Option<PrefetchStatsJob>,
+    /// Previously analyzed round boundaries, or empty to discover them.
+    pub round_boundaries: Vec<u32>,
+    pub record_factory: Option<Arc<dyn tango_match::telemetry::stream::Factory>>,
+}
+
 impl ReplaySession {
-    /// Build a playback session for an SIO-engine replay
-    /// ([`tango_replay::VERSION`]): one continuous run of pair
+    /// Package telemetry from the linear analysis pass, independent of seeks.
+    pub fn records(&self) -> &Arc<Mutex<tango_match::telemetry::stream::Timeline>> {
+        &self.records
+    }
+
+    /// Build a playback session for a native or package replay. Package
+    /// recordings require the backend resolved from both recorded configurations.
+    /// Playback is one continuous run of pair
     /// ticks, re-simulated on a linearly-driven pair. Both sides must
     /// have replay support from their engine. Returns
     /// immediately — boot + priming (a second or two) happens on the
@@ -225,31 +249,31 @@ impl ReplaySession {
     /// Also returns the session's audio stream (the shown perspective's
     /// core at `sample_rate`, following the drive loop's pacing) for the
     /// host to route to its output.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        games: [&'static tango_gamesupport::Game; 2],
-        roms: [Arc<Vec<u8>>; 2],
-        replay: Arc<tango_replay::Replay>,
-        expected_fps: f32,
-        sample_rate: u32,
-        show_pip: bool,
-        stats_job: Option<PrefetchStatsJob>,
-        // The recording's round boundaries, when the host already had
-        // its analysis (a stats sidecar) — the scrub bar draws them from
-        // the first frame instead of waiting out a pass that would only
-        // rediscover them. Empty otherwise, and the pass fills them in.
-        round_boundaries: Vec<u32>,
-    ) -> Result<(Self, Workers, crate::audio::Stream), crate::Error> {
+    pub fn new(args: ReplaySessionArgs) -> Result<(Self, Workers, crate::audio::Stream), crate::Error> {
+        let ReplaySessionArgs {
+            backend,
+            match_type,
+            peer_rom,
+            roms,
+            replay,
+            expected_fps,
+            sample_rate,
+            show_pip,
+            stats_job,
+            round_boundaries,
+            record_factory,
+        } = args;
         let local_player = replay.local_player_index as usize;
         if local_player >= 2 {
             return Err(crate::Error::BadLocalPlayerIndex);
         }
+        backend.validate_replay(&replay.metadata, match_type)?;
 
         // The engine gets a head start on the two pairs playback runs
         // (display + the keyframe pass's). The pairs boot lazily from
         // the host's tick loop, so by then the event loop has turned —
         // which is what a browser engine's worker startup needs.
-        games[local_player].pvp.prepare(4);
+        backend.prepare(4);
         // The replay's input stream is already absolute pair order
         // (core 0 runs player 0's game) — just widen into the seam's
         // vocabulary.
@@ -303,10 +327,7 @@ impl ReplaySession {
 
         // The mode the recording was played in, which the re-primed
         // pair below walks back into and the pane is shaped by.
-        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
-        let layout = games[local_player]
-            .pvp
-            .screen_layout(tango_match::SessionMode::PvP { match_type });
+        let layout = backend.screen_layout(tango_match::SessionMode::PvP { match_type });
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
         let playback: SharedPlayback = Arc::new(Mutex::new(None));
@@ -314,6 +335,7 @@ impl ReplaySession {
         let paused = Arc::new(crate::PauseGate::new(false));
         let speed = Arc::new(SpeedControl::new(expected_fps));
         let prefetch_progress = Arc::new(AtomicU32::new(0));
+        let records = Arc::new(Mutex::new(tango_match::telemetry::stream::Timeline::new([None, None])));
         // Inter-round marks. The recording holds none — where the rounds
         // fall is what the games' telemetry says on re-simulation — so
         // either the host handed in a finished analysis' boundaries or
@@ -338,26 +360,23 @@ impl ReplaySession {
         // and the prefetch worker's pass either reuses its primed first
         // state (parking until it lands) or — on an engine that can't
         // hand over a bare pair — walks its own prime concurrently.
-        let set: Arc<tango_match::ReplaySet> =
-            Arc::new(games[local_player].pvp.open_replay(tango_match::ReplayConfig {
-                roms: [roms[0].to_vec(), roms[1].to_vec()],
-                saves: replay.srams.clone(),
-                inputs: inputs.clone(),
-                rng_seed: replay.rng_seed,
-                rtc: replay.rtc_time(),
-                match_type,
-                local_player,
-                peer_rom: tango_match::PeerRom {
-                    code: *games[1 - local_player].rom_code,
-                    revision: games[1 - local_player].revision,
-                },
-                // The fold is also where round boundaries come from, so
-                // a session that doesn't know them yet wants it even
-                // with no stats job asking for the rest.
-                want_stats: stats_job.is_some() || discover_marks,
-                // The games' own audio is the point of watching one.
-                disable_bgm: false,
-            })?);
+        let set: Arc<tango_match::ReplaySet> = Arc::new(backend.open_replay(tango_match::ReplayConfig {
+            record_factory,
+            roms: [roms[0].to_vec(), roms[1].to_vec()],
+            saves: replay.srams.clone(),
+            inputs: inputs.clone(),
+            rng_seed: replay.rng_seed,
+            rtc: replay.rtc_time(),
+            match_type,
+            local_player,
+            peer_rom,
+            // The fold is also where round boundaries come from, so
+            // a session that doesn't know them yet wants it even
+            // with no stats job asking for the rest.
+            want_stats: stats_job.is_some() || discover_marks,
+            // The games' own audio is the point of watching one.
+            disable_bgm: false,
+        })?);
         // The session's audio ring, made before the pair that feeds it
         // exists: the host binds the stream at construction, and the
         // ring simply reads empty — so the stream primes — through the
@@ -407,9 +426,10 @@ impl ReplaySession {
                 paused: paused.clone(),
                 cancel: cancel.clone(),
                 booted: false,
-                backend: games[local_player].pvp,
+                backend: backend.clone(),
             },
             seek: SeekWorker {
+                prime_error: prime_error.clone(),
                 seek: seek.clone(),
                 playback: playback.clone(),
                 cursor: cursor.clone(),
@@ -418,6 +438,7 @@ impl ReplaySession {
                 speed: speed.clone(),
             },
             prefetch: PrefetchWorker {
+                records: records.clone(),
                 set: set.clone(),
                 round_marks: discover_marks.then(|| round_marks.clone()),
                 progress: prefetch_progress.clone(),
@@ -430,7 +451,8 @@ impl ReplaySession {
         };
 
         let session = Self {
-            game: games[local_player],
+            records,
+            backend,
             metadata: replay.metadata.clone(),
             round_boundaries: round_marks,
             total_ticks,
@@ -523,10 +545,8 @@ impl ReplaySession {
         !self.engine.booted.load(Ordering::Acquire)
     }
 
-    /// Why the boot failed, ready to show, or `None` while it is still
-    /// running or has succeeded. A recording that can't be re-primed
-    /// plays nothing at all, and this is the only thing left to tell
-    /// the user about a session that will never show a frame.
+    /// A boot, playback or seek failure, ready for the host's error notice.
+    /// Failed frames are not published and cannot advance the playhead.
     pub fn prime_error(&self) -> Option<String> {
         self.engine.prime_error.lock().unwrap().as_ref().map(|e| e.to_string())
     }
@@ -746,8 +766,8 @@ impl ReplaySession {
 }
 
 impl crate::Session for ReplaySession {
-    fn local_game(&self) -> &'static tango_gamesupport::Game {
-        self.game
+    fn backend(&self) -> &(dyn tango_match::Backend + Send + Sync) {
+        &*self.backend
     }
 
     fn frame(&self) -> Vec<u8> {
@@ -941,7 +961,11 @@ impl Playhead {
             self.paused.set(true);
             return true;
         }
-        pb.step();
+        if let Err(error) = pb.step() {
+            *self.prime_error.lock().unwrap() = Some(error);
+            self.surfaces.wake.notify_one();
+            return false;
+        }
         self.cursor.store(pb.cursor(), Ordering::Relaxed);
         self.speed.set_custom_screen_active(pb.either_player_in_custom_screen());
         self.surfaces.publish_frames(&pb.frames());
@@ -964,7 +988,7 @@ pub struct DriveWorker {
     booted: bool,
     /// The engine playback runs on, for its readiness gate — same
     /// story as the PvP boot's.
-    backend: &'static (dyn tango_match::Backend + Send + Sync),
+    backend: crate::backend::SessionBackend,
 }
 
 impl DriveWorker {
@@ -1026,6 +1050,7 @@ impl crate::Drive for DriveWorker {
 
 /// The seek loop: chases the targets the transport bar requests.
 pub struct SeekWorker {
+    prime_error: Arc<Mutex<Option<tango_match::Error>>>,
     seek: Arc<SeekController>,
     playback: SharedPlayback,
     cursor: Arc<AtomicU32>,
@@ -1042,13 +1067,22 @@ impl SeekWorker {
     pub fn step(&self, budget: u32) -> bool {
         let mut guard = self.playback.lock().unwrap();
         let Some(pb) = guard.as_mut() else { return false };
-        let working = pb.seek_step(
+        let result = pb.seek_step(
             &self.seek,
             budget,
             &mut |tick| self.cursor.store(tick, Ordering::Relaxed),
             &mut |frames| self.surfaces.publish_frames(frames),
             &mut || self.paused.set(false),
-        ) == tango_match::SeekStep::Working;
+        );
+        let working = match result {
+            Ok(step) => step == tango_match::SeekStep::Working,
+            Err(error) => {
+                *self.prime_error.lock().unwrap() = Some(error);
+                self.paused.set(true);
+                self.surfaces.wake.notify_one();
+                return false;
+            }
+        };
         self.speed.set_custom_screen_active(pb.either_player_in_custom_screen());
         working
     }
@@ -1069,6 +1103,7 @@ impl SeekWorker {
 /// landing on the display pair's primed first state rather than
 /// walking a prime of its own.
 pub struct PrefetchWorker {
+    records: Arc<Mutex<tango_match::telemetry::stream::Timeline>>,
     set: Arc<tango_match::ReplaySet>,
     /// The session's mark list, when the host didn't already know where
     /// the rounds fall and the pass has to find them.
@@ -1115,6 +1150,7 @@ impl PrefetchWorker {
                     // often this loop wants control back, which is far
                     // coarser than what a bar should move in.
                     pass.report_progress_into(self.progress.clone());
+                    pass.collect_records_into(self.records.clone());
                     self.pass = Some(pass);
                 }
                 Err(tango_match::Error::Cancelled) => {

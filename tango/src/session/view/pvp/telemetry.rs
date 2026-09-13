@@ -509,7 +509,11 @@ fn fmt_ping(ping_ms: u128) -> String {
 /// Persistent player/seat legend above the charts. Red and blue describe field
 /// halves everywhere except games that color players by seat; those keep the
 /// game-native P1/P2 color assignment while You/Opponent follows the local seat.
-fn players_header<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) -> Element<'a, Message> {
+fn players_header<'a>(
+    lang: &'a LanguageIdentifier,
+    pvp: &'a PvpSession,
+    players_colored_by_seat: bool,
+) -> Element<'a, Message> {
     let side = |accent: Color, seat: &'static str, name: String| -> Element<'a, Message> {
         let dot = container(
             iced::widget::Space::new()
@@ -537,7 +541,7 @@ fn players_header<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) -> Elem
     use widgets::{FIELD_BLUE, FIELD_RED};
     let local_is_p1 = pvp.local_player_index() == 0;
     let (you, opponent) = (t!(lang, "play-you"), t!(lang, "play-opponent"));
-    if pvp.local_game().family.players_colored_by_seat {
+    if players_colored_by_seat {
         let (p1, p2) = if local_is_p1 { (you, opponent) } else { (opponent, you) };
         row![side(FIELD_RED, "P1", p1), side(FIELD_BLUE, "P2", p2)]
     } else {
@@ -607,7 +611,11 @@ pub(super) fn telemetry_panel<'a>(
     state: &'a State,
 ) -> Element<'a, Message> {
     let bar = row![
-        players_header(lang, pvp),
+        players_header(
+            lang,
+            pvp,
+            state.local_game.is_some_and(|game| game.family.players_colored_by_seat)
+        ),
         status_divider(),
         telemetry_content(lang, &state.metric_history),
         status_divider(),

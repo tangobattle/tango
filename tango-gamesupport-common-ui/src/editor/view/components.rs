@@ -231,29 +231,7 @@ pub fn drag_handle<'a>() -> Element<'a, Action> {
         .into()
 }
 
-/// Drag styling shared by the reorderable folder / patch-card columns. The
-/// default sweeten style tints the rows that shift aside with the theme's
-/// *primary* color (green in this app); we don't want any overlay, so it's
-/// turned off. The floating ghost is softened to a plain panel.
-pub fn reorder_drag_style(theme: &iced::Theme) -> sweeten::widget::column::Style {
-    let ep = theme.extended_palette();
-    let ghost = {
-        let mut c = ep.background.weak.color;
-        c.a = 0.92;
-        c
-    };
-    sweeten::widget::column::Style {
-        scale: 1.02,
-        // No tint on the rows that move to open a gap.
-        moved_item_overlay: iced::Color::TRANSPARENT,
-        ghost_border: iced::Border {
-            width: 1.0,
-            color: ep.background.strong.color,
-            radius: 4.0.into(),
-        },
-        ghost_background: iced::Background::Color(ghost),
-    }
-}
+pub use crate::widgets::reorder_drag_style;
 
 /// Small toggle button used for the REG / TAG columns in the folder editor
 /// and the patch-card ON column: tinted in `on_color` when active, neutral

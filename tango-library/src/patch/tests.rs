@@ -47,19 +47,19 @@ title = "Test {name}"
 authors = ["Someone <someone@example.com>"]
 netplay = "{netplay}"
 
-[rom_overrides.BR6E_00]
+[rom_overrides.B4BE_00]
 legal_chip_ranges = [[1, 17], [19, 20]]
 "#
     ))
     .unwrap()
 }
 
-/// Install a package patching BR6E_00 (BN6 Falzar), which every
-/// gamesupport-enabled build knows.
+/// Install a package patching B4BE_00 (BN4 Blue Moon), registered when
+/// `gamesupport-bn4` is enabled.
 fn install(root: &Path, name: &str, version: &str, netplay: &str) {
     let mut builder = Builder::new(manifest(name, version, netplay));
     builder.set_readme("# hello");
-    builder.add_rom("BR6E_00".parse().unwrap(), b"not really a bps".to_vec());
+    builder.add_rom("B4BE_00".parse().unwrap(), b"not really a bps".to_vec());
     builder.write_file(root).unwrap();
 }
 
@@ -75,7 +75,7 @@ fn index_with(root: &Path, entries: &[(&str, &str, &str)]) {
                 license: None,
                 source: None,
                 netplay: netplay.parse().unwrap(),
-                games: vec!["BR6E_00".parse().unwrap()],
+                games: vec!["B4BE_00".parse().unwrap()],
                 path: format!("{name}/{name}-{version}.tangopatch"),
                 size: 1234,
                 sha256: "0".repeat(64),
@@ -86,55 +86,55 @@ fn index_with(root: &Path, entries: &[(&str, &str, &str)]) {
     std::fs::write(index_path(root), index.to_json().unwrap()).unwrap();
 }
 
-#[cfg(feature = "gamesupport-bn6")]
-fn bn6_falzar() -> GameRef {
-    crate::game::find_by_rom_info(b"BR6E", 0).expect("gamesupport-bn6 must be enabled for this test")
+#[cfg(feature = "gamesupport-bn4")]
+fn bn4_blue_moon() -> GameRef {
+    crate::game::find_by_rom_info(b"B4BE", 0).expect("gamesupport-bn4 must be enabled for this test")
 }
 
-#[cfg(feature = "gamesupport-bn6")]
-fn bn6_gregar() -> GameRef {
-    crate::game::find_by_rom_info(b"BR5E", 0).expect("gamesupport-bn6 must be enabled for this test")
+#[cfg(feature = "gamesupport-bn4")]
+fn bn4_red_sun() -> GameRef {
+    crate::game::find_by_rom_info(b"B4WE", 0).expect("gamesupport-bn4 must be enabled for this test")
 }
 
 fn v(s: &str) -> semver::Version {
     s.parse().unwrap()
 }
 
-#[cfg(feature = "gamesupport-bn6")]
+#[cfg(feature = "gamesupport-bn4")]
 #[tokio::test]
 async fn scans_installed_packages() {
     let dir = TempDir::new();
-    install(&dir.0, "bn6_test", "1.0.0", "group:testing");
+    install(&dir.0, "bn4_test", "1.0.0", "group:testing");
 
     let catalog = scanned(&dir.0).await;
     assert_eq!(catalog.installed.len(), 1);
-    assert_eq!(catalog.title("bn6_test"), Some("Test bn6_test"));
+    assert_eq!(catalog.title("bn4_test"), Some("Test bn4_test"));
     // mailparse reduces the address to its display name.
     // Kept raw; the display reduction happens at render time so
     // that installing a patch can't change how its authors read.
     assert_eq!(
-        catalog.installed["bn6_test"].authors,
+        catalog.installed["bn4_test"].authors,
         vec!["Someone <someone@example.com>"]
     );
-    assert_eq!(display_authors(&catalog.installed["bn6_test"].authors), vec!["Someone"]);
+    assert_eq!(display_authors(&catalog.installed["bn4_test"].authors), vec!["Someone"]);
 
-    let version = catalog.version("bn6_test", &v("1.0.0")).unwrap();
+    let version = catalog.version("bn4_test", &v("1.0.0")).unwrap();
     assert_eq!(version.netplay, Compatibility::Group("testing".into()));
     assert_eq!(
-        version.rom_overrides[&"BR6E_00".parse().unwrap()]
+        version.rom_overrides[&"B4BE_00".parse().unwrap()]
             .legal_chip_ranges
             .as_deref()
             .unwrap(),
         [[1, 17], [19, 20]]
     );
     assert_eq!(
-        version.rom_overrides_for(bn6_falzar()).legal_chip_ranges,
+        version.rom_overrides_for(bn4_blue_moon()).legal_chip_ranges,
         Some(vec![[1, 17], [19, 20]])
     );
-    assert!(version.rom_overrides_for(bn6_gregar()).is_empty());
+    assert!(version.rom_overrides_for(bn4_red_sun()).is_empty());
     assert_eq!(version.readme.as_deref(), Some("# hello"));
-    assert!(version.supported_games.contains(&bn6_falzar()));
-    assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
+    assert!(version.supported_games.contains(&bn4_blue_moon()));
+    assert!(catalog.is_installed("bn4_test", &v("1.0.0")));
 }
 
 #[tokio::test]
@@ -145,76 +145,76 @@ async fn an_empty_or_absent_patches_dir_is_not_an_error() {
     assert!(scanned(&dir.0).await.installed.is_empty());
 }
 
-#[cfg(feature = "gamesupport-bn6")]
+#[cfg(feature = "gamesupport-bn4")]
 #[tokio::test]
 async fn the_catalog_merges_installed_and_offered() {
     let dir = TempDir::new();
-    install(&dir.0, "bn6_test", "1.0.0", "group:testing");
+    install(&dir.0, "bn4_test", "1.0.0", "group:testing");
     index_with(
         &dir.0,
         &[
             // A newer version of something we have, plus something
             // we don't have at all.
-            ("bn6_test", "2.0.0", "group:testing"),
-            ("bn6_other", "1.0.0", "vanilla"),
+            ("bn4_test", "2.0.0", "group:testing"),
+            ("bn4_other", "1.0.0", "vanilla"),
         ],
     );
 
     let catalog = scanned(&dir.0).await;
     assert_eq!(
         catalog.names().into_iter().collect::<Vec<_>>(),
-        vec!["bn6_other", "bn6_test"]
+        vec!["bn4_other", "bn4_test"]
     );
 
-    let versions = catalog.versions("bn6_test");
+    let versions = catalog.versions("bn4_test");
     assert_eq!(versions.len(), 2);
     assert!(versions[&v("1.0.0")].is_installed());
     assert!(!versions[&v("2.0.0")].is_installed());
     assert_eq!(versions[&v("2.0.0")].size(), Some(1234));
 
     // Not installed, but still browsable and resolvable.
-    assert_eq!(catalog.title("bn6_other"), Some("Test bn6_other"));
+    assert_eq!(catalog.title("bn4_other"), Some("Test bn4_other"));
     assert!(catalog
-        .supported_games("bn6_other", &v("1.0.0"))
-        .contains(&bn6_falzar()));
-    assert!(!catalog.is_installed("bn6_other", &v("1.0.0")));
+        .supported_games("bn4_other", &v("1.0.0"))
+        .contains(&bn4_blue_moon()));
+    assert!(!catalog.is_installed("bn4_other", &v("1.0.0")));
 }
 
-#[cfg(feature = "gamesupport-bn6")]
+#[cfg(feature = "gamesupport-bn4")]
 #[tokio::test]
 async fn tags_resolve_from_the_index_before_anything_is_downloaded() {
     let dir = TempDir::new();
     index_with(
         &dir.0,
-        &[("bn6_cosmetic", "1.0.0", "vanilla"), ("bn6_mod", "1.0.0", "isolated")],
+        &[("bn4_cosmetic", "1.0.0", "vanilla"), ("bn4_mod", "1.0.0", "isolated")],
     );
     let catalog = scanned(&dir.0).await;
-    let game = bn6_falzar();
+    let game = bn4_blue_moon();
 
     // This is what lets the lobby judge a peer's patch it has never
     // seen: a cosmetic patch plays the unpatched game...
     assert_eq!(
-        catalog.tag(game, Some(("bn6_cosmetic", &v("1.0.0")))),
+        catalog.tag(game, Some(("bn4_cosmetic", &v("1.0.0")))),
         catalog.tag(game, None)
     );
     // ... and a gameplay patch does not.
     assert_ne!(
-        catalog.tag(game, Some(("bn6_mod", &v("1.0.0")))),
+        catalog.tag(game, Some(("bn4_mod", &v("1.0.0")))),
         catalog.tag(game, None)
     );
     // A patch nobody has heard of can't be vouched for either way.
-    assert_eq!(catalog.tag(game, Some(("bn6_unknown", &v("1.0.0")))), None);
+    assert_eq!(catalog.tag(game, Some(("bn4_unknown", &v("1.0.0")))), None);
 }
 
 #[tokio::test]
 async fn the_index_and_the_package_agree_on_author_form() {
     let dir = TempDir::new();
-    install(&dir.0, "bn6_test", "1.0.0", "isolated");
-    index_with(&dir.0, &[("bn6_test", "1.0.0", "isolated")]);
+    install(&dir.0, "bn4_test", "1.0.0", "isolated");
+    index_with(&dir.0, &[("bn4_test", "1.0.0", "isolated")]);
     let catalog = scanned(&dir.0).await;
 
-    let installed = &catalog.installed["bn6_test"].authors;
-    let indexed = &catalog.entry("bn6_test", &v("1.0.0")).unwrap().authors;
+    let installed = &catalog.installed["bn4_test"].authors;
+    let indexed = &catalog.entry("bn4_test", &v("1.0.0")).unwrap().authors;
     // Both sides hold the same raw form, so the single reduction the
     // UI runs can't make a patch look like it changed hands the
     // moment it finishes downloading.
@@ -223,42 +223,45 @@ async fn the_index_and_the_package_agree_on_author_form() {
     assert_eq!(display_authors(installed), vec!["Someone"]);
 }
 
-#[cfg(feature = "gamesupport-bn6")]
+#[cfg(feature = "gamesupport-bn4")]
 #[tokio::test]
 async fn an_installed_package_outranks_the_index() {
     // The installed package is the thing that would actually run, so
     // a stale or wrong index entry must not decide compatibility.
     let dir = TempDir::new();
-    install(&dir.0, "bn6_test", "1.0.0", "isolated");
-    index_with(&dir.0, &[("bn6_test", "1.0.0", "vanilla")]);
+    install(&dir.0, "bn4_test", "1.0.0", "isolated");
+    index_with(&dir.0, &[("bn4_test", "1.0.0", "vanilla")]);
 
     let catalog = scanned(&dir.0).await;
     assert_eq!(
-        catalog.compatibility("bn6_test", &v("1.0.0")),
+        catalog.compatibility("bn4_test", &v("1.0.0")),
         Some(&Compatibility::Isolated)
     );
     assert_ne!(
-        catalog.tag(bn6_falzar(), Some(("bn6_test", &v("1.0.0")))),
-        catalog.tag(bn6_falzar(), None)
+        catalog.tag(bn4_blue_moon(), Some(("bn4_test", &v("1.0.0")))),
+        catalog.tag(bn4_blue_moon(), None)
     );
 }
 
-#[cfg(feature = "gamesupport-bn6")]
+#[cfg(feature = "gamesupport-bn4")]
 #[tokio::test]
 async fn newest_version_spans_installed_and_offered() {
     let dir = TempDir::new();
-    install(&dir.0, "bn6_test", "1.0.0", "isolated");
-    index_with(&dir.0, &[("bn6_test", "1.2.0", "isolated")]);
+    install(&dir.0, "bn4_test", "1.0.0", "isolated");
+    index_with(&dir.0, &[("bn4_test", "1.2.0", "isolated")]);
     let catalog = scanned(&dir.0).await;
-    assert_eq!(catalog.newest_version("bn6_test", None), Some(v("1.2.0")));
-    assert_eq!(catalog.newest_version("bn6_test", Some(bn6_falzar())), Some(v("1.2.0")));
+    assert_eq!(catalog.newest_version("bn4_test", None), Some(v("1.2.0")));
+    assert_eq!(
+        catalog.newest_version("bn4_test", Some(bn4_blue_moon())),
+        Some(v("1.2.0"))
+    );
     assert_eq!(catalog.newest_version("nonexistent", None), None);
 }
 
 #[tokio::test]
 async fn a_corrupt_package_is_skipped_not_fatal() {
     let dir = TempDir::new();
-    install(&dir.0, "bn6_test", "1.0.0", "isolated");
+    install(&dir.0, "bn4_test", "1.0.0", "isolated");
     std::fs::write(
         dir.0.join(format!("junk-1.0.0.{}", tango_patch::EXTENSION)),
         b"not a zip",
@@ -268,7 +271,7 @@ async fn a_corrupt_package_is_skipped_not_fatal() {
     // rest of their patches.
     let catalog = scanned(&dir.0).await;
     assert_eq!(catalog.installed.len(), 1);
-    assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
+    assert!(catalog.is_installed("bn4_test", &v("1.0.0")));
 }
 
 /// The smallest HTTP server that can stand in for a patch repo:
@@ -334,7 +337,7 @@ fn build_repo(root: &Path, packages: &[(&str, &str, &str)]) {
         let mut builder = Builder::new(manifest(name, version, netplay));
         builder.set_readme(format!("# {name} {version}"));
         builder.add_rom(
-            "BR6E_00".parse().unwrap(),
+            "B4BE_00".parse().unwrap(),
             format!("bps for {name} {version}").into_bytes(),
         );
         builder.write_file(&root.join(name)).unwrap();
@@ -348,7 +351,7 @@ async fn fetches_the_index_then_installs_only_what_is_asked_for() {
     let repo = TempDir::new();
     build_repo(
         &repo.0,
-        &[("bn6_one", "1.0.0", "vanilla"), ("bn6_two", "2.0.0", "group:pair")],
+        &[("bn4_one", "1.0.0", "vanilla"), ("bn4_two", "2.0.0", "group:pair")],
     );
     let url = serve(repo.0.clone()).await;
     let data = TempDir::new();
@@ -368,9 +371,9 @@ async fn fetches_the_index_then_installs_only_what_is_asked_for() {
     assert!(catalog.installed.is_empty());
     assert_eq!(
         catalog.names().into_iter().collect::<Vec<_>>(),
-        vec!["bn6_one", "bn6_two"]
+        vec!["bn4_one", "bn4_two"]
     );
-    assert_eq!(catalog.title("bn6_two"), Some("Test bn6_two"));
+    assert_eq!(catalog.title("bn4_two"), Some("Test bn4_two"));
     assert_eq!(
         std::fs::read_dir(&data.0)
             .unwrap()
@@ -383,10 +386,10 @@ async fn fetches_the_index_then_installs_only_what_is_asked_for() {
 
     // Install one of them.
     let version = v("2.0.0");
-    let entry = catalog.entry("bn6_two", &version).unwrap().clone();
+    let entry = catalog.entry("bn4_two", &version).unwrap().clone();
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let seen_w = seen.clone();
-    download(&net(), FS, &url, &data.0, "bn6_two", &version, &entry, move |p| {
+    download(&net(), FS, &url, &data.0, "bn4_two", &version, &entry, move |p| {
         seen_w.lock().unwrap().push(p.downloaded);
         true
     })
@@ -399,14 +402,14 @@ async fn fetches_the_index_then_installs_only_what_is_asked_for() {
     );
 
     let catalog = scanned(&data.0).await;
-    assert!(catalog.is_installed("bn6_two", &version));
-    assert!(!catalog.is_installed("bn6_one", &v("1.0.0")), "only the asked-for one");
+    assert!(catalog.is_installed("bn4_two", &version));
+    assert!(!catalog.is_installed("bn4_one", &v("1.0.0")), "only the asked-for one");
     assert_eq!(
-        catalog.version("bn6_two", &version).unwrap().readme.as_deref(),
-        Some("# bn6_two 2.0.0")
+        catalog.version("bn4_two", &version).unwrap().readme.as_deref(),
+        Some("# bn4_two 2.0.0")
     );
     assert_eq!(
-        catalog.compatibility("bn6_two", &version),
+        catalog.compatibility("bn4_two", &version),
         Some(&Compatibility::Group("pair".into()))
     );
 }
@@ -418,20 +421,20 @@ async fn fetches_the_index_then_installs_only_what_is_asked_for() {
 #[tokio::test]
 async fn a_cancelled_download_leaves_nothing_behind() {
     let repo = TempDir::new();
-    build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
+    build_repo(&repo.0, &[("bn4_one", "1.0.0", "vanilla")]);
     let url = serve(repo.0.clone()).await;
     let data = TempDir::new();
     fetch_index(&net(), FS, &url, &data.0).await.unwrap();
 
     let catalog = scanned(&data.0).await;
     let version = v("1.0.0");
-    let entry = catalog.entry("bn6_one", &version).unwrap().clone();
+    let entry = catalog.entry("bn4_one", &version).unwrap().clone();
 
-    let outcome = download(&net(), FS, &url, &data.0, "bn6_one", &version, &entry, |_| false)
+    let outcome = download(&net(), FS, &url, &data.0, "bn4_one", &version, &entry, |_| false)
         .await
         .unwrap();
     assert!(matches!(outcome, Outcome::Cancelled), "{outcome:?}");
-    assert!(!package_path(&data.0, "bn6_one", &version).exists());
+    assert!(!package_path(&data.0, "bn4_one", &version).exists());
     let leftovers: Vec<_> = std::fs::read_dir(&data.0)
         .unwrap()
         .filter_map(|e| e.ok())
@@ -439,30 +442,30 @@ async fn a_cancelled_download_leaves_nothing_behind() {
         .filter(|n| n.ends_with(".tmp") || n.ends_with(".part"))
         .collect();
     assert!(leftovers.is_empty(), "left a partial file: {leftovers:?}");
-    assert!(!scanned(&data.0).await.is_installed("bn6_one", &version));
+    assert!(!scanned(&data.0).await.is_installed("bn4_one", &version));
 }
 
 #[tokio::test]
 async fn a_package_that_is_not_what_the_index_promised_is_rejected() {
     let repo = TempDir::new();
-    build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
+    build_repo(&repo.0, &[("bn4_one", "1.0.0", "vanilla")]);
     let url = serve(repo.0.clone()).await;
     let data = TempDir::new();
     fetch_index(&net(), FS, &url, &data.0).await.unwrap();
 
     let catalog = scanned(&data.0).await;
     let version = v("1.0.0");
-    let mut entry = catalog.entry("bn6_one", &version).unwrap().clone();
+    let mut entry = catalog.entry("bn4_one", &version).unwrap().clone();
     entry.sha256 = "0".repeat(64);
 
-    let err = download(&net(), FS, &url, &data.0, "bn6_one", &version, &entry, |_| true)
+    let err = download(&net(), FS, &url, &data.0, "bn4_one", &version, &entry, |_| true)
         .await
         .unwrap_err()
         .to_string();
     assert!(err.contains("hash mismatch"), "{err}");
     // Nothing half-written left behind: not the package, and not
     // the temporary it streamed into.
-    assert!(!package_path(&data.0, "bn6_one", &version).exists());
+    assert!(!package_path(&data.0, "bn4_one", &version).exists());
     // Only the index and its validator; no package, and no
     // half-written temporary.
     let mut left: Vec<String> = std::fs::read_dir(&data.0)
@@ -477,7 +480,7 @@ async fn a_package_that_is_not_what_the_index_promised_is_rejected() {
 #[tokio::test]
 async fn a_failed_fetch_leaves_the_cached_index_usable() {
     let repo = TempDir::new();
-    build_repo(&repo.0, &[("bn6_one", "1.0.0", "vanilla")]);
+    build_repo(&repo.0, &[("bn4_one", "1.0.0", "vanilla")]);
     let url = serve(repo.0.clone()).await;
     let data = TempDir::new();
     fetch_index(&net(), FS, &url, &data.0).await.unwrap();
@@ -488,15 +491,15 @@ async fn a_failed_fetch_leaves_the_cached_index_usable() {
     assert!(fetch_index(&net(), FS, &url, &data.0).await.is_err());
     let catalog = scanned(&data.0).await;
     assert_eq!(catalog.names().len(), 1);
-    assert!(catalog.entry("bn6_one", &v("1.0.0")).is_some());
+    assert!(catalog.entry("bn4_one", &v("1.0.0")).is_some());
 }
 
 #[tokio::test]
 async fn a_corrupt_index_leaves_the_installed_patches_alone() {
     let dir = TempDir::new();
-    install(&dir.0, "bn6_test", "1.0.0", "isolated");
+    install(&dir.0, "bn4_test", "1.0.0", "isolated");
     std::fs::write(index_path(&dir.0), "{ this is not json").unwrap();
     let catalog = scanned(&dir.0).await;
     assert!(catalog.index.is_empty());
-    assert!(catalog.is_installed("bn6_test", &v("1.0.0")));
+    assert!(catalog.is_installed("bn4_test", &v("1.0.0")));
 }

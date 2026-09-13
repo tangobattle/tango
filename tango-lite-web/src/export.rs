@@ -131,17 +131,19 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
     // seat's own engine door.
     let backend = games[local_player].pvp;
     let config = tango_match::ReplayConfig {
+        record_factory: None,
         roms: [roms[0].to_vec(), roms[1].to_vec()],
         saves: replay.srams.clone(),
         inputs: std::sync::Arc::new(inputs),
         rng_seed: replay.rng_seed,
         rtc: replay.rtc_time(),
-        match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+        match_type: tango_library::game::replay_match_type(&replay.metadata, games[local_player])
+            .map_err(|e| e.to_string())?,
         local_player,
-        peer_rom: tango_match::PeerRom {
+        peer_rom: Some(tango_match::PeerRom {
             code: *games[1 - local_player].rom_code,
             revision: games[1 - local_player].revision,
-        },
+        }),
         want_stats: false,
         // The games' own audio is the point of a video.
         disable_bgm: false,

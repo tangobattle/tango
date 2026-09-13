@@ -19,7 +19,6 @@ log.workspace = true
 rand.workspace = true
 rand_pcg.workspace = true
 rennet.workspace = true
-tango-gamesupport = { path = "../tango-gamesupport" }
 tango-match = { path = "../tango-match" }
 tango-signaling.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
@@ -57,3 +56,6 @@ wasm-bindgen-futures.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+num-rational.workspace = true

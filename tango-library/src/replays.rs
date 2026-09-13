@@ -46,18 +46,6 @@ pub struct ReplayStats {
 
 pub type Scanner = scanner::Scanner<Vec<ScannedReplay>>;
 
-/// Whether the replay's local-side game resolves for re-simulation
-/// ([`crate::game::find_for_replay_side`]). A replay with no recorded
-/// local game info can't be filtered on, so it's kept; one that names a
-/// game we don't have compiled in — or whose family has bumped its
-/// replay version since it was recorded — is hidden.
-fn local_game_playable(side: Option<&tango_replay::metadata::Side>) -> bool {
-    match side.and_then(|s| s.game_info.as_ref()) {
-        None => true,
-        Some(gi) => crate::game::find_for_replay_side(gi).is_ok(),
-    }
-}
-
 /// Reads the metadata header out of each file in `listing`, skipping
 /// anything that doesn't parse. Goes through [`Storage::open`] rather
 /// than reading whole files — a replay runs to megabytes and only its
@@ -86,13 +74,8 @@ pub fn scan_replays(storage: &dyn Storage, listing: &Listing) -> Vec<ScannedRepl
                 continue;
             }
         };
-        // Hide replays whose game isn't registered (its
-        // `gamesupport-<game>` feature is disabled / its crate isn't
-        // compiled in) or whose family has bumped its replay version
-        // past the recording's — there's no way to view or export them.
-        if !local_game_playable(metadata.side(local_player_index)) {
-            continue;
-        }
+        // Keep every readable header. Installed packages can import games
+        // absent from the native registry; the host resolves playability.
         out.push(ScannedReplay {
             path: entry.path.clone(),
             local_player_index,
@@ -123,5 +106,46 @@ pub fn format_rel_path(replays_path: &std::path::Path, path: &std::path::Path) -
         "/".to_string()
     } else {
         format!("/{s}/")
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn index_keeps_legacy_games_without_native_registration() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("legacy.tangoreplay");
+        let side = tango_replay::metadata::Side {
+            game_info: Some(tango_replay::metadata::GameInfo {
+                rom_family: "package-only".into(),
+                rom_variant: 42,
+                sim_version: 7,
+                patch: None,
+            }),
+            ..Default::default()
+        };
+        let metadata = tango_replay::Metadata {
+            p1_side: Some(side.clone()),
+            p2_side: Some(side),
+            ..Default::default()
+        };
+        let writer = tango_replay::Writer::new(
+            std::fs::File::create(&path).unwrap(),
+            tango_replay::VERSION,
+            0,
+            metadata.clone(),
+            [0; 16],
+            [&[], &[]],
+        )
+        .unwrap();
+        writer.finish().unwrap();
+        let storage = crate::storage::StdStorage;
+        let listing = storage.list(&[root.path().to_owned()]).await;
+        let replays = scan_replays(&storage, &listing);
+        assert_eq!(replays.len(), 1);
+        assert_eq!(replays[0].metadata, metadata);
+        assert_eq!(replays[0].path, path);
     }
 }

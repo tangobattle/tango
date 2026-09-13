@@ -26,6 +26,8 @@
 
 // The session kinds. Each hands a host a [`Drive`] and publishes what
 // the host shows; nothing here spawns or sleeps.
+mod backend;
+pub use backend::SessionBackend;
 /// Live netplay, on the transport below.
 ///
 /// Builds for wasm32: the transport rides a facade that is the
@@ -94,13 +96,6 @@ pub enum Error {
     BadLocalPlayerIndex,
     #[error("replay has no inputs")]
     EmptyReplay,
-    /// A side's committed SRAM dump didn't parse as a save for its game.
-    #[error("parse {side} save: {source}")]
-    ParseSave {
-        side: &'static str,
-        #[source]
-        source: tango_gamesupport::Error,
-    },
     /// A side's negotiated settings arrived without game info.
     #[error("{side} settings missing game info")]
     MissingGameInfo { side: &'static str },
@@ -291,10 +286,9 @@ pub trait Drive {
 /// [`downcast_ref`](dyn Session::downcast_ref) — the `Any`
 /// supertrait is what makes that possible.
 pub trait Session: std::any::Any {
-    /// Local-perspective Game registration for this session. Used by
-    /// the host to pull per-game chrome (background image, logo) into
-    /// the emulator pane.
-    fn local_game(&self) -> &'static tango_gamesupport::Game;
+    /// The backend actually running this session. Game names, artwork, save
+    /// parsing and other presentation belong to the host that selected it.
+    fn backend(&self) -> &(dyn tango_match::Backend + Send + Sync);
 
     /// The pixel dimensions of [`frame`](Self::frame)'s buffer — the
     /// console's screens laid out ([`composite_size`]), so a host sizes

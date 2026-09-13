@@ -907,7 +907,7 @@ impl<M> canvas::Program<M> for TouchSpot {
 /// `Some(width)` while that drawer holds the row open — see the
 /// comment on `drawer_slot` below; always `[None, None]` outside PvP.
 fn emulator_body<'a>(
-    game: &'static crate::library::game::Game,
+    game: Option<&'static crate::library::game::Game>,
     frame: Element<'a, Message>,
     hide_emulator_border: bool,
     slots: [Option<f32>; 2],
@@ -916,7 +916,7 @@ fn emulator_body<'a>(
     let bnlc_bg = if hide_emulator_border {
         None
     } else {
-        background_handle(game)
+        game.and_then(background_handle)
     };
     let backdrop: Element<'a, Message> = match bnlc_bg {
         Some(bg_handle) => iced::widget::image(bg_handle)

@@ -20,6 +20,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use crate::backend::SessionBackend;
 use tango_match::telemetry;
 
 /// Inclusive bounds for a side's `frame_delay`, which is realized purely as
@@ -125,7 +126,7 @@ struct Metrics {
 }
 
 pub struct PvpSession {
-    local_game: &'static tango_gamesupport::Game,
+    backend: SessionBackend,
     /// This side's player index (P1 = 0, P2 = 1), picked once at match start and
     /// stable for the whole match. The pair is symmetric — core 0 always runs
     /// player 0's game on both peers — so this is also which core is "ours".
@@ -197,6 +198,7 @@ pub struct PvpSession {
     /// sidecar write can read it during teardown regardless of how far the
     /// background tasks have already wound down.
     stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
+    records: Arc<Mutex<tango_match::telemetry::stream::Timeline>>,
     /// Where this match's replay is being recorded, or `None` if the writer
     /// failed to open. The post-match results screen offers to play it back.
     pub replay_path: Option<std::path::PathBuf>,
@@ -233,7 +235,16 @@ pub struct PreMatchData {
     pub local_settings: tango_net_protocol::control::Settings,
     pub remote_settings: tango_net_protocol::control::Settings,
     pub link_code: String,
-    pub match_type: (u8, u8),
+    pub match_type: u8,
+}
+
+impl PreMatchData {
+    /// Shared seating for both backend preparation and session startup.
+    pub fn local_player_index(&self) -> u8 {
+        use rand::SeedableRng;
+        let mut rng = rand_pcg::Mcg128Xsl64::from_seed(self.rng_seed);
+        pick_local_player_index(&mut rng, self.is_offerer)
+    }
 }
 
 // The channel/peer-conn handles aren't `Debug`; a placeholder keeps any
@@ -308,11 +319,18 @@ impl ReplayStore for DirReplayStore {
 /// Everything [`PvpSession::new`] needs, as named fields. Assembled by
 /// the app's `spawn_pvp` glue.
 pub struct PvpSessionArgs<'a> {
-    /// Local/remote game impls; the roms must already have any patch applied.
-    pub local_game: &'static tango_gamesupport::Game,
+    pub record_factory: Option<Arc<dyn tango_match::telemetry::stream::Factory>>,
+    /// Selected backend; package configurations use absolute player order and
+    /// are verified against the committed settings before starting.
+    pub backend: SessionBackend,
+    /// ROMs must already have any patches applied. Saves in `pre_match` must
+    /// already be valid cartridge images; the session does not parse saves.
     pub local_rom: Arc<Vec<u8>>,
-    pub remote_game: &'static tango_gamesupport::Game,
     pub remote_rom: Arc<Vec<u8>>,
+    pub peer_rom: Option<tango_match::PeerRom>,
+    /// Old replay header encoding for a native gamemode. Package recordings
+    /// carry their own configuration and must leave this unset.
+    pub legacy_replay_code: Option<(u8, u8)>,
     /// The netplay handoff: negotiated terms + the transport bundle.
     pub pre_match: crate::pvp::PreMatchData,
     /// This side's frame delay — realized purely as local display lag (the
@@ -338,6 +356,11 @@ pub struct PvpSessionArgs<'a> {
 }
 
 impl PvpSession {
+    /// Confirmed package telemetry. Speculative ticks are never published here.
+    pub fn records(&self) -> &Arc<Mutex<tango_match::telemetry::stream::Timeline>> {
+        &self.records
+    }
+
     /// Build the live match from [`PvpSessionArgs`].
     ///
     /// Async because the lobby loop holds the data-channel `Receiver`
@@ -353,10 +376,12 @@ impl PvpSession {
     /// fps target, silent until the boot lands.
     pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, PvpBoot, crate::audio::Stream), crate::Error> {
         let PvpSessionArgs {
-            local_game,
+            record_factory,
+            backend,
             local_rom,
-            remote_game,
             remote_rom,
+            peer_rom,
+            legacy_replay_code,
             pre_match,
             frame_delay,
             disable_bgm,
@@ -366,39 +391,23 @@ impl PvpSession {
             expected_fps,
             sample_rate,
         } = args;
+        let local_player_index = pre_match.local_player_index();
+        backend.validate_match(
+            [&pre_match.local_settings, &pre_match.remote_settings],
+            local_player_index as usize,
+            pre_match.match_type,
+            disable_bgm,
+        )?;
+        if backend.is_package() == legacy_replay_code.is_some() {
+            return Err(tango_match::Error::Unsupported("incorrect replay encoding for selected backend").into());
+        }
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         // The engine gets a head start on the pair the boot will run —
         // the awaits below (handoff, transport bring-up) are where a
         // browser's worker threads get the event-loop turns their
         // startup needs.
-        local_game.pvp.prepare(2);
-
-        // Parse both sides' committed SRAM dumps. PvP runs entirely off
-        // these in-memory images — writes don't persist back to anyone's
-        // .sav file.
-        // A netplay-only game models no save, so there is nothing to
-        // parse — the engine still gets the raw SRAM either way.
-        let remote_save = remote_game
-            .parse_save(&pre_match.remote_save_data)
-            .map_err(|e| crate::Error::ParseSave {
-                side: "remote",
-                source: e,
-            })?;
-        // A netplay-only game models no save, so there is nothing to
-        // parse — the engine still gets the raw SRAM either way.
-        let local_save = local_game
-            .parse_save(&pre_match.local_save_data)
-            .map_err(|e| crate::Error::ParseSave {
-                side: "local",
-                source: e,
-            })?;
-
-        // Player index off the shared RNG seed, same negotiation as ever:
-        // both peers derive the same assignment, mirrored.
-        use rand::SeedableRng;
-        let mut rng = rand_pcg::Mcg128Xsl64::from_seed(pre_match.rng_seed);
-        let local_player_index = pick_local_player_index(&mut rng, pre_match.is_offerer);
+        backend.prepare(2);
 
         // The match clock, pinned into both carts' RTC and recorded in the
         // replay metadata so playback re-primes to the identical state.
@@ -406,10 +415,8 @@ impl PvpSession {
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
-        // The engine takes SRAM images. A netplay-only game's save
-        // round-trips its bytes unchanged here.
-        let local_sram = local_save.to_sram_dump();
-        let remote_sram = remote_save.to_sram_dump();
+        let local_sram = pre_match.local_save_data.clone();
+        let remote_sram = pre_match.remote_save_data.clone();
 
         let (replay_writer, replay_path) = match replays {
             None => (None, None),
@@ -417,8 +424,7 @@ impl PvpSession {
                 match build_replay_writer(
                     store,
                     &pre_match,
-                    local_game,
-                    remote_game,
+                    legacy_replay_code,
                     local_player_index,
                     &local_sram,
                     &remote_sram,
@@ -457,7 +463,7 @@ impl PvpSession {
         let drive_paused = Arc::new(crate::PauseGate::new(false));
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
-        let layout = local_game.pvp.screen_layout(tango_match::SessionMode::PvP {
+        let layout = backend.screen_layout(tango_match::SessionMode::PvP {
             match_type: pre_match.match_type,
         });
         let screen = crate::Framebuffer::new(&layout);
@@ -473,6 +479,7 @@ impl PvpSession {
         // A game whose engine reports no chip events folds the rest of
         // the stats without them — the aggregator is the same for all.
         let stats = Arc::new(Mutex::new(tango_match::analysis::StatsBuilder::new()));
+        let records = Arc::new(Mutex::new(tango_match::telemetry::stream::Timeline::new([None, None])));
 
         // Remote input events flow receive-task → drive thread over this
         // queue; the rennet reassembly in PvpReceiver already ordered and
@@ -485,17 +492,15 @@ impl PvpSession {
 
         // Pair-order arrays: core 0 always runs player 0's game, on both
         // peers, so priming and simulation are bit-identical across the pair.
-        let (roms, saves, supports) = if local_player_index == 0 {
+        let (roms, saves) = if local_player_index == 0 {
             (
                 [local_rom.as_ref().clone(), remote_rom.as_ref().clone()],
                 [local_sram, remote_sram],
-                [local_game.pvp, remote_game.pvp],
             )
         } else {
             (
                 [remote_rom.as_ref().clone(), local_rom.as_ref().clone()],
                 [remote_sram, local_sram],
-                [remote_game.pvp, local_game.pvp],
             )
         };
 
@@ -505,13 +510,11 @@ impl PvpSession {
         // call — a drive thread on a desktop, the event loop in a
         // browser. Either way the session is already on screen for it.
         let pieces = BootPieces {
+            record_factory,
             roms,
             saves,
-            pvp: supports,
-            peer_rom: tango_match::PeerRom {
-                code: *remote_game.rom_code,
-                revision: remote_game.revision,
-            },
+            backend: backend.clone(),
+            peer_rom,
             match_type: pre_match.match_type,
             rng_seed: pre_match.rng_seed,
             rtc: rtc_time,
@@ -533,6 +536,7 @@ impl PvpSession {
             in_match: in_match.clone(),
             replay_writer,
             stats: stats.clone(),
+            records: records.clone(),
             // Keyed against the store's own directory, so a store
             // that isn't one (a browser's) simply has no sidecar —
             // which is also the only kind of host that has nowhere
@@ -575,7 +579,7 @@ impl PvpSession {
             expected_fps,
             metrics: metrics.clone(),
             wake: wake.clone(),
-            backend: local_game.pvp,
+            backend: backend.clone(),
         };
 
         // Announce our own prime as soon as the boot finishes. It rides
@@ -609,7 +613,7 @@ impl PvpSession {
         });
 
         let session = Self {
-            local_game,
+            backend,
             local_player_index,
             local_input,
             completed,
@@ -628,6 +632,7 @@ impl PvpSession {
             remote_nickname: pre_match.remote_settings.nickname,
             frame_delay,
             stats,
+            records,
             replay_path,
             layout,
             screen,
@@ -642,6 +647,11 @@ impl PvpSession {
     /// pulling it from the per-round [`RoundStats`].
     pub fn local_player_index(&self) -> u8 {
         self.local_player_index
+    }
+
+    /// The actual simulation backend, including a prepared package backend.
+    pub fn backend(&self) -> &(dyn tango_match::Backend + Send + Sync) {
+        &*self.backend
     }
 
     /// Current local frame delay — drives the footer slider's
@@ -808,8 +818,8 @@ impl crate::Session for PvpSession {
         self.displayed_screens.store(screens, Ordering::Relaxed);
     }
 
-    fn local_game(&self) -> &'static tango_gamesupport::Game {
-        self.local_game
+    fn backend(&self) -> &(dyn tango_match::Backend + Send + Sync) {
+        &*self.backend
     }
 
     fn frame(&self) -> Vec<u8> {
@@ -947,17 +957,15 @@ impl Drop for PvpSession {
 
 /// What the drive thread needs to boot the [`Match`].
 struct BootPieces {
+    record_factory: Option<Arc<dyn tango_match::telemetry::stream::Factory>>,
     roms: [Vec<u8>; 2],
     saves: [Vec<u8>; 2],
-    /// Both sides' netplay support, in seat order. Starting the match
-    /// goes through these rather than an engine, so a DS game boots the
-    /// same way a GBA one does.
-    pvp: [&'static (dyn tango_match::Backend + Send + Sync); 2],
+    backend: SessionBackend,
     /// The peer's cartridge — a match can span two variants and two
     /// regions, and the local game's crate resolves that seat's engine
     /// support from it.
-    peer_rom: tango_match::PeerRom,
-    match_type: (u8, u8),
+    peer_rom: Option<tango_match::PeerRom>,
+    match_type: u8,
     rng_seed: [u8; 16],
     rtc: std::time::SystemTime,
     local_player: usize,
@@ -980,6 +988,7 @@ struct DriveContext {
     in_match: crate::net::InMatchTx,
     replay_writer: Option<tango_replay::Writer>,
     stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
+    records: Arc<Mutex<tango_match::telemetry::stream::Timeline>>,
     /// Where this match's stats sidecar goes. Native-only: the cache is
     /// a file next to the replay, and a browser has no such place.
     #[cfg(not(target_arch = "wasm32"))]
@@ -1014,8 +1023,8 @@ impl DriveContext {
     ) -> Result<PvpDriver, tango_match::Error> {
         // The game's registration starts the match on whatever engine it
         // runs; this session never learns which.
-        let local = pieces.pvp[pieces.local_player];
-        let match_ = local.start(tango_match::StartConfig {
+        let match_ = pieces.backend.start(tango_match::StartConfig {
+            record_factory: pieces.record_factory.as_deref(),
             roms: [&pieces.roms[0], &pieces.roms[1]],
             saves: [Some(&pieces.saves[0]), Some(&pieces.saves[1])],
             rng_seed: pieces.rng_seed,
@@ -1034,6 +1043,11 @@ impl DriveContext {
             // host's drive-thread join waits the walk out.
             cancel: Some(&self.boot_cancel),
         })?;
+
+        if let Some(records) = match_.records() {
+            *self.records.lock().unwrap() =
+                tango_match::telemetry::stream::Timeline::new(records.lock().unwrap().sources().clone());
+        }
 
         // Our half of the ready gate: the pair is at its link battle.
         // Release the announcer so the peer learns it — priming ran at
@@ -1406,10 +1420,7 @@ fn spawn_supervisor(ctx: SupervisorContext) {
 fn build_replay_writer(
     store: &dyn ReplayStore,
     pre_match: &crate::pvp::PreMatchData,
-    // The sides' game impls, for each family's replay compatibility
-    // version — the settings on `pre_match` only carry names.
-    local_game: &'static tango_gamesupport::Game,
-    remote_game: &'static tango_gamesupport::Game,
+    legacy_replay_code: Option<(u8, u8)>,
     local_player_index: u8,
     local_sram: &[u8],
     remote_sram: &[u8],
@@ -1417,19 +1428,24 @@ fn build_replay_writer(
     let link_code = &pre_match.link_code;
     let local_settings = &pre_match.local_settings;
     let remote_settings = &pre_match.remote_settings;
-    let local_gi = local_settings
-        .game_info
-        .as_ref()
-        .ok_or(crate::Error::MissingGameInfo { side: "local" })?;
-    let remote_gi = remote_settings
-        .game_info
-        .as_ref()
-        .ok_or(crate::Error::MissingGameInfo { side: "remote" })?;
-    let netplay_compat = local_gi
-        .patch
-        .as_ref()
-        .map(|p| p.name.clone())
-        .unwrap_or_else(|| local_gi.family_and_variant.0.clone());
+    let local_gi = local_settings.game_info.as_ref();
+    let remote_gi = remote_settings.game_info.as_ref();
+    let (recorded_type, recorded_variant) = legacy_replay_code.unwrap_or_default();
+    if local_settings.gamemode.is_none() && local_gi.is_none() {
+        return Err(crate::Error::MissingGameInfo { side: "local" });
+    }
+    if remote_settings.gamemode.is_none() && remote_gi.is_none() {
+        return Err(crate::Error::MissingGameInfo { side: "remote" });
+    }
+    let netplay_compat = if let Some(mode) = &local_settings.gamemode {
+        format!("{}-{}", mode.identity.package.name, mode.identity.export)
+    } else {
+        let gi = local_gi.expect("checked native game info");
+        gi.patch
+            .as_ref()
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| gi.family_and_variant.0.clone())
+    };
     let ts = chrono::Local::now().format("%Y%m%d%H%M%S");
     // Direct sessions have no link code in their metadata —
     // substitute a stable placeholder here so the filename
@@ -1444,38 +1460,58 @@ fn build_replay_writer(
     let Recording { sink, key } = store.create(&safe_name)?;
 
     let local_side = Some(tango_replay::metadata::Side {
+        gamemode: local_settings
+            .gamemode
+            .as_ref()
+            .map(|mode| mode.encode())
+            .transpose()
+            .map_err(crate::Error::Engine)?
+            .unwrap_or_default(),
         nickname: local_settings.nickname.clone(),
-        game_info: Some(tango_replay::metadata::GameInfo {
-            rom_family: local_gi.family_and_variant.0.clone(),
-            rom_variant: local_gi.family_and_variant.1 as u32,
-            sim_version: local_game.pvp.sim_version(),
-            patch: local_gi
-                .patch
-                .as_ref()
-                .map(|p| tango_replay::metadata::game_info::Patch {
-                    name: p.name.clone(),
-                    version: p.version.to_string(),
-                }),
-        }),
+        game_info: local_settings
+            .gamemode
+            .is_none()
+            .then(|| {
+                local_gi.map(|gi| tango_replay::metadata::GameInfo {
+                    rom_family: gi.family_and_variant.0.clone(),
+                    rom_variant: gi.family_and_variant.1 as u32,
+                    sim_version: gi.sim_version,
+                    patch: gi.patch.as_ref().map(|p| tango_replay::metadata::game_info::Patch {
+                        name: p.name.clone(),
+                        version: p.version.to_string(),
+                    }),
+                })
+            })
+            .flatten(),
         // The replay metadata proto (replay11) predates the
         // blind-setup inversion and still stores the
         // positive "reveal" sense.
         reveal_setup: !local_settings.blind_setup,
     });
     let remote_side = Some(tango_replay::metadata::Side {
+        gamemode: remote_settings
+            .gamemode
+            .as_ref()
+            .map(|mode| mode.encode())
+            .transpose()
+            .map_err(crate::Error::Engine)?
+            .unwrap_or_default(),
         nickname: remote_settings.nickname.clone(),
-        game_info: Some(tango_replay::metadata::GameInfo {
-            rom_family: remote_gi.family_and_variant.0.clone(),
-            rom_variant: remote_gi.family_and_variant.1 as u32,
-            sim_version: remote_game.pvp.sim_version(),
-            patch: remote_gi
-                .patch
-                .as_ref()
-                .map(|p| tango_replay::metadata::game_info::Patch {
-                    name: p.name.clone(),
-                    version: p.version.to_string(),
-                }),
-        }),
+        game_info: remote_settings
+            .gamemode
+            .is_none()
+            .then(|| {
+                remote_gi.map(|gi| tango_replay::metadata::GameInfo {
+                    rom_family: gi.family_and_variant.0.clone(),
+                    rom_variant: gi.family_and_variant.1 as u32,
+                    sim_version: gi.sim_version,
+                    patch: gi.patch.as_ref().map(|p| tango_replay::metadata::game_info::Patch {
+                        name: p.name.clone(),
+                        version: p.version.to_string(),
+                    }),
+                })
+            })
+            .flatten(),
         reveal_setup: !remote_settings.blind_setup,
     });
     // The recorder is where perspective enters the format: everything in
@@ -1486,24 +1522,24 @@ fn build_replay_writer(
     } else {
         (remote_side, local_side, [remote_sram, local_sram])
     };
+    let metadata = tango_replay::Metadata {
+        // The negotiated match clock, not the local wall clock: both
+        // cores' cart RTC is pinned to this instant, and playback
+        // re-primes pinned to `metadata.ts`, so recording the same
+        // value is what makes playback reproduce the live match. Both
+        // peers' replays of one match carry the identical ts.
+        ts: pre_match.match_ts,
+        link_code: link_code.clone(),
+        p1_side,
+        p2_side,
+        match_type: recorded_type as u32,
+        match_subtype: recorded_variant as u32,
+    };
     let writer = tango_replay::Writer::new(
         sink,
-        // SIO-engine stream: one continuous run of pair ticks.
-        tango_replay::VERSION,
+        metadata.container_version()?,
         local_player_index,
-        tango_replay::Metadata {
-            // The negotiated match clock, not the local wall clock: both
-            // cores' cart RTC is pinned to this instant, and playback
-            // re-primes pinned to `metadata.ts`, so recording the same
-            // value is what makes playback reproduce the live match. Both
-            // peers' replays of one match carry the identical ts.
-            ts: pre_match.match_ts,
-            link_code: link_code.clone(),
-            p1_side,
-            p2_side,
-            match_type: pre_match.match_type.0 as u32,
-            match_subtype: pre_match.match_type.1 as u32,
-        },
+        metadata,
         pre_match.rng_seed,
         [srams[0], srams[1]],
     )?;
@@ -1538,7 +1574,7 @@ pub struct PvpBoot {
     /// otherwise sitting on a frame that will never come.
     wake: Arc<tokio::sync::Notify>,
     /// The engine the boot will run on, for its readiness gate.
-    backend: &'static (dyn tango_match::Backend + Send + Sync),
+    backend: SessionBackend,
 }
 
 impl crate::Drive for PvpBoot {
@@ -1759,6 +1795,10 @@ impl PvpDriver {
             ..
         } = advanced;
         self.confirmed_through += confirmed_inputs.len() as u32;
+        if let Some(records) = self.match_.records() {
+            let batch = records.lock().unwrap().take_through(self.confirmed_through);
+            self.ctx.records.lock().unwrap().apply(batch);
+        }
         let (samples, events) = match self.match_.telemetry() {
             Some(telemetry) => telemetry.lock().unwrap().take_through(self.confirmed_through),
             None => (Vec::new(), Vec::new()),

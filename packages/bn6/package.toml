@@ -1,0 +1,29 @@
+api = 1
+name = "bn6"
+version = "0.1.0"
+default_gamemode = "triple"
+
+[dependencies]
+"editor-common" = "0.1.0"
+"gba" = "0.1.0"
+"bn-common" = "0.1.0"
+
+[[editor]]
+name = "bn6"
+path = "./editor"
+
+[[telemetry]]
+name = "bn6"
+path = "./telemetry"
+
+[[gamemode]]
+name = "single"
+path = "./gamemode/single"
+
+[[gamemode]]
+name = "triple"
+path = "./gamemode/triple"
+
+[[gamemode]]
+name = "random"
+path = "./gamemode/random"

@@ -70,31 +70,6 @@ pub fn tab_button<'a, M: Clone + 'a>(
     .into()
 }
 
-/// Zebra row style for data tables. Odd rows get a faint text-
-/// tinted wash (alpha 0.05 dark / 0.04 light); even rows are
-/// transparent and show the pane plate. Flat — no rounded corners
-/// — since rows sit flush against the pane edges and rounded
-/// per-row corners look like accidental indents.
-pub fn zebra_row(idx: usize) -> impl Fn(&Theme) -> iced::widget::container::Style {
-    move |theme: &Theme| {
-        let p = theme.extended_palette();
-        let text = theme.palette().text;
-        let stripe = if idx % 2 == 1 {
-            Some(iced::Background::Color(iced::Color {
-                a: if p.is_dark { 0.05 } else { 0.04 },
-                ..text
-            }))
-        } else {
-            None
-        };
-        iced::widget::container::Style {
-            background: stripe,
-            text_color: Some(text),
-            ..Default::default()
-        }
-    }
-}
-
 /// Normal library-row chrome with danger-red text for enabled palette choices
 /// that would introduce an editor error.
 pub fn danger_text_list_item(

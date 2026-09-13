@@ -78,8 +78,8 @@ pub fn game_name_of(family: &str, variant: u8) -> String {
 
 /// The game's own word for a match type — "Single"/"Triple", or
 /// whatever that family calls its modes.
-pub fn match_type_name(game: GameRef, mode: u8, subtype: u8) -> String {
-    game::match_type_name(lang(), game.family_and_variant().0, mode, subtype)
+pub fn match_type_name(game: GameRef, id: u8) -> String {
+    game::match_type_name(lang(), game.family_and_variant().0, id)
 }
 
 /// What a save template is called, in the family's own words —

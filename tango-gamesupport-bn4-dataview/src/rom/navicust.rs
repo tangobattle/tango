@@ -10,7 +10,7 @@
 //! air_shoes `0x03`, under_shirt `0x04`, buster attack/speed/charge `0x05/06/07`
 //! (clamp 4), weapon `0x0a` (Heat 2 / Aqua 3 / Elec 4 / Wood 5 / Invisible 6),
 //! weapon_level `0x0b` (clamp 2), b_left_ability `0x0c` (Shield `0x25` / Reflect
-//! `0x26` / AntiMagic `0x27`), custom_gauge `0x12` (clamp 8), mega_limit `0x13`
+//! `0x26` / AntiMagic `0x27`), custom `0x12` (clamp 8), mega_limit `0x13`
 //! and giga_limit `0x14` (clamp 10), sneak_run `0x16`, element-attract `0x17`,
 //! support_navi `0x18`, collect `0x19`, humor `0x1c`, bug_stop `0x1d`,
 //! soul_cleanse `0x1e`, first_barrier `0x21`; HP is added through a direct
@@ -33,7 +33,7 @@ pub enum NavicustEffect {
     /// Giga-chip folder limit `+N` (clamps at 10).
     GigaLimit(u8),
     /// Custom screen `+N` chips (clamps at 8).
-    CustomGauge(u8),
+    Custom(u8),
     /// MegaBuster Attack `+N` (clamps at 4).
     Attack(u8),
     /// MegaBuster Speed `+N` (clamps at 4).
@@ -104,8 +104,8 @@ pub fn navicust_part_effects(id: usize) -> &'static [NavicustEffect] {
     use NavicustEffect::*;
     match id >> 2 {
         1 => &[SuperArmor],                                      // SprArmr
-        2 => &[CustomGauge(1)],                                  // Custom1
-        3 => &[CustomGauge(2)],                                  // Custom2
+        2 => &[Custom(1)],                                       // Custom1
+        3 => &[Custom(2)],                                       // Custom2
         4 => &[MegaLimit(1)],                                    // MegFldr1
         5 => &[MegaLimit(2)],                                    // MegFldr2
         6 => &[GigaLimit(1)],                                    // GigFldr1

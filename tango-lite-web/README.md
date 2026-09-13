@@ -38,8 +38,12 @@ glue, stylesheet, icons, and service worker. Override `FEATURES` to choose
 games or `PROFILE` to choose a Cargo profile, for example:
 
 ```sh
-FEATURES=gamesupport-bn6 PROFILE=dev ./build.sh
+FEATURES=gamesupport-bn4 PROFILE=release ./build.sh
 ```
+
+The browser currently supports the remaining native game registrations. BN5 and
+BN6 now live in Luau packages; browser package execution still needs integration,
+so those games are unavailable here during the migration.
 
 This crate is a workspace member but not a default member. Native builds
 must exclude it; build it through `build.sh`, which supplies the shared

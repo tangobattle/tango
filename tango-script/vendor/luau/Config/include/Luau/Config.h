@@ -1,0 +1,90 @@
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#pragma once
+
+#include "Luau/DenseHash2.h"
+#include "Luau/LinterConfig.h"
+#include "Luau/ParseOptions.h"
+
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace Luau
+{
+
+using ModuleName = std::string;
+
+constexpr const char* kConfigName = ".luaurc";
+
+struct Config
+{
+    Config();
+    Config(const Config& other);
+    Config& operator=(const Config& other);
+    Config(Config&& other) = default;
+    Config& operator=(Config&& other) = default;
+
+    Mode mode = Mode::Nonstrict;
+
+    ParseOptions parseOptions;
+
+    LintOptions enabledLint;
+    LintOptions fatalLint;
+
+    bool lintErrors = false;
+    bool typeErrors = true;
+
+    std::vector<std::string> globals;
+
+    struct AliasInfo
+    {
+        std::string value;
+        std::string_view configLocation;
+        std::string originalCase; // The alias in its original case.
+    };
+
+    DenseHashMap2<std::string, AliasInfo> aliases;
+
+    void setAlias(std::string alias, std::string value, const std::string& configLocation);
+    void setAlias(std::string alias, std::string value);
+
+private:
+    // Prevents making unnecessary copies of the same config location string.
+    DenseHashMap2<std::string, std::unique_ptr<std::string>> configLocationCache;
+};
+
+std::optional<std::string> parseModeString(Mode& mode, const std::string& modeString, bool compat = false);
+std::optional<std::string> parseLintRuleString(
+    LintOptions& enabledLints,
+    LintOptions& fatalLints,
+    const std::string& warningName,
+    const std::string& value,
+    bool compat = false
+);
+
+bool isValidAlias(const std::string& alias);
+
+struct ConfigOptions
+{
+    bool compat = false;
+
+    struct AliasOptions
+    {
+        std::optional<std::string> configLocation;
+        bool overwriteAliases;
+    };
+    std::optional<AliasOptions> aliasOptions = std::nullopt;
+};
+
+std::optional<std::string> parseAlias(
+    Config& config,
+    const std::string& aliasKey,
+    const std::string& aliasValue,
+    const std::optional<ConfigOptions::AliasOptions>& aliasOptions
+);
+
+std::optional<std::string> parseConfig(const std::string& contents, Config& config, const ConfigOptions& options = ConfigOptions{});
+
+} // namespace Luau

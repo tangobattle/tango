@@ -89,6 +89,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ambient-authority"
+version = "0.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9d4ee0d472d1cd2e28c97dfa124b3d8d992e10eb0a035f33f5d12e3a177ba3b"
+
+[[package]]
 name = "android-activity"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -920,6 +926,48 @@ dependencies = [
  "rustix 0.38.44",
  "wayland-backend",
  "wayland-client",
+]
+
+[[package]]
+name = "cap-fs-ext"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56ff379b70af8e08307a8f65e7040c7301cb4a572538ade16b4984f0da77847f"
+dependencies = [
+ "cap-primitives",
+ "cap-std",
+ "io-lifetimes 3.0.1",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "cap-primitives"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b5f74729fd2f44701d1a8eb47e906cdb3ccd9ec0f02baad85a744b791940b18"
+dependencies = [
+ "ambient-authority",
+ "fs-set-times",
+ "io-extras",
+ "io-lifetimes 3.0.1",
+ "ipnet",
+ "maybe-owned",
+ "rustix 1.1.2",
+ "rustix-linux-procfs",
+ "windows-sys 0.61.2",
+ "winx",
+]
+
+[[package]]
+name = "cap-std"
+version = "4.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1ec78e242cfa2cfe276807ac2ecc00315a6c97786977414bcd1c3963b6c91b8"
+dependencies = [
+ "cap-primitives",
+ "io-extras",
+ "io-lifetimes 3.0.1",
+ "rustix 1.1.2",
 ]
 
 [[package]]
@@ -2412,6 +2460,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erased-serde"
+version = "0.4.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2add8a07dd6a8d93ff627029c51de145e12686fbc36ecb298ac22e74cf02dec"
+dependencies = [
+ "serde",
+ "serde_core",
+ "typeid",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2729,6 +2788,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "fs-set-times"
+version = "0.20.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "94e7099f6313ecacbe1256e8ff9d617b75d1bcb16a6fddef94866d225a01a14a"
+dependencies = [
+ "io-lifetimes 2.0.4",
+ "rustix 1.1.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3433,7 +3503,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "tokio",
  "tower-service",
  "tracing",
@@ -3585,8 +3655,6 @@ dependencies = [
 [[package]]
 name = "iced_tiny_skia"
 version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe0acf8b75a3bc914aff5f2329fdffc1b36eeaea29dda0e4bd232f1c62e9cc3d"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -3891,6 +3959,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "io-extras"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20fd6de4ccfcc187e38bc21cfa543cb5a302cb86a8b114eb7f0bf0dc9f8ac00f"
+dependencies = [
+ "io-lifetimes 3.0.1",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "io-lifetimes"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06432fb54d3be7964ecd3649233cddf80db2832f47fec34c01f65b3d9d774983"
+
+[[package]]
+name = "io-lifetimes"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f0fb0570afe1fed943c5c3d4102d5358592d8625fda6a0007fdbe65a92fba96"
+
+[[package]]
 name = "ipnet"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4184,7 +4274,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.53.3",
 ]
 
 [[package]]
@@ -4297,6 +4387,15 @@ name = "lru-slab"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
+
+[[package]]
+name = "luau0-src"
+version = "0.21.0+luau736"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1972fd3b00746262c87b771f20ab6586f959385d66d484e15cb5182bb09e038b"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "lucide-icons"
@@ -4430,6 +4529,12 @@ dependencies = [
  "autocfg",
  "rawpointer",
 ]
+
+[[package]]
+name = "maybe-owned"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
 
 [[package]]
 name = "maybe-rayon"
@@ -4677,6 +4782,37 @@ dependencies = [
  "paste",
  "roxmltree 0.21.1",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "mlua"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d96e5d00f19d8c46c71ceaced99593b90c31c57aa1fe2cb3e93a8b1698eedba9"
+dependencies = [
+ "bstr",
+ "either",
+ "erased-serde",
+ "libc",
+ "mlua-sys",
+ "num-traits",
+ "parking_lot",
+ "rustc-hash 2.1.1",
+ "serde",
+ "serde-value",
+]
+
+[[package]]
+name = "mlua-sys"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b806d7ade031f5d6607eae3e283fb034cb795a76247dd0d1ba753c8c42debccf"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "luau0-src",
+ "pkg-config",
 ]
 
 [[package]]
@@ -5538,6 +5674,15 @@ dependencies = [
 
 [[package]]
 name = "ordered-float"
+version = "2.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "ordered-float"
 version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bb71e1b3fa6ca1c61f383464aaf2bb0e2f8e772a1f01d486832464de363b951"
@@ -6044,7 +6189,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls 0.23.42",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -6082,7 +6227,7 @@ dependencies = [
  "cfg_aliases 0.2.1",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.0",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -6621,6 +6766,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustix-linux-procfs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fc84bf7e9aa16c4f2c758f27412dc9841341e16aa682d9c7ac308fe3ee12056"
+dependencies = [
+ "once_cell",
+ "rustix 1.1.2",
+]
+
+[[package]]
 name = "rustls"
 version = "0.20.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6914,6 +7069,16 @@ dependencies = [
  "array-init",
  "serde",
  "smallvec 0.6.14",
+]
+
+[[package]]
+name = "serde-value"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
+dependencies = [
+ "ordered-float 2.10.1",
+ "serde",
 ]
 
 [[package]]
@@ -7531,6 +7696,7 @@ dependencies = [
  "embed-resource",
  "encoder-facade",
  "env_logger",
+ "fluent-langneg",
  "fluent-templates",
  "futures",
  "gamepad-facade",
@@ -7553,15 +7719,14 @@ dependencies = [
  "serde",
  "serde_json",
  "sweeten",
+ "tango-backend-mgba",
  "tango-gamesupport",
  "tango-gamesupport-bcc",
  "tango-gamesupport-bn1",
  "tango-gamesupport-bn2",
  "tango-gamesupport-bn3",
  "tango-gamesupport-bn4",
- "tango-gamesupport-bn5",
  "tango-gamesupport-bn5ds",
- "tango-gamesupport-bn6",
  "tango-gamesupport-common-ui",
  "tango-gamesupport-exe45",
  "tango-gamesupport-exeoss",
@@ -7572,6 +7737,8 @@ dependencies = [
  "tango-patch",
  "tango-replay",
  "tango-replay-renderer",
+ "tango-script",
+ "tango-script-iced",
  "tango-session",
  "tango-ui",
  "thiserror 1.0.69",
@@ -7604,6 +7771,7 @@ dependencies = [
  "num-rational",
  "tango-match",
  "tango-replay",
+ "tango-script",
  "tango-session",
  "thiserror 1.0.69",
 ]
@@ -7809,44 +7977,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tango-gamesupport-bn5"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "image",
- "mgba",
- "tango-backend-mgba",
- "tango-gamesupport",
- "tango-gamesupport-bn5-dataview",
- "tango-gamesupport-bn5-ui",
- "tango-gamesupport-common",
- "tango-gamesupport-common-dataview",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bn5-dataview"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "c2rust-bitfields",
- "image",
- "ndarray",
- "num-traits",
- "tango-gamesupport-common-dataview",
-]
-
-[[package]]
-name = "tango-gamesupport-bn5-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
- "image",
- "tango-gamesupport-common-ui",
- "unic-langid",
-]
-
-[[package]]
 name = "tango-gamesupport-bn5ds"
 version = "0.1.0"
 dependencies = [
@@ -7882,44 +8012,6 @@ dependencies = [
  "sweeten",
  "tango-gamesupport-bn5ds-dataview",
  "tango-gamesupport-common-dataview",
- "tango-gamesupport-common-ui",
- "unic-langid",
-]
-
-[[package]]
-name = "tango-gamesupport-bn6"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "image",
- "mgba",
- "tango-backend-mgba",
- "tango-gamesupport",
- "tango-gamesupport-bn6-dataview",
- "tango-gamesupport-bn6-ui",
- "tango-gamesupport-common",
- "tango-gamesupport-common-dataview",
- "tango-match",
-]
-
-[[package]]
-name = "tango-gamesupport-bn6-dataview"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "c2rust-bitfields",
- "image",
- "ndarray",
- "num-traits",
- "tango-gamesupport-common-dataview",
-]
-
-[[package]]
-name = "tango-gamesupport-bn6-ui"
-version = "0.1.0"
-dependencies = [
- "iced",
- "image",
  "tango-gamesupport-common-ui",
  "unic-langid",
 ]
@@ -8043,6 +8135,8 @@ name = "tango-library"
 version = "0.1.0"
 dependencies = [
  "bps",
+ "cap-fs-ext",
+ "cap-std",
  "fluent-templates",
  "futures",
  "log",
@@ -8051,6 +8145,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha3",
  "steamlocate",
  "tango-gamesupport",
  "tango-gamesupport-bcc",
@@ -8058,13 +8153,14 @@ dependencies = [
  "tango-gamesupport-bn2",
  "tango-gamesupport-bn3",
  "tango-gamesupport-bn4",
- "tango-gamesupport-bn5",
  "tango-gamesupport-bn5ds",
- "tango-gamesupport-bn6",
  "tango-gamesupport-exe45",
  "tango-gamesupport-exeoss",
+ "tango-match",
  "tango-patch",
  "tango-replay",
+ "tango-script",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "unic-langid",
@@ -8128,6 +8224,7 @@ dependencies = [
 name = "tango-match"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "getgud",
  "log",
  "num-rational",
@@ -8148,6 +8245,7 @@ dependencies = [
  "semver",
  "serde",
  "sha3",
+ "tango-match",
 ]
 
 [[package]]
@@ -8173,6 +8271,7 @@ dependencies = [
  "prost",
  "prost-build",
  "serde",
+ "tango-match",
  "zstd",
 ]
 
@@ -8188,6 +8287,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-script"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "cc",
+ "crc32fast",
+ "fluent-bundle",
+ "fluent-langneg",
+ "fluent-syntax",
+ "image",
+ "mlua",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha3",
+ "tango-match",
+ "tango-replay",
+ "thiserror 1.0.69",
+ "toml 0.8.23",
+ "unic-langid",
+ "zip",
+]
+
+[[package]]
+name = "tango-script-iced"
+version = "0.1.0"
+dependencies = [
+ "iced",
+ "iced_runtime",
+ "iced_tiny_skia",
+ "image",
+ "lucide-icons",
+ "serde_json",
+ "sha3",
+ "sweeten",
+ "tango-match",
+ "tango-script",
+ "tango-ui",
+ "tiny-skia",
+]
+
+[[package]]
 name = "tango-session"
 version = "0.1.0"
 dependencies = [
@@ -8198,10 +8339,10 @@ dependencies = [
  "futures",
  "gloo-timers",
  "log",
+ "num-rational",
  "rand 0.8.5",
  "rand_pcg 0.3.1",
  "rennet",
- "tango-gamesupport",
  "tango-match",
  "tango-net-protocol",
  "tango-replay",
@@ -8780,6 +8921,12 @@ checksum = "cb30dbbd9036155e74adad6812e9898d03ec374946234fbcebd5dfc7b9187b90"
 dependencies = [
  "rustc-hash 2.1.1",
 ]
+
+[[package]]
+name = "typeid"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
 
 [[package]]
 name = "typenum"
@@ -9465,7 +9612,7 @@ dependencies = [
  "ndk-sys",
  "objc",
  "once_cell",
- "ordered-float",
+ "ordered-float 4.6.0",
  "parking_lot",
  "portable-atomic",
  "portable-atomic-util",
@@ -9518,7 +9665,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10115,6 +10262,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb5a765337c50e9ec252c2069be9bf91c7df47afb103b642ba3a53bf8101be97"
 dependencies = [
  "cfg-if",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "winx"
+version = "0.36.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f3fd376f71958b862e7afb20cfe5a22830e1963462f3a17f49d82a6c1d1f42d"
+dependencies = [
+ "bitflags 2.11.1",
  "windows-sys 0.59.0",
 ]
 

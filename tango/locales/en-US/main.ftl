@@ -105,6 +105,8 @@ lobby-handshake = Exchanging settings…
 lobby-match-type = Match type
 lobby-frame-delay-suggest = Suggest based on ping
 lobby-no-match-types = (no match types for this game)
+lobby-gamemode-unavailable = Gamemode unavailable
+lobby-gamemode-error = Could not load gamemode: { $error }
 lobby-pick-game-first = Pick a game first
 
 lobby-compat-ok = Compatible — ready to play.
@@ -435,3 +437,62 @@ rescan = Rescan
 # Game names live in games.ftl — same Fluent attribute scheme the
 # legacy app uses (game-<family> = base name; .variant-N for each
 # regional/colour variant; .match-type-X-Y for per-mode labels).
+
+## Package editor host
+
+package-editor-title = Package Editor
+package-editor-undo = Undo
+package-editor-redo = Redo
+package-editor-save = Save
+package-editor-save-as = Save as…
+package-editor-reload = Reload packages
+package-editor-reload-dirty = Save your edits before reloading packages.
+package-editor-read-only = This document is read-only.
+package-editor-saved = Saved.
+package-editor-close-prompt = Save your changes before closing?
+package-editor-save-close = Save and close
+package-editor-discard = Discard changes
+package-editor-keep-editing = Keep editing
+package-editor-error = Could not complete the operation: { $error }
+package-editor-unknown-action = Unknown host action: { $id }
+package-editor-not-configured = The editor has not been configured.
+package-editor-no-save-path = This save has no backing file.
+
+play-package = Package
+play-package-error = Cannot load this game or save
+play-package-save-ready = Save ready
+play-package-no-editor = This package has no save editor. The selected file will be used for the match.
+play-package-no-saves = Add a compatible save file to your saves folder.
+play-package-unavailable = Selected package game is unavailable
+
+play-select-editor = Select save editor
+
+## Packages
+tab-packages = Packages
+packages-search = Search packages…
+packages-install = Install packages…
+packages-refresh = Rescan packages
+packages-open-folder = Open packages folder
+packages-legacy-patches = Legacy patches
+packages-back = Back to packages
+packages-working = Reading and checking packages…
+packages-operation-failed = Could not complete the operation: { $error }
+packages-empty = No packages match your search.
+packages-unavailable = Unavailable
+packages-select-prompt = Select a package to see its exports and dependencies.
+packages-issues = Package issues
+packages-reveal = Show package files
+packages-remove = Remove installed version
+packages-required-by = Required by: { $packages }
+packages-exports = Exports
+packages-editor = Editor
+packages-gamemode = Gamemode
+packages-telemetry = Telemetry
+packages-default-export = { $name } (default)
+packages-library = Library
+packages-dependencies = Dependencies
+packages-no-dependencies = No dependencies
+packages-missing-dependency = { $package } (missing)
+packages-source-bundled = Included with Tango
+packages-source-development = Development folder
+packages-source-installed = Installed archive

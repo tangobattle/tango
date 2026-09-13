@@ -234,7 +234,7 @@ fn start_single_player(loadout: Loadout, mut screen: Signal<Screen>) {
         let save = loadout.save_bytes();
         let sink = crate::audio::sink().await;
         let session = tango_session::singleplayer::SinglePlayerSession::new(
-            game,
+            tango_session::SessionBackend::Static(game.pvp),
             std::sync::Arc::new(rom),
             save,
             // A browser has no cart clock to read, so the match clock
@@ -246,7 +246,16 @@ fn start_single_player(loadout: Loadout, mut screen: Signal<Screen>) {
         );
         match session {
             Ok((session, driver, stream)) => {
-                crate::engine::start_single_player(session, driver, stream, sink, loadout.save_path.clone());
+                crate::engine::start_single_player(
+                    session,
+                    driver,
+                    stream,
+                    sink,
+                    loadout
+                        .save_path
+                        .clone()
+                        .map(|path| crate::engine::SaveTarget { path, game }),
+                );
                 screen.set(Screen::Play);
             }
             Err(e) => log::error!("failed to boot {}: {e}", crate::ui::game_label(game)),

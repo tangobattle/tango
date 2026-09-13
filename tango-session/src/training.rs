@@ -2,7 +2,7 @@
 //! locally, against a **dummy controller** on the opponent core.
 //!
 //! Mechanically this is a netplay match with the network cut out: the
-//! game's own registration starts it, and both seats' input is supplied
+//! host-selected backend starts it, and both seats' input is supplied
 //! locally before the tick advances. Both cores run the player's own ROM + save
 //! (a mirror match), primed all the way into their link battle exactly
 //! as a netplay match would be — so training *starts in a battle*, not
@@ -32,7 +32,7 @@ use tango_match::telemetry::Event;
 /// Single battle. Training always fights one round against the dummy;
 /// there's no lobby to pick a mode, and the default do-nothing opponent
 /// makes best-of-N pointless.
-const TRAINING_MATCH_TYPE: (u8, u8) = (0, 0);
+const TRAINING_MATCH_TYPE: u8 = 0;
 
 /// What the drive loop hands a [`TrainingController`] each tick: the live
 /// linked pair (read either core's RAM/video to decide what to do) and
@@ -82,7 +82,7 @@ impl TrainingController for NoopController {
 type SharedController = Arc<Mutex<Box<dyn TrainingController>>>;
 
 pub struct TrainingSession {
-    game: &'static tango_gamesupport::Game,
+    backend: crate::SessionBackend,
     /// Which core the human currently drives (0 or 1). The player starts
     /// on core 0 with the dummy on core 1; [`swap`](Self::toggle_swap)
     /// flips it so the human takes the other side. Read every tick by the
@@ -132,7 +132,8 @@ impl TrainingSession {
     /// core's samples resampled to `sample_rate`) for the host to route
     /// to its output; dropping it just costs sound.
     pub fn new(
-        game: &'static tango_gamesupport::Game,
+        backend: crate::SessionBackend,
+        peer_rom: tango_match::PeerRom,
         rom: Arc<Vec<u8>>,
         save_sram: Vec<u8>,
         rtc: std::time::SystemTime,
@@ -154,17 +155,15 @@ impl TrainingSession {
         // on its way out of every tick; the stream plays the other end
         // without ever reaching for a console.
         let (audio_in, audio_out) = crate::audio::ring();
-        let mut match_ = game.pvp.start(tango_match::StartConfig {
+        let mut match_ = backend.start(tango_match::StartConfig {
+            record_factory: None,
             roms: [rom.as_ref(), rom.as_ref()],
             saves: [Some(&save_sram), Some(&save_sram)],
             match_type: TRAINING_MATCH_TYPE,
             rng_seed,
             rtc,
             // A mirror match, so the peer's cartridge is this one.
-            peer_rom: tango_match::PeerRom {
-                code: *game.rom_code,
-                revision: game.revision,
-            },
+            peer_rom: Some(peer_rom),
             local_player: 0,
             present_delay: 0,
             disable_bgm: false,
@@ -187,7 +186,7 @@ impl TrainingSession {
         let show_pip = Arc::new(AtomicBool::new(false));
         // A primed pair, same as netplay — the dummy seat is the pair's
         // other console, not a solo boot.
-        let layout = game.pvp.screen_layout(tango_match::SessionMode::PvP {
+        let layout = backend.screen_layout(tango_match::SessionMode::PvP {
             match_type: TRAINING_MATCH_TYPE,
         });
         let pip = crate::Framebuffer::new(&layout);
@@ -228,7 +227,7 @@ impl TrainingSession {
 
         Ok((
             Self {
-                game,
+                backend,
                 controlled,
                 joyflags,
                 controller,
@@ -291,8 +290,8 @@ impl TrainingSession {
 }
 
 impl crate::Session for TrainingSession {
-    fn local_game(&self) -> &'static tango_gamesupport::Game {
-        self.game
+    fn backend(&self) -> &(dyn tango_match::Backend + Send + Sync) {
+        &*self.backend
     }
 
     fn frame(&self) -> Vec<u8> {

@@ -1,0 +1,174 @@
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#pragma once
+
+#include "Luau/Error.h"
+#include "Luau/Linter.h"
+#include "Luau/FileResolver.h"
+#include "Luau/ParseOptions.h"
+#include "Luau/ParseResult.h"
+#include "Luau/Scope.h"
+#include "Luau/TypeArena.h"
+#include "Luau/DataFlowGraph.h"
+
+#include <memory>
+#include <vector>
+#include <unordered_map>
+#include <optional>
+
+namespace Luau
+{
+
+using LogLuauProc = void (*)(std::string_view, std::string_view);
+extern LogLuauProc logLuau;
+
+void setLogLuau(LogLuauProc ll);
+void resetLogLuauProc();
+
+struct Module;
+
+using ScopePtr = std::shared_ptr<struct Scope>;
+using ModulePtr = std::shared_ptr<Module>;
+
+class AstType;
+class AstTypePack;
+
+/// Root of the AST of a parsed source file
+struct SourceModule
+{
+    ModuleName name; // Module identifier or a filename
+    std::string humanReadableName;
+
+    SourceCode::Type type = SourceCode::None;
+    std::optional<std::string> environmentName;
+    bool cyclic = false;
+
+    std::shared_ptr<Allocator> allocator;
+    std::shared_ptr<AstNameTable> names;
+    std::vector<ParseError> parseErrors;
+
+    AstStatBlock* root = nullptr;
+    std::optional<Mode> mode;
+
+    std::vector<HotComment> hotcomments;
+    std::vector<Comment> commentLocations;
+
+    SourceModule()
+        : allocator(new Allocator)
+        , names(new AstNameTable(*allocator))
+    {
+    }
+};
+
+bool isWithinComment(const std::vector<Comment>& commentLocations, Position pos);
+bool isWithinComment(const SourceModule& sourceModule, Position pos);
+bool isWithinComment(const ParseResult& result, Position pos);
+
+bool isWithinHotComment(const std::vector<HotComment>& hotComments, Position pos);
+bool isWithinHotComment(const SourceModule& sourceModule, Position pos);
+bool isWithinHotComment(const ParseResult& result, Position pos);
+
+struct RequireCycle
+{
+    Location location;
+    std::vector<ModuleName> path; // one of the paths for a require() to go all the way back to the originating module
+};
+
+struct Module
+{
+    explicit Module(std::shared_ptr<TypeArena> sharedInternalTypes)
+        : internalTypes(std::move(sharedInternalTypes))
+    {
+        LUAU_ASSERT(internalTypes);
+    }
+
+    ~Module();
+
+    // TODO: Clip this when we clip FFlagLuauSolverV2
+    bool checkedInNewSolver = false;
+
+    ModuleName name;
+    std::string humanReadableName;
+
+    TypeArena interfaceTypes;
+    // For modules in a require cycle, internalTypes is shared across all members
+    // so that a single constraint solver pass can allocate and resolve types across the cycle.
+    std::shared_ptr<TypeArena> internalTypes;
+
+    // Scopes and AST types refer to parse data, so we need to keep that alive
+    std::shared_ptr<Allocator> allocator;
+    std::shared_ptr<AstNameTable> names;
+    AstStatBlock* root = nullptr;
+
+    std::vector<std::pair<Location, ScopePtr>> scopes; // never empty
+
+    DenseHashMap2<const AstExpr*, TypeId> astTypes;
+    DenseHashMap2<const AstExpr*, TypePackId> astTypePacks;
+    DenseHashMap2<const AstExpr*, TypeId> astExpectedTypes;
+
+    // For AST nodes that are function calls, this map provides the
+    // unspecialized type of the function that was called. If a function call
+    // resolves to a __call metamethod application, this map will point at that
+    // metamethod.
+    //
+    // This is useful for type checking and Signature Help.
+    DenseHashMap2<const AstNode*, TypeId> astOriginalCallTypes;
+
+    // The specialization of a function that was selected.  If the function is
+    // generic, those generic type parameters will be replaced with the actual
+    // types that were passed.  If the function is an overload, this map will
+    // point at the specific overloads that were selected.
+    DenseHashMap2<const AstNode*, TypeId> astOverloadResolvedTypes;
+
+    // Only used with for...in loops.  The computed type of the next() function
+    // is kept here for type checking.
+    DenseHashMap2<const AstNode*, TypeId> astForInNextTypes;
+
+    DenseHashMap2<const AstType*, TypeId> astResolvedTypes;
+    DenseHashMap2<const AstTypePack*, TypePackId> astResolvedTypePacks;
+
+    // The computed result type of a compound assignment. (eg foo += 1)
+    //
+    // Type checking uses this to check that the result of such an operation is
+    // actually compatible with the left-side operand.
+    DenseHashMap2<const AstStat*, TypeId> astCompoundAssignResultTypes;
+
+    DenseHashMap2<TypeId, std::vector<std::pair<Location, TypeId>>> upperBoundContributors;
+
+    // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because
+    // we need a sentinel value for the map.
+    DenseHashMap2<const AstNode*, Scope*> astScopes;
+
+    // Stable references for type aliases registered in the environment
+    std::vector<std::unique_ptr<TypeFun>> typeFunctionAliases;
+
+    std::unordered_map<Name, TypeId> declaredGlobals;
+    ErrorVec errors;
+    LintResult lintResult;
+    Mode mode;
+    SourceCode::Type type;
+    double checkDurationSec = 0.0;
+    bool timeout = false;
+    bool cancelled = false;
+
+    TypePackId returnType = nullptr;
+    std::unordered_map<Name, TypeFun> exportedTypeBindings;
+
+    // Arenas related to the DFG must persist after the DFG no longer exists, as
+    // Module objects maintain raw pointers to objects in these arenas.
+    DefArena defArena;
+    RefinementKeyArena keyArena;
+
+    bool hasModuleScope() const;
+    ScopePtr getModuleScope() const;
+
+    // Once a module has been typechecked, we clone its public interface into a
+    // separate arena. This helps us to force Type ownership into a DAG rather
+    // than a DCG.
+    void clonePublicInterface(NotNull<BuiltinTypes> builtinTypes, InternalErrorReporter& ice, SolverMode mode);
+
+    bool constraintGenerationDidNotComplete = true;
+};
+
+void synthesizeExportReturn(NotNull<BuiltinTypes> builtinTypes, NotNull<Module> module);
+
+} // namespace Luau

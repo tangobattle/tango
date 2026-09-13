@@ -17,7 +17,16 @@ use tango_gamesupport::{BackgroundRef, Error, Family, Game, LazyImage, Region, S
 /// Link battle: mode 0 = Normal, mode 1 = Random. (The menu's third
 /// entry, Guest, plays off a deck the other player sends over, so it is
 /// not a netplay match type.)
-const MATCH_TYPES: &[usize] = &[1, 1];
+const MATCH_TYPES: &[tango_gamesupport::MatchType] = &[
+    tango_gamesupport::MatchType {
+        name: "normal",
+        legacy_replay_code: (0, 0),
+    },
+    tango_gamesupport::MatchType {
+        name: "random",
+        legacy_replay_code: (1, 0),
+    },
+];
 
 const BACKGROUND: BackgroundRef = BackgroundRef {
     volume: Volume::Vol1,
@@ -123,6 +132,7 @@ pub static BCC_FAMILY: Family = Family {
     id: "bcc",
     games: &[&BCC],
     match_types: MATCH_TYPES,
+    default_gamemode: 0,
     players_colored_by_seat: true,
     #[cfg(feature = "ui")]
     save_editor: &ui::SAVE_EDITOR,
@@ -133,6 +143,7 @@ pub static EXEBCGP_FAMILY: Family = Family {
     id: "exebcgp",
     games: &[&EXEBCGP],
     match_types: MATCH_TYPES,
+    default_gamemode: 0,
     players_colored_by_seat: true,
     #[cfg(feature = "ui")]
     save_editor: &ui::SAVE_EDITOR,

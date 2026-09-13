@@ -348,6 +348,12 @@ pub struct Status {
     pub paused: bool,
 }
 
+/// Host-owned validation for single-player save persistence.
+pub struct SaveTarget {
+    pub path: std::path::PathBuf,
+    pub game: &'static tango_library::game::Game,
+}
+
 struct Engine {
     session: Box<dyn Session>,
     /// How this session's screens land on the canvas, fixed at boot —
@@ -379,7 +385,7 @@ struct Engine {
     ctx: Option<web_sys::CanvasRenderingContext2d>,
     /// Single-player only: where to write the cartridge save back, and
     /// when we last did.
-    save_path: Option<std::path::PathBuf>,
+    save_target: Option<SaveTarget>,
     last_save_ms: f64,
 }
 
@@ -394,7 +400,7 @@ pub fn start_single_player(
     driver: tango_session::singleplayer::Driver,
     stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
-    save_path: Option<std::path::PathBuf>,
+    save_target: Option<SaveTarget>,
 ) {
     install(
         Box::new(session),
@@ -402,7 +408,7 @@ pub fn start_single_player(
         stream,
         sink,
         Kind::SinglePlayer,
-        save_path,
+        save_target,
     );
 }
 
@@ -429,7 +435,7 @@ fn install(
     stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
     kind: Kind,
-    save_path: Option<std::path::PathBuf>,
+    save_target: Option<SaveTarget>,
 ) {
     stop();
     // Whatever the last session left held — a button, the stylus —
@@ -461,7 +467,7 @@ fn install(
             fresh: false,
             prefetch_cost_ms: PREFETCH_COST_GUESS_MS,
             ctx: None,
-            save_path,
+            save_target,
             last_save_ms: now,
         })
     });
@@ -509,8 +515,8 @@ pub fn status() -> Option<Status> {
         let pvp = engine.session.downcast_ref::<PvpSession>();
         let replay = engine.session.downcast_ref::<ReplaySession>();
         Some(Status {
-            keys_mask: engine.session.local_game().pvp.keys_mask(),
-            fps: engine.session.local_game().pvp.tps().to_f32().unwrap(),
+            keys_mask: engine.session.backend().keys_mask(),
+            fps: engine.session.backend().tps().to_f32().unwrap(),
             playhead: replay.map(|r| (r.current_tick(), r.total_ticks())),
             prefetched: replay.map(|r| r.prefetch_progress()).unwrap_or(0),
             paused: replay.is_some_and(|r| r.is_paused()),
@@ -792,8 +798,11 @@ impl Engine {
 /// with a blank one, and booting a game and backing out of it before the
 /// title screen is a completely ordinary thing to do.
 fn flush_save(engine: &mut Engine) {
-    let Some(path) = engine.save_path.clone() else { return };
-    let game = engine.session.local_game();
+    let Some(target) = engine.save_target.as_ref() else {
+        return;
+    };
+    let path = &target.path;
+    let game = target.game;
     let Some(session) = engine.session.downcast_ref::<SinglePlayerSession>() else {
         return;
     };
@@ -802,7 +811,7 @@ fn flush_save(engine: &mut Engine) {
         log::debug!("not persisting {}: the cart hasn't written a save yet", path.display());
         return;
     }
-    crate::library::write_save(&path, &bytes);
+    crate::library::write_save(path, &bytes);
 }
 
 /// Re-slice the session's canonical side-by-side composition into the

@@ -62,7 +62,7 @@ pub trait GameSupport: Sync {
     fn prime(
         &self,
         link: &mut Link,
-        match_type: (u8, u8),
+        match_type: u8,
         rng_seed: [u8; 16],
         events: &tango_match::telemetry::EventSink,
         cancel: Option<&AtomicBool>,
@@ -127,12 +127,12 @@ pub trait GameSupport: Sync {
     /// single-screen layout leaves the DS arrangement settings nothing
     /// to arrange. Per mode because a cart can differ between its own:
     /// BN5DS's Team Battle uses the touch screen where its plain
-    /// subtypes don't.
+    /// gamemodes do not.
     ///
     /// Played alone the cart always gets its whole console, so this is
     /// the link answer only. The default is the whole console, for a
     /// game whose battle uses the stylus throughout.
-    fn pvp_screens(&self, match_type: (u8, u8)) -> crate::link::Screens {
+    fn pvp_screens(&self, match_type: u8) -> crate::link::Screens {
         let _ = match_type;
         crate::link::Screens::BOTH
     }
@@ -362,7 +362,7 @@ struct Boot {
     rtc: std::time::SystemTime,
     /// The mode the recording was played in, so the walk picks the
     /// same one out of the game's menus.
-    match_type: (u8, u8),
+    match_type: u8,
     /// The recording's match seed, so the re-primed walk seeds the
     /// game's rngs exactly as the live one did.
     rng_seed: [u8; 16],
@@ -400,6 +400,7 @@ impl tango_match::ReplayBoot for Boot {
         // the mgba display boots').
         let handle = want_stats.then(|| observe(&mut link, self.support, events));
         Ok(tango_match::BootedReplay {
+            records: None,
             link: Box::new(link),
             telemetry: handle,
         })
@@ -438,6 +439,7 @@ impl tango_match::ReplayBoot for Boot {
         events.round_started();
         let handle = want_stats.then(|| observe(&mut link, self.support, events));
         Ok(tango_match::BootedReplay {
+            records: None,
             link: Box::new(link),
             telemetry: handle,
         })
@@ -471,7 +473,7 @@ impl Boot {
 fn prime_dark(
     support: &'static (dyn GameSupport + Send + Sync),
     link: &mut Link,
-    match_type: (u8, u8),
+    match_type: u8,
     rng_seed: [u8; 16],
     events: &tango_match::telemetry::EventSink,
     cancel: Option<&AtomicBool>,

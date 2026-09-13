@@ -175,9 +175,9 @@ impl Transition {
 /// e.g. `Vector::new(24.0, 0.0)` enters from the right,
 /// `Vector::new(0.0, 10.0)` rises up from below. Translate-only
 /// (no scale) — a whole page zooming reads as a glitch, but a
-/// short glide reads as "the new screen arrived". Layout and
-/// hit-testing use the rest position; only the drawing
-/// moves, and at `progress == 1.0` the wrapper is a free
+/// short glide reads as "the new screen arrived". Layout uses the
+/// rest position; Iced's floating overlay translates both drawing
+/// and pointer handling. At `progress == 1.0` the wrapper is a free
 /// pass-through.
 pub fn slide_in<'a, M: 'a>(content: impl Into<Element<'a, M>>, progress: f32, from: iced::Vector) -> Element<'a, M> {
     let offset = iced::Vector::new(from.x * (1.0 - progress), from.y * (1.0 - progress));

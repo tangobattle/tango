@@ -1,17 +1,6 @@
-//! The local loadout — which game family, save, and (optionally)
-//! patch the user is bringing to a match — hoisted to App level so
-//! the netplay settings-resend machinery doesn't have to reach into
-//! the Play tab's private state.
-//!
-//! The *identity* of a loadout is `(family, game, save)`. The patch
-//! is deliberately not part of that identity: it's an overlay,
-//! dynamically selectable per loadout and remembered per save
-//! ([`crate::config::Config::last_patch_per_save`]). Picking a save
-//! restores the patch it was last used with; picking a patch sticks
-//! to the current save. Saves whose patch association is intrinsic
-//! (created from a patch's save template) keep it automatically;
-//! vanilla-compatible saves just remember whatever they last ran
-//! under.
+//! The local cartridge, save and gamemode selection shared by the Play tab and lobby.
+//! Package cartridges use content identity; legacy families still resolve their
+//! variant from the selected save and remember patch overlays per save.
 
 use crate::config;
 use crate::i18n::t;
@@ -25,6 +14,10 @@ use unic_langid::LanguageIdentifier;
 
 #[derive(Default)]
 pub struct Loadout {
+    pub gamemodes: crate::package::gamemode::Selection,
+    pub editors: crate::package::editor::selection::Selection,
+    pub package_rom: Option<rom::Id>,
+    pub package_save: crate::package::selection::Selection,
     /// Selected game *family* (region-specific gamedb family string).
     /// The family picker drives the intermingled save list; the
     /// concrete `game` below is resolved from whichever save is chosen.
@@ -39,7 +32,9 @@ pub struct Loadout {
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    FamilySelected(FamilyOption),
+    GameModeSelected(crate::library::package::ExportRef),
+    EditorSelected(crate::library::package::ExportRef),
+    GameSelected(GameOption),
     SaveSelected(SaveOption),
     /// Real patch name; empty string is the "no patch" sentinel.
     PatchSelected(String),
@@ -66,13 +61,151 @@ pub enum Effect {
 }
 
 impl Loadout {
+    pub fn rom(&self, scanners: &Scanners) -> Option<rom::Id> {
+        self.package_rom
+            .or_else(|| self.game.and_then(|game| scanners.roms.read().native_id(game)))
+    }
+
+    pub fn choice(&self) -> Option<GameChoice> {
+        self.package_rom
+            .map(GameChoice::Package)
+            .or_else(|| self.family.map(GameChoice::Family))
+    }
+
+    pub fn select_package(&mut self, rom: rom::Id, scanners: &Scanners, config: &config::Config) {
+        self.package_rom = Some(rom);
+        self.package_save = Default::default();
+        self.editors = Default::default();
+        self.family = None;
+        self.game = None;
+        self.patch = None;
+        self.patch_version = None;
+        let remembered = config.package_loadouts.iter().find(|entry| entry.rom == rom);
+        self.save = remembered
+            .and_then(|entry| entry.save.as_ref())
+            .map(|path| config.data_relative_to_absolute(path));
+        self.gamemodes = Default::default();
+        self.gamemodes
+            .refresh(scanners, Some(rom), false, config.disable_bgm_in_pvp);
+        if let Some(mode) = remembered.and_then(|entry| entry.gamemode.as_ref()) {
+            self.gamemodes.restore(
+                mode.reference(tango_script::ExportKind::GameMode),
+                scanners,
+                Some(rom),
+                config.disable_bgm_in_pvp,
+            );
+        }
+        if let Some(editor) = crate::package::editor::selection::remembered(config, rom) {
+            self.editors.restore(editor);
+        }
+    }
+
+    pub fn remember_package(&self, config: &mut config::Config) {
+        config.last_package_rom = self.package_rom;
+        if let Some(rom) = self.package_rom {
+            let entry = tango_library::config::PackageLoadout {
+                rom,
+                save: self.save.as_ref().and_then(|path| config.data_relative_string(path)),
+                gamemode: self.gamemodes.selected.as_ref().map(Into::into),
+                editor: self.editors.selected.as_ref().map(Into::into),
+            };
+            config.package_loadouts.retain(|entry| entry.rom != rom);
+            config.package_loadouts.push(entry);
+        }
+    }
+
+    pub fn refresh_package(
+        &mut self,
+        scanners: &Scanners,
+        config: &config::Config,
+        loaded: &mut Option<crate::selection::LoadedSave>,
+    ) {
+        let Some(id) = self.package_rom else { return };
+        if !scanners.package_roms.read().unwrap().roms().contains(&id) {
+            self.editors.unavailable();
+            self.package_save
+                .invalidate("selected package game is no longer available".into(), loaded);
+            return;
+        }
+        let roms = scanners.roms.read();
+        let Some(image) = roms.image(id) else {
+            self.editors.unavailable();
+            self.package_save
+                .invalidate("selected ROM is no longer available".into(), loaded);
+            return;
+        };
+        if let Some(error) = &self.gamemodes.error {
+            self.editors.unavailable();
+            self.package_save.invalidate(error.clone(), loaded);
+            return;
+        }
+        let rom = self
+            .gamemodes
+            .prepared
+            .as_ref()
+            .map(|prepared| prepared.rom())
+            .unwrap_or(&image.bytes);
+        {
+            let packages = scanners.packages.read();
+            self.editors
+                .refresh(&packages, packages.revision(), rom, &config.language.to_string());
+        }
+        self.package_save
+            .refresh(scanners, rom, &self.editors, self.save.as_deref(), loaded);
+        if self.save.is_none() {
+            self.save = self.package_save.saves().next().cloned();
+            self.package_save
+                .refresh(scanners, rom, &self.editors, self.save.as_deref(), loaded);
+        }
+    }
+
+    pub fn has_save(&self, loaded: Option<&crate::selection::LoadedSave>) -> bool {
+        let Some(path) = self.save.as_ref() else { return false };
+        if self.package_rom.is_some() && self.package_save.error.is_some() {
+            return false;
+        }
+        loaded.is_some_and(|loaded| &loaded.save_path == path) || self.package_save.raw_sram_for(path).is_some()
+    }
+
+    pub fn save_sram(&self, loaded: Option<&crate::selection::LoadedSave>) -> Result<Vec<u8>, String> {
+        if !self.has_save(loaded) {
+            return Err("no valid save selected".into());
+        }
+        if let Some(loaded) = loaded {
+            return loaded.editor.sram(loaded);
+        }
+        self.package_save
+            .raw_sram()
+            .map(<[u8]>::to_vec)
+            .ok_or_else(|| "no save selected".into())
+    }
+
     pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
         match msg {
-            Message::FamilySelected(f) => {
-                self.family = Some(f.family);
+            Message::EditorSelected(reference) => {
+                self.editors.select(reference);
+                Some(Effect::SelectionChanged)
+            }
+            Message::GameModeSelected(reference) => {
+                self.gamemodes
+                    .select(reference, scanners, self.rom(scanners), config.disable_bgm_in_pvp);
+                Some(Effect::SelectionChanged)
+            }
+            Message::GameSelected(f) => {
+                let family = match f.choice {
+                    GameChoice::Family(family) => family,
+                    GameChoice::Package(rom) => {
+                        self.select_package(rom, scanners, config);
+                        return Some(Effect::SelectionChanged);
+                    }
+                };
+                self.package_rom = None;
+                self.package_save = Default::default();
+                self.editors = Default::default();
+                self.family = Some(family);
                 // Auto-land on the family's remembered (or first
                 // available) save, which also fixes the concrete game.
-                match resolve_family_save(config, scanners, f.family) {
+                match resolve_family_save(config, scanners, family) {
                     Some((game, path)) => {
                         self.game = Some(game);
                         self.save = Some(path);
@@ -95,10 +228,12 @@ impl Loadout {
                 // follows the save: its remembered overlay applies, and
                 // only saves with no memory inherit the current patch
                 // (kept only if it supports the new variant).
-                self.game = Some(s.game);
-                self.family = Some(s.game.family_and_variant().0);
+                self.game = s.game;
+                self.family = s.game.map(|game| game.family_and_variant().0);
                 self.save = Some(s.path);
-                self.restore_patch_memory(config, scanners);
+                if self.package_rom.is_none() {
+                    self.restore_patch_memory(config, scanners);
+                }
                 Some(Effect::SelectionChanged)
             }
             Message::PatchSelected(name) => {
@@ -152,6 +287,9 @@ impl Loadout {
         config: &config::Config,
         scanners: &Scanners,
     ) {
+        self.package_rom = None;
+        self.package_save = Default::default();
+        self.editors = Default::default();
         self.game = Some(game);
         self.family = Some(game.family_and_variant().0);
         self.save = Some(path);
@@ -231,9 +369,18 @@ impl Loadout {
     ) -> tango_net_protocol::control::Settings {
         use tango_net_protocol::control::{GameInfo, PatchInfo, Settings};
         Settings {
+            gamemode: self
+                .gamemodes
+                .prepared
+                .as_ref()
+                .map(|p| p.configuration().expect("prepared configuration")),
             nickname: config.nickname.clone().unwrap_or_default(),
-            match_type: lobby.match_type,
-            game_info: self.game.map(|game| {
+            match_type: if self.gamemodes.selected.is_some() {
+                0
+            } else {
+                lobby.match_type
+            },
+            game_info: self.game.filter(|_| self.gamemodes.error.is_none()).map(|game| {
                 let (family, variant) = game.family_and_variant();
                 GameInfo {
                     family_and_variant: (family.to_string(), variant),
@@ -252,12 +399,17 @@ impl Loadout {
     }
 }
 
-// ---------- Family / Save pick_list options ----------
+// ---------- Game / Save pick_list options ----------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GameChoice {
+    Family(&'static str),
+    Package(rom::Id),
+}
 
 #[derive(Clone)]
-pub struct FamilyOption {
-    /// Region-specific gamedb family string (e.g. `"bn3"`).
-    pub family: &'static str,
+pub struct GameOption {
+    pub choice: GameChoice,
     pub display: String,
     /// `false` unless *every* game in this family has a ROM in the scan
     /// results. Drives sweeten's `.disabled()` closure on the picker so
@@ -265,23 +417,23 @@ pub struct FamilyOption {
     pub available: bool,
 }
 
-impl PartialEq for FamilyOption {
+impl PartialEq for GameOption {
     fn eq(&self, o: &Self) -> bool {
-        self.family == o.family
+        self.choice == o.choice
     }
 }
-impl Eq for FamilyOption {}
-impl std::hash::Hash for FamilyOption {
+impl Eq for GameOption {}
+impl std::hash::Hash for GameOption {
     fn hash<H: std::hash::Hasher>(&self, s: &mut H) {
-        self.family.hash(s);
+        self.choice.hash(s);
     }
 }
-impl std::fmt::Display for FamilyOption {
+impl std::fmt::Display for GameOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.display)
     }
 }
-impl std::fmt::Debug for FamilyOption {
+impl std::fmt::Debug for GameOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.display)
     }
@@ -297,12 +449,9 @@ pub struct SaveOption {
     /// is constructed because `Display::fmt` gets neither the saves root
     /// nor the language as input.
     pub display: String,
-    /// The concrete game this save resolves to *within its family*
-    /// (White/Blue picked from the save's own contents). Selecting the
-    /// save sets `game` to this.
-    pub game: rom::GameRef,
-    /// `false` when `game`'s ROM isn't owned — the row greys out and
-    /// can't be selected.
+    /// Optional native variant; package saves have no Rust save model.
+    pub game: Option<rom::GameRef>,
+    /// Unavailable ROMs and missing selected saves are disabled.
     pub available: bool,
 }
 
@@ -328,7 +477,7 @@ impl SaveOption {
     pub fn new(
         saves_path: &std::path::Path,
         path: std::path::PathBuf,
-        game: rom::GameRef,
+        game: Option<rom::GameRef>,
         available: bool,
         variant: Option<&str>,
     ) -> Self {
@@ -379,7 +528,7 @@ impl std::fmt::Display for SaveOption {
 /// player already knows them by — alphabetical on the family string
 /// sorted BN1..BN6 by accident and would have sorted the next family
 /// wherever its letters happened to fall.
-pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<FamilyOption> {
+pub fn game_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<GameOption> {
     let roms = scanners.roms.read();
     let mut families: Vec<&'static str> = Vec::new();
     for g in crate::library::game::GAMES.iter() {
@@ -388,22 +537,46 @@ pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<Fam
             families.push(fam);
         }
     }
-    let mut family_options: Vec<FamilyOption> = families
+    let mut game_options: Vec<GameOption> = families
         .iter()
-        .map(|fam| FamilyOption {
-            family: fam,
+        .map(|fam| GameOption {
+            choice: GameChoice::Family(fam),
             display: game::family_display_name(lang, fam),
             available: game::games_in_family(fam).all(|g| roms.contains_key(&g)),
         })
         .collect();
-    family_options.sort_by(|a, b| {
+    let packages = scanners.package_roms.read().unwrap();
+    for id in packages.roms() {
+        let Some(image) = roms.image(id) else { continue };
+        let title = packages
+            .label(id, &lang.to_string())
+            .unwrap_or_else(|| t!(lang, "play-package"));
+        let file = image
+            .paths
+            .first()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned());
+        let suffix = file.or_else(|| image.native_game.map(|game| game::variant_short_name(lang, game)));
+        game_options.push(GameOption {
+            choice: GameChoice::Package(id),
+            display: suffix.map(|suffix| format!("{title} · {suffix}")).unwrap_or(title),
+            available: true,
+        });
+    }
+    game_options.sort_by(|a, b| {
         (!a.available).cmp(&(!b.available)).then_with(|| {
-            let ar = !game::family_matches_language(lang, a.family);
-            let br = !game::family_matches_language(lang, b.family);
+            let ar = match a.choice {
+                GameChoice::Family(family) => !game::family_matches_language(lang, family),
+                GameChoice::Package(_) => false,
+            };
+            let br = match b.choice {
+                GameChoice::Family(family) => !game::family_matches_language(lang, family),
+                GameChoice::Package(_) => false,
+            };
             ar.cmp(&br)
         })
     });
-    family_options
+    game_options
 }
 
 /// Every save across the selected family's color variants, grouped by
@@ -425,6 +598,21 @@ pub fn save_options(
     let roms = scanners.roms.read();
     let saves = scanners.saves.read();
     let mut save_options: Vec<SaveOption> = Vec::new();
+    if loadout.package_rom.is_some() {
+        save_options.extend(
+            loadout
+                .package_save
+                .saves()
+                .map(|path| SaveOption::new(&saves_path, path.clone(), None, true, None)),
+        );
+        if let Some(path) = loadout
+            .save
+            .as_ref()
+            .filter(|path| !save_options.iter().any(|option| &option.path == *path))
+        {
+            save_options.push(SaveOption::new(&saves_path, path.clone(), None, false, None));
+        }
+    }
     if let Some(family) = loadout.family {
         // Single-variant families (bn1, bn2, exe45) have nothing to tell
         // apart, so their rows carry no tag.
@@ -439,7 +627,7 @@ pub fn save_options(
                         save_options.push(SaveOption::new(
                             &saves_path,
                             s.path.clone(),
-                            g,
+                            Some(g),
                             available,
                             variant.as_deref(),
                         ));
@@ -459,7 +647,7 @@ pub fn save_options(
     // '.' happens to fall against spaces and digits — with the raw name
     // breaking stem ties.
     save_options.sort_by(|a, b| {
-        let variant = |o: &SaveOption| o.game.family_and_variant().1;
+        let variant = |o: &SaveOption| o.game.map(|game| game.family_and_variant().1);
         variant(a).cmp(&variant(b)).then_with(|| {
             let av: Vec<&std::ffi::OsStr> = a.path.strip_prefix(&saves_path).unwrap_or(&a.path).iter().collect();
             let bv: Vec<&std::ffi::OsStr> = b.path.strip_prefix(&saves_path).unwrap_or(&b.path).iter().collect();
@@ -699,10 +887,8 @@ pub fn patch_supports(loadout: &Loadout, scanners: &Scanners, game: rom::GameRef
 
 // ---------- Views ----------
 
-/// The full game row for the Play tab's selector strip: family
-/// picker, patch + version pickers. The patch controls are always
-/// visible. No rescan button — scans re-run on their own (tab
-/// entry, session close).
+/// Package cartridges offer named gamemodes beside the game picker. Legacy
+/// families retain their patch and version controls during migration.
 pub fn game_row<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
@@ -716,15 +902,39 @@ pub fn game_row<'a>(
     // the middle of it. Laid out this way the fixed 8 + 8 + version
     // width comes off the row identically in both states, so the game
     // picker never moves.
+    if loadout.package_rom.is_some() {
+        if loadout.gamemodes.choices.is_empty() && loadout.gamemodes.selected.is_none() {
+            return game_picker(loadout, lang, scanners).width(Length::Fill).into();
+        }
+        let options: Vec<_> = loadout
+            .gamemodes
+            .choices
+            .iter()
+            .map(|choice| widgets::Choice::new(choice.reference.clone(), choice.label(&lang.to_string())))
+            .collect();
+        let selected = options
+            .iter()
+            .find(|choice| Some(&choice.value) == loadout.gamemodes.selected.as_ref())
+            .cloned();
+        return row![
+            game_picker(loadout, lang, scanners).width(Length::FillPortion(3)),
+            widgets::picker(options, selected, |choice| Message::GameModeSelected(choice.value))
+                .placeholder(t!(lang, "lobby-match-type"))
+                .width(Length::FillPortion(2)),
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .into();
+    }
     let gap = || iced::widget::space::horizontal().width(Length::Fixed(8.0));
     let download = patch_download(loadout, lang, downloads);
     // The game the download belongs to can't be changed out from under
     // it, so its picker goes inert for the duration -- same footprint,
     // same name on it, just not something you can open. Cancelling the
     // fetch hands it back.
-    let game: Element<'a, Message> = match (&download, family_label(loadout, lang, scanners)) {
+    let game: Element<'a, Message> = match (&download, game_label(loadout, lang, scanners)) {
         (Some(_), Some(label)) => widgets::disabled_pick_list(label).width(Length::FillPortion(3)).into(),
-        _ => family_picker(loadout, lang, scanners)
+        _ => game_picker(loadout, lang, scanners)
             .width(Length::FillPortion(3))
             .into(),
     };
@@ -848,28 +1058,69 @@ fn patch_download<'a>(
 /// replaces it while a download runs. `None` with nothing selected —
 /// then the picker itself (with its placeholder) is the better thing
 /// to show anyway.
-fn family_label(loadout: &Loadout, lang: &LanguageIdentifier, scanners: &Scanners) -> Option<String> {
-    let family = loadout.family?;
+fn game_label(loadout: &Loadout, lang: &LanguageIdentifier, scanners: &Scanners) -> Option<String> {
+    let choice = loadout.choice()?;
     Some(
-        family_options(lang, scanners)
+        game_options(lang, scanners)
             .into_iter()
-            .find(|opt| opt.family == family)?
+            .find(|opt| opt.choice == choice)?
             .to_string(),
     )
 }
 
-fn family_picker<'a>(
+fn game_picker<'a>(
     loadout: &'a Loadout,
     lang: &'a LanguageIdentifier,
     scanners: &'a Scanners,
-) -> sweeten::widget::PickList<'a, FamilyOption, Vec<FamilyOption>, FamilyOption, Message> {
-    let options = family_options(lang, scanners);
-    let selected = loadout
-        .family
-        .and_then(|fam| options.iter().find(|opt| opt.family == fam).cloned());
-    widgets::picker(options, selected, Message::FamilySelected)
-        .disabled(|opts: &[FamilyOption]| opts.iter().map(|o| !o.available).collect())
+) -> sweeten::widget::PickList<'a, GameOption, Vec<GameOption>, GameOption, Message> {
+    let options = game_options(lang, scanners);
+    let selected = loadout.choice().map(|choice| {
+        options
+            .iter()
+            .find(|opt| opt.choice == choice)
+            .cloned()
+            .unwrap_or_else(|| GameOption {
+                choice,
+                display: t!(lang, "play-package-unavailable"),
+                available: false,
+            })
+    });
+    widgets::picker(options, selected, Message::GameSelected)
+        .disabled(|opts: &[GameOption]| opts.iter().map(|o| !o.available).collect())
         .placeholder(t!(lang, "play-no-game"))
+}
+
+pub fn editor_picker<'a>(loadout: &'a Loadout, lang: &'a LanguageIdentifier) -> Option<Element<'a, Message>> {
+    if loadout.package_rom.is_none() || (loadout.editors.choices.len() <= 1 && loadout.editors.error.is_none()) {
+        return None;
+    }
+    let options: Vec<_> = loadout
+        .editors
+        .choices
+        .iter()
+        .map(|choice| widgets::Choice::new(choice.reference.clone(), choice.label(&lang.to_string())))
+        .collect();
+    let selected = loadout.editors.selected.as_ref().map(|reference| {
+        options
+            .iter()
+            .find(|choice| &choice.value == reference)
+            .cloned()
+            .unwrap_or_else(|| {
+                widgets::Choice::new(
+                    reference.clone(),
+                    format!(
+                        "{} / {} (v{})",
+                        reference.package.name, reference.name, reference.package.version
+                    ),
+                )
+            })
+    });
+    Some(
+        widgets::picker(options, selected, |choice| Message::EditorSelected(choice.value))
+            .placeholder(t!(lang, "play-select-editor"))
+            .width(Length::Fill)
+            .into(),
+    )
 }
 
 /// The save picker on its own — the Play tab embeds it in its
@@ -894,7 +1145,13 @@ pub fn save_picker<'a>(
     widgets::picker(options, selected, Message::SaveSelected)
         .disabled(move |opts: &[SaveOption]| {
             opts.iter()
-                .map(|o| !o.available || patch_supported.as_ref().map(|s| !s.contains(&o.game)).unwrap_or(false))
+                .map(|o| {
+                    !o.available
+                        || patch_supported
+                            .as_ref()
+                            .map(|s| o.game.is_none_or(|game| !s.contains(&game)))
+                            .unwrap_or(false)
+                })
                 .collect()
         })
         .placeholder(t!(lang, "play-no-save"))

@@ -1,0 +1,40 @@
+[package]
+name = "tango-script"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+tango-match = { path = "../tango-match" }
+tango-replay = { path = "../tango-replay" }
+mlua = { version = "=0.12.1", default-features = false, features = ["luau", "send", "serde"] }
+base64.workspace = true
+crc32fast.workspace = true
+fluent-bundle.workspace = true
+fluent-langneg.workspace = true
+fluent-syntax.workspace = true
+image = { workspace = true, features = ["png"] }
+semver.workspace = true
+serde = { workspace = true, features = ["derive", "rc"] }
+sha3.workspace = true
+thiserror.workspace = true
+toml.workspace = true
+unic-langid.workspace = true
+zip = { workspace = true, features = ["deflate"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mlua = { version = "=0.12.1", default-features = false, features = ["luau-jit"] }
+
+[build-dependencies]
+cc = { version = "1", features = ["parallel"] }
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[[bench]]
+name = "editor"
+harness = false
+
+[lints]
+workspace = true

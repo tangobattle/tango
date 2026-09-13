@@ -98,15 +98,15 @@ impl Bnlc {
     }
 }
 
-/// Pull every recognized `.srl` ROM out of each installed volume's
+/// Pull every `.srl` ROM out of each installed volume's
 /// per-game `exeN.dat` archives.
 ///
 /// This reads Steam's install directories, not the library's own
 /// storage — which is exactly why it stays native-only and outside
 /// [`crate::storage::Storage`]: there is no browser equivalent to
 /// abstract over.
-pub fn scan_steam_roms() -> std::collections::HashMap<crate::rom::GameRef, Vec<u8>> {
-    let mut roms = std::collections::HashMap::new();
+pub fn scan_steam_roms() -> Vec<(PathBuf, Vec<u8>)> {
+    let mut roms = Vec::new();
     for volume in [Volume::Vol1, Volume::Vol2] {
         let Some(b) = get(volume) else {
             continue;
@@ -118,9 +118,9 @@ pub fn scan_steam_roms() -> std::collections::HashMap<crate::rom::GameRef, Vec<u
     roms
 }
 
-fn scan_rom_archive(path: &std::path::Path) -> std::collections::HashMap<crate::rom::GameRef, Vec<u8>> {
+fn scan_rom_archive(path: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
     log::info!("scanning bnlc archive: {}", path.display());
-    let mut roms = std::collections::HashMap::new();
+    let mut roms = Vec::new();
     let f = match std::fs::File::open(path) {
         Ok(f) => f,
         Err(e) => {
@@ -154,17 +154,8 @@ fn scan_rom_archive(path: &std::path::Path) -> std::collections::HashMap<crate::
             log::warn!("bnlc: {}/{}: {e}", path.display(), entry_path.display());
             continue;
         }
-        let Some(game) = crate::game::detect(&mut rom) else {
-            log::warn!("bnlc: {}/{}: not recognized", path.display(), entry_path.display());
-            continue;
-        };
-        log::info!(
-            "bnlc: {}/{}: {:?}",
-            path.display(),
-            entry_path.display(),
-            game.family_and_variant()
-        );
-        roms.insert(game, rom);
+        // Keep unregistered cartridges for package discovery too.
+        roms.push((path.join(entry_path), rom));
     }
     roms
 }
@@ -188,4 +179,28 @@ fn locate_app_dir(volume: Volume) -> Option<PathBuf> {
         .ok()?;
     let (app, lib) = steamdir.find_app(volume.steam_app_id()).ok().flatten()?;
     Some(lib.resolve_app_dir(&app))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn archive_discovery_keeps_unregistered_cartridges() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("exe.dat");
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        for name in ["roms/custom.srl", "../outside.srl", "readme.txt"] {
+            archive
+                .start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(&[1, 2, 3]).unwrap();
+        }
+        archive.finish().unwrap();
+        assert_eq!(
+            scan_rom_archive(&path),
+            vec![(path.join("roms/custom.srl"), vec![1, 2, 3])]
+        );
+    }
 }

@@ -26,7 +26,7 @@ use super::super::{MatchEnd, MatchResults};
 
 /// Messages the results screen emits, wrapped as
 /// [`Results`](super::super::Message::Results) on the way out.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Message {
     /// Dismiss the results screen (its Done button, or Esc while it's
     /// on screen) — back to the tabs. Handled by the session State.
@@ -35,6 +35,7 @@ pub enum Message {
     /// wrapper (building a playback session needs the scanners +
     /// config).
     WatchReplay,
+    Script(tango_script_iced::Message),
 }
 
 /// Point size of the two score numerals — the card's centerpiece.
@@ -283,6 +284,12 @@ pub fn results_view<'a>(lang: &'a LanguageIdentifier, results: &'a MatchResults)
             }
             body = body.push(iced::widget::Space::new().height(8)).push(marks);
         }
+    }
+
+    if let Some(panel) = &results.telemetry_panel {
+        body = body
+            .push(iced::widget::Space::new().height(12))
+            .push(panel.view(&lang.to_string()).map(Message::Script));
     }
 
     // The ways out. Watch replay is the secondary action (and absent when

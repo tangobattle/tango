@@ -12,7 +12,9 @@
 mod lobby;
 mod save_manage;
 
-pub use save_manage::{create_new_save, creation_template, duplicate_save, rename_save, SaveAction};
+pub use save_manage::{
+    create_new_save, create_new_save_bytes, creation_template, duplicate_save, rename_save, SaveAction,
+};
 
 use crate::i18n::t;
 use crate::library::Scanners;
@@ -31,6 +33,7 @@ use unic_langid::LanguageIdentifier;
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Play,
     /// Loadout strip interaction. Routed by the App to the shared
     /// [`Loadout`] state — never reaches [`State::update`].
     Loadout(loadout::Message),
@@ -46,7 +49,7 @@ pub enum Message {
     /// Lobby UI: user picked a different match type. App routes
     /// this through Effect::SetMatchType so the resend
     /// machinery picks it up.
-    SetMatchType((u8, u8)),
+    SetMatchType(u8),
     /// Lobby UI: user dragged the frame-delay slider, OR pressed
     /// the "suggest" button (which dispatches a value computed from the
     /// `lobby.latency_counter` median). Routes to the shared `config.frame_delay`
@@ -89,6 +92,7 @@ pub enum Message {
     /// (target variant, template name) — a template option fixes both,
     /// since the family's variants each ship their own templates.
     SaveNewTemplateSelected(rom::GameRef, String),
+    SaveNewPackageTemplateSelected(String),
     SaveNewConfirm,
 }
 
@@ -158,7 +162,7 @@ pub enum Effect {
     /// Leave the lobby / cancel a connection attempt.
     Disconnect,
     /// Lobby match-type picker moved. App records it and resends Settings.
-    SetMatchType((u8, u8)),
+    SetMatchType(u8),
     /// Lobby "blind my setup" toggled. App records it, persists the
     /// choice, and resends Settings.
     SetBlindSetup(bool),
@@ -196,6 +200,7 @@ pub enum Effect {
     SaveDelete,
     /// Create a fresh save in the saves dir from a bundled
     /// template.
+    SaveNewPackage { name: String, template: String },
     SaveNew {
         name: String,
         template: String,
@@ -208,10 +213,12 @@ pub enum Effect {
     /// so save_editor-internal side effects (e.g. the scroll-to-top
     /// snap on tab change) flow through without per-feature
     /// Effect variants.
-    SaveEditorTask(iced::Task<Message>),
-    /// Global save editor committed: the edit session already staged
-    /// everything into the in-memory save and serialized it — write
-    /// `sram` to the loaded save's path on disk.
+    SaveEditorEvents {
+        task: iced::Task<Message>,
+        events: Vec<tango_gamesupport::SaveEditorEvent>,
+    },
+    /// Write the prepared SRAM to the loaded save's path, then acknowledge
+    /// success or failure before dispatching any further editor action.
     SaveEditCommit { sram: Vec<u8> },
     /// Global save editor: discard all staged edits, reloading the on-disk
     /// original.
@@ -219,6 +226,13 @@ pub enum Effect {
 }
 
 impl State {
+    pub fn cancel_save_action(&mut self) {
+        if self.save_action != SaveAction::None {
+            self.save_action_exit = std::mem::replace(&mut self.save_action, SaveAction::None);
+            self.save_form.set(false, iced::time::Instant::now());
+        }
+    }
+
     /// Apply a tab message. See [`crate::tabs::replays::Effect`]
     /// for the side-effect surface convention.
     pub fn update(
@@ -276,6 +290,7 @@ impl State {
         loadout: &Loadout,
     ) -> Option<Effect> {
         match msg {
+            Message::Play => Some(Effect::StartSinglePlayer),
             // Routed to the shared Loadout at App level before this
             // dispatch is reached.
             Message::Loadout(_) => None,
@@ -349,19 +364,13 @@ impl State {
                 // launches, the committed SRAM. Everything else flows
                 // through as a generic save-view-internal task.
                 let data = loaded?;
-                let (sv_task, outcome) = data.editor.update(&config.language, data, &*msg);
-                match outcome {
-                    Some(tango_gamesupport::SaveEditorEvent::CopyText(s)) => Some(Effect::CopyText(s)),
-                    Some(tango_gamesupport::SaveEditorEvent::CopyHtml { text, html }) => {
-                        Some(Effect::CopyHtml { text, html })
-                    }
-                    Some(tango_gamesupport::SaveEditorEvent::CopyImage(img)) => Some(Effect::CopyImage(img)),
-                    Some(tango_gamesupport::SaveEditorEvent::Play) => Some(Effect::StartSinglePlayer),
-                    Some(tango_gamesupport::SaveEditorEvent::Training) => Some(Effect::StartTraining),
-                    Some(tango_gamesupport::SaveEditorEvent::Commit { sram }) => Some(Effect::SaveEditCommit { sram }),
-                    Some(tango_gamesupport::SaveEditorEvent::Cancel) => Some(Effect::SaveEditCancel),
-                    None => Some(Effect::SaveEditorTask(sv_task.map(Message::SaveEditor))),
-                }
+                let (task, events) =
+                    data.editor
+                        .update(&config.language, data, &*msg, &crate::ui::theme::theme_for(config));
+                Some(Effect::SaveEditorEvents {
+                    task: task.map(Message::SaveEditor),
+                    events,
+                })
             }
             m @ (Message::SaveOpenFolder
             | Message::OpenSavesFolder(_)
@@ -376,6 +385,7 @@ impl State {
             | Message::SaveActionCancel
             | Message::SaveNewStart
             | Message::SaveNewDraftChanged(_)
+            | Message::SaveNewPackageTemplateSelected(_)
             | Message::SaveNewTemplateSelected(..)
             | Message::SaveNewConfirm) => self.update_save_manage(m, scanners, config, loadout),
         }
@@ -508,8 +518,9 @@ impl State {
                 ready: band_ready,
                 phase: band_phase,
                 local_game: loadout.game,
+                gamemodes: &loadout.gamemodes,
                 scanners,
-                has_save: loadout.game.is_some() && loadout.save.is_some(),
+                has_save: loadout.has_save(loaded),
                 local_fallback,
                 streamer_mode,
                 handoff_pending: band.handoff_pending,
@@ -569,6 +580,35 @@ impl State {
                 Some((t!(lang, "save-open-folder"), roms_path)),
             );
         }
+        if loadout.package_rom.is_some() {
+            if let Some(error) = &loadout.package_save.error {
+                return empty_state_card(t!(lang, "play-package-error"), vec![error.clone()], None);
+            }
+            if loadout.package_save.raw_sram().is_some() {
+                return container(
+                    column![
+                        text(t!(lang, "play-package-save-ready")).size(TEXT_BODY),
+                        text(t!(lang, "play-package-no-editor")),
+                        iced::widget::button(text(t!(lang, "play-play"))).on_press_maybe(
+                            (matches!(netplay_phase, crate::netplay::Phase::Idle)
+                                && loadout.gamemodes.prepared.is_some())
+                            .then_some(Message::Play)
+                        ),
+                    ]
+                    .spacing(12),
+                )
+                .center(Fill)
+                .into();
+            }
+            if loadout.save.is_none() {
+                let path = config.saves_path();
+                return empty_state_card(
+                    t!(lang, "empty-no-saves-title"),
+                    vec![t!(lang, "play-package-no-saves"), path.display().to_string()],
+                    Some((t!(lang, "save-open-folder"), path)),
+                );
+            }
+        }
         // Family selected but no save files anywhere in it.
         if let Some(family) = loadout.family {
             let saves = scanners.saves.read();
@@ -589,6 +629,7 @@ impl State {
             streamer_mode,
             netplay_phase,
             loadout::patch_ready(loadout, scanners),
+            loadout.gamemodes.prepared.is_some(),
         )
     }
 
@@ -611,7 +652,11 @@ impl State {
             Element::from(loadout::save_picker(loadout, lang, scanners, config).width(Length::Fill)).map(gate);
         let save_row = self.save_action_row(lang, scanners, loadout, save_picker);
 
-        container(column![game_row, save_row].spacing(6))
+        let mut selectors = column![game_row];
+        if let Some(editor) = loadout::editor_picker(loadout, lang) {
+            selectors = selectors.push(editor.map(gate));
+        }
+        container(selectors.push(save_row).spacing(6))
             .padding(style::PANE_PADDING)
             .width(Fill)
             .style(widgets::pane)
@@ -625,6 +670,7 @@ impl State {
         streamer_mode: bool,
         netplay_phase: &'a crate::netplay::Phase,
         patch_ready: bool,
+        package_solo: bool,
     ) -> Element<'a, Message> {
         let playable = matches!(netplay_phase, crate::netplay::Phase::Idle) && patch_ready;
         let Some(loaded) = loaded else {
@@ -637,7 +683,7 @@ impl State {
         // can't fight with the lobby for the same save/emulator slot,
         // and while the selected patch is still downloading, since the
         // session would otherwise boot the game unpatched.
-        let play_button = Some(playable);
+        let play_button = (loaded.native_game.is_some() || package_solo).then_some(playable);
         loaded
             .editor
             .view(

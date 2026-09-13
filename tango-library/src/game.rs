@@ -1,6 +1,6 @@
 //! The single point where games are registered with the app.
 //!
-//! Every game Tango supports lives in its own `tango-gamesupport-<game>`
+//! Each remaining native game lives in its own `tango-gamesupport-<game>`
 //! crate, which groups its variants and their localized strings into one
 //! or more [`tango_gamesupport::Family`] values exported as `FAMILIES`.
 //! [`FAMILIES`] below is the one feature-gated list that enables them;
@@ -45,12 +45,8 @@ pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
     families.extend_from_slice(tango_gamesupport_bn4::FAMILIES);
     #[cfg(feature = "gamesupport-exe45")]
     families.extend_from_slice(tango_gamesupport_exe45::FAMILIES);
-    #[cfg(feature = "gamesupport-bn5")]
-    families.extend_from_slice(tango_gamesupport_bn5::FAMILIES);
     #[cfg(feature = "gamesupport-bn5ds")]
     families.extend_from_slice(tango_gamesupport_bn5ds::FAMILIES);
-    #[cfg(feature = "gamesupport-bn6")]
-    families.extend_from_slice(tango_gamesupport_bn6::FAMILIES);
     #[cfg(feature = "gamesupport-bcc")]
     families.extend_from_slice(tango_gamesupport_bcc::FAMILIES);
     families
@@ -230,17 +226,49 @@ pub fn variant_short_name(lang: &unic_langid::LanguageIdentifier, game: GameRef)
     family_str(family, lang, &format!("variant-{variant}-short")).unwrap_or_else(|| short_name(lang, game))
 }
 
-/// Localized match-type label for a (mode, subtype) pair (e.g.
-/// "Single" / "Triple" / "Lightweight"). Falls back to "M.S" for
-/// pairs the locale doesn't name.
-pub fn match_type_name(
-    lang: &unic_langid::LanguageIdentifier,
-    family: &str,
-    match_type: u8,
-    match_subtype: u8,
-) -> String {
-    family_str(family, lang, &format!("match-type-{match_type}-{match_subtype}"))
-        .unwrap_or_else(|| format!("{match_type}.{match_subtype}"))
+/// Localized label for one flat gamemode index.
+pub fn match_type_name(lang: &unic_langid::LanguageIdentifier, family: &str, id: u8) -> String {
+    let choice = FAMILIES
+        .iter()
+        .find(|f| f.id == family)
+        .and_then(|f| f.match_types.get(id as usize));
+    choice
+        .map(|choice| {
+            family_str(family, lang, &format!("match-type-{}", choice.name)).unwrap_or_else(|| choice.name.into())
+        })
+        .unwrap_or_else(|| id.to_string())
+}
+
+/// Native replay headers predate flat gamemodes. Translate their legacy code
+/// once at the recording boundary; package recordings select their named export.
+pub fn replay_match_type(
+    metadata: &tango_replay::Metadata,
+    game: &tango_gamesupport::Game,
+) -> Result<u8, std::io::Error> {
+    if metadata.gamemodes()?.is_some() {
+        if metadata.match_type == 0 && metadata.match_subtype == 0 {
+            return Ok(0);
+        }
+    } else if let Some(id) = game
+        .family
+        .match_type_from_replay(metadata.match_type, metadata.match_subtype)
+    {
+        return Ok(id);
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "replay contains an unknown gamemode",
+    ))
+}
+
+/// Labels for the legacy pair stored in native replay headers.
+pub fn replay_match_type_name(lang: &unic_langid::LanguageIdentifier, family: &str, mode: u8, variant: u8) -> String {
+    FAMILIES
+        .iter()
+        .find(|f| f.id == family)
+        .and_then(|f| f.match_type_from_replay(mode.into(), variant.into()))
+        .map(|id| match_type_name(lang, family, id))
+        .unwrap_or_else(|| "?".into())
 }
 
 /// All registered games belonging to a family (e.g. "bn3" → US White + US
@@ -270,4 +298,41 @@ pub fn family_static(family: &str) -> Option<&'static str> {
 /// sort the family picker so the user's own-region families lead.
 pub fn family_matches_language(lang: &unic_langid::LanguageIdentifier, family: &str) -> bool {
     games_in_family(family).any(|g| region_to_language(g.region()).matches(lang, true, true))
+}
+
+#[cfg(test)]
+mod gamemode_tests {
+    use super::*;
+
+    #[test]
+    fn defaults_labels_and_old_replay_codes_resolve_to_flat_choices() {
+        for family in FAMILIES.iter() {
+            assert!(
+                family.match_types.get(family.default_gamemode as usize).is_some(),
+                "{}",
+                family.id
+            );
+            let mut names = std::collections::BTreeSet::new();
+            for (id, choice) in family.match_types.iter().enumerate() {
+                assert!(names.insert(choice.name));
+                let (mode, variant) = choice.legacy_replay_code;
+                assert_eq!(
+                    family.match_type_from_replay(mode.into(), variant.into()),
+                    Some(id as u8)
+                );
+                assert!(
+                    family_str(
+                        family.id,
+                        &unic_langid::langid!("en-US"),
+                        &format!("match-type-{}", choice.name)
+                    )
+                    .is_some(),
+                    "{} {}",
+                    family.id,
+                    choice.name
+                );
+            }
+            assert_eq!(family.match_type_from_replay(u32::MAX, 0), None);
+        }
+    }
 }

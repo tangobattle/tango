@@ -18,6 +18,85 @@ pub use tango_session::stats::{load_match_stats, stats_path, write_match_stats};
 
 use crate::library::rom::GameRef;
 
+/// Exact simulation inputs, shared by playback, analysis and video export.
+/// Native game metadata is optional presentation, never a package requirement.
+pub struct Resolved {
+    pub replay: std::sync::Arc<tango_replay::Replay>,
+    pub backend: tango_session::SessionBackend,
+    pub roms: [Vec<u8>; 2],
+    pub match_type: u8,
+    pub peer_rom: Option<tango_match::PeerRom>,
+    pub local_game: Option<GameRef>,
+}
+
+pub fn resolve(
+    scanners: &super::Scanners,
+    patches_path: &std::path::Path,
+    mut replay: std::sync::Arc<tango_replay::Replay>,
+) -> anyhow::Result<Resolved> {
+    let local_player = replay.local_player_index as usize;
+    anyhow::ensure!(local_player < 2, "replay has bad local player index {local_player}");
+    if let Some(package) = crate::package::replay::resolve(scanners, &replay.metadata)? {
+        let local_game = scanners
+            .roms
+            .read()
+            .image(package.roms[local_player])
+            .and_then(|image| image.native_game);
+        if replay.metadata != package.metadata {
+            std::sync::Arc::make_mut(&mut replay).metadata = package.metadata;
+        }
+        return Ok(Resolved {
+            replay,
+            backend: tango_session::SessionBackend::Owned(package.backend),
+            roms: package.seats.each_ref().map(|seat| seat.rom().to_vec()),
+            match_type: 0,
+            peer_rom: None,
+            local_game,
+        });
+    }
+    let resolve_side = |side: Option<&tango_replay::metadata::Side>| -> anyhow::Result<(GameRef, Vec<u8>)> {
+        let gi = side
+            .and_then(|side| side.game_info.as_ref())
+            .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
+        let game = crate::library::game::find_for_replay_side(gi)?;
+        let rom = scanners
+            .roms
+            .read()
+            .get(&game)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
+        let rom = if let Some(patch) = &gi.patch {
+            crate::library::patch::apply_patch(
+                crate::library::storage(),
+                &rom,
+                game,
+                patches_path,
+                &patch.name,
+                &patch.version.parse()?,
+            )?
+        } else {
+            rom
+        };
+        Ok((game, rom))
+    };
+    let (p0_game, p0_rom) = resolve_side(replay.metadata.side(0))?;
+    let (p1_game, p1_rom) = resolve_side(replay.metadata.side(1))?;
+    let games = [p0_game, p1_game];
+    let local = games[local_player];
+    let peer = games[1 - local_player];
+    Ok(Resolved {
+        backend: tango_session::SessionBackend::Static(local.pvp),
+        roms: [p0_rom, p1_rom],
+        match_type: tango_library::game::replay_match_type(&replay.metadata, local)?,
+        peer_rom: Some(tango_match::PeerRom {
+            code: *peer.rom_code,
+            revision: peer.revision,
+        }),
+        local_game: Some(local),
+        replay,
+    })
+}
+
 /// Re-simulate a replay to produce its match stats and write the sidecar.
 /// A full replay simulation — seconds of CPU; spawn on a blocking worker.
 /// Resolves both sides' ROMs (with recorded patches applied) the same way
@@ -37,33 +116,9 @@ pub fn compute_and_cache_match_stats(
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<tango_match::analysis::MatchStats> {
     let storage = crate::library::storage();
-    let replay = tango_replay::Replay::decode(storage.open(&path)?)?;
-
-    let resolve = |side: Option<&tango_replay::metadata::Side>| -> anyhow::Result<(GameRef, Vec<u8>)> {
-        let gi = side
-            .and_then(|s| s.game_info.as_ref())
-            .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
-        // The stats re-simulation is as version-sensitive as playback,
-        // so this resolve also enforces the family's replay version.
-        let entry = crate::library::game::find_for_replay_side(gi)?;
-        let rom = scanners
-            .roms
-            .read()
-            .get(&entry)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
-        let rom = if let Some(patch_info) = gi.patch.as_ref() {
-            let v = semver::Version::parse(&patch_info.version)?;
-            crate::library::patch::apply_patch(storage, &rom, entry, &patches_path, &patch_info.name, &v)?
-        } else {
-            rom
-        };
-        Ok((entry, rom))
-    };
-    let (p1_game, p1_rom) = resolve(replay.metadata.side(0))?;
-    let (p2_game, p2_rom) = resolve(replay.metadata.side(1))?;
-
-    let stats = analyze_replay(&replay, [p1_game, p2_game], [p1_rom, p2_rom], on_progress, cancel)?;
+    let replay = std::sync::Arc::new(tango_replay::Replay::decode(storage.open(&path)?)?);
+    let resolved = resolve(&scanners, &patches_path, replay)?;
+    let stats = analyze_replay(resolved, on_progress, cancel)?;
     write_match_stats(&stats_path(&cache_path, &replays_path, &path), &stats)?;
     Ok(stats)
 }
@@ -76,12 +131,11 @@ pub fn compute_and_cache_match_stats(
 /// absolute player order; `local_player` only picks whose cart's chip
 /// decode the stats speak.
 fn analyze_replay(
-    replay: &tango_replay::Replay,
-    games: [GameRef; 2],
-    roms: [Vec<u8>; 2],
+    resolved: Resolved,
     on_progress: &mut dyn FnMut(u32, u32, &tango_match::analysis::StatsBuilder),
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<tango_match::analysis::MatchStats> {
+    let replay = &resolved.replay;
     let local_player = replay.local_player_index as usize;
     if local_player >= 2 {
         anyhow::bail!("replay has bad local player index {local_player}");
@@ -100,18 +154,16 @@ fn analyze_replay(
             })
             .collect(),
     );
-    let set = games[local_player].pvp.open_replay(tango_match::ReplayConfig {
-        roms,
+    let set = resolved.backend.open_replay(tango_match::ReplayConfig {
+        record_factory: None,
+        roms: resolved.roms,
         saves: replay.srams.clone(),
         inputs,
         rng_seed: replay.rng_seed,
         rtc: replay.rtc_time(),
-        match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+        match_type: resolved.match_type,
         local_player,
-        peer_rom: tango_match::PeerRom {
-            code: *games[1 - local_player].rom_code,
-            revision: games[1 - local_player].revision,
-        },
+        peer_rom: resolved.peer_rom,
         want_stats: true,
         // Nothing listens; gameplay-neutral either way (see
         // `ReplayConfig::disable_bgm`).

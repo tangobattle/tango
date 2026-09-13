@@ -10,7 +10,7 @@
 //! under_shirt `0x04`, break_buster `0x06`, break_charge `0x0e`, buster
 //! attack/speed/charge `0x08/09/0a` (clamp 4), power_attack_level `0x0d`,
 //! b_left_ability `0x0f` (Block 2 / Shield 4 / Reflect 6 / AntiDmg 8),
-//! reg_memory `0x12`, custom_gauge `0x13`, mega_limit `0x14`, giga_limit `0x15`,
+//! reg_memory `0x12`, custom `0x13`, mega_limit `0x14`, giga_limit `0x15`,
 //! panel-set `0x17` (Green `0x36` / Ice `0x37` / Lava `0x38` / Sand `0x3a` /
 //! Metal `0x35` / Holy `0x19`), fast_gauge `0x18`, sneak_run `0x1a`,
 //! element-attract `0x1b` (Oil 2 / Fish 3 / Battery 1 / Jungle 4), support_navi
@@ -35,7 +35,7 @@ pub enum NavicustEffect {
     /// Giga-chip folder limit `+N`.
     GigaLimit(u8),
     /// Custom screen `+N` chips.
-    CustomGauge(u8),
+    Custom(u8),
     /// Regular-memory capacity `+N` MB (Reg+5).
     RegMemory(u8),
     /// MegaBuster Attack `+N` (clamps at 4).
@@ -133,8 +133,8 @@ pub fn navicust_part_effects(id: usize) -> &'static [NavicustEffect] {
         7 => &[SetSand],         // SetSand
         8 => &[SetMetal],        // SetMetal
         9 => &[SetHoly],         // SetHoly
-        10 => &[CustomGauge(1)], // Custom1
-        11 => &[CustomGauge(2)], // Custom2
+        10 => &[Custom(1)],      // Custom1
+        11 => &[Custom(2)],      // Custom2
         12 => &[MegaLimit(1)],   // MegFldr1
         13 => &[MegaLimit(2)],   // MegFldr2
         14 => &[Block],          // Block
@@ -192,7 +192,7 @@ pub enum EffectGroup {
     /// Panel-set programs (SetGreen … SetHoly).
     PanelSet = 4,
     /// The fast-gauge program (FstGauge).
-    CustomGauge = 5,
+    Custom = 5,
     /// Encounter modifiers (SneakRun, OilBody, Fish, Battery, Jungle).
     Encounter = 6,
     /// Buster upgrades (BrakBust, Atk/Speed/Charge +1).
@@ -233,7 +233,7 @@ pub enum NavicustBug {
     /// Custom Screen HP Drain Bug — HP drains while on the custom screen (`0x16`).
     CustomHpDrain,
     /// Custom Gauge Bug — the custom gauge is permanently slowed (`0x18`).
-    CustomGauge,
+    Custom,
     /// Player Movement Bug — MegaMan is locked into a movement state (`0x10`).
     PlayerMovement,
     /// Modified Shot Bug — the B-button PowerAttack is replaced (`0x0c`).
@@ -284,7 +284,7 @@ pub fn navicust_group_bugs(group: EffectGroup) -> &'static [NavicustBug] {
         G::Hp => &[B::BattleHpDrain],
         G::FolderCustom => &[B::CustomHpDrain],
         G::PanelSet => &[B::PanelChange],
-        G::CustomGauge => &[B::CustomGauge],
+        G::Custom => &[B::Custom],
         G::Encounter => &[B::EncounterRate],
         G::Buster => &[B::Buster],
         G::SupportNavi => &[B::Support],

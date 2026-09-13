@@ -124,7 +124,7 @@ impl tango_backend_mgba::GameSupport for Pvp {
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
         let disable_bgm = config.disable_bgm;
-        let match_type = config.match_type.0;
+        let match_type = config.match_type;
         // RNG contract: seed both rngs per core once, at save load —
         // exactly the situation the vanilla protocol is built for (two
         // cartridges never share RNG state on real hardware). The

@@ -348,7 +348,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     let (main_horizontal, main_vertical) = main_frame_alignment(ctx.opponent_view);
     let frame = framebuffer_view(ctx, touch_spot, main_horizontal, main_vertical);
     let frame = stacked_framebuffers(ctx, frame, pip_touch_spot, ctx.opponent_view);
-    let body = emulator_body(r.local_game(), frame, ctx.hide_emulator_border, [None, None]);
+    let body = emulator_body(state.local_game, frame, ctx.hide_emulator_border, [None, None]);
     // Clicking the screen itself plays/pauses, like any video player.
     // This is the stack's bottom layer, and iced dispatches presses
     // topmost-first with capture — so the transport bar's controls
@@ -418,10 +418,23 @@ fn replay_info_overlay<'a>(
         .unwrap_or_else(|| path.display().to_string());
 
     let metadata = r.metadata();
-    let game = crate::library::game::short_name(lang, r.local_game());
-    let family = r.local_game().family_and_variant().0;
-    let match_type =
-        crate::library::game::match_type_name(lang, family, metadata.match_type as u8, metadata.match_subtype as u8);
+    let game = state
+        .local_game
+        .map(|game| crate::library::game::short_name(lang, game))
+        .unwrap_or_default();
+    let family = state.local_game.map(|game| game.family_and_variant().0);
+    let match_type = crate::package::replay::recorded_name(metadata.side(0)).unwrap_or_else(|| {
+        family
+            .map(|family| {
+                crate::library::game::replay_match_type_name(
+                    lang,
+                    family,
+                    metadata.match_type as u8,
+                    metadata.match_subtype as u8,
+                )
+            })
+            .unwrap_or_default()
+    });
     let (local, remote) = r.nicknames();
     let players = match (local.is_empty(), remote.is_empty()) {
         (false, false) => Some(format!("{local} vs {remote}")),
@@ -1342,7 +1355,7 @@ fn input_display_overlay<'a>(
     // present one.
     let ds = {
         use tango_session::keys;
-        r.local_game().pvp.keys_mask() & (keys::X | keys::Y) != 0
+        r.backend().keys_mask() & (keys::X | keys::Y) != 0
     };
     let chip = |joyflags: u16, nick: &str| -> Element<'a, Message> {
         // The caption renders even when the nickname is empty so the

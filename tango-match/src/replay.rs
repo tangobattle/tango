@@ -232,12 +232,15 @@ pub struct Playback {
     link: Box<dyn Link>,
     inputs: Arc<Vec<[crate::HostInput; 2]>>,
     cursor: u32,
+    failure: Option<String>,
     /// Optional reading end of the link's per-tick observations. Replay
     /// viewers attach it so presentation can react to live game state.
     telemetry: Option<TelemetryHandle>,
     /// Backend tick convention, learned from the first observation. See
     /// [`Self::either_player_in_custom_screen`].
     telemetry_cursor_offset: Option<u32>,
+    records: Option<crate::telemetry::stream::Handle>,
+    record_timeline: Option<Arc<Mutex<crate::telemetry::stream::Timeline>>>,
     /// Where the played seat's sound goes, once a host has asked for
     /// any ([`Replay::play_audio`]). Pumped at the end of every step,
     /// while the pair is still in hand — a seek chase holds this lock
@@ -253,8 +256,11 @@ impl Playback {
             link,
             inputs,
             cursor: 0,
+            failure: None,
             telemetry: None,
             telemetry_cursor_offset: None,
+            records: None,
+            record_timeline: None,
             audio: None,
         }
     }
@@ -262,6 +268,20 @@ impl Playback {
     fn with_telemetry(mut self, telemetry: Option<TelemetryHandle>) -> Self {
         self.telemetry = telemetry;
         self
+    }
+
+    fn with_records(mut self, records: Option<crate::telemetry::stream::Handle>) -> Self {
+        self.records = records;
+        self
+    }
+
+    fn drain_records(&mut self) {
+        if let Some(records) = &self.records {
+            let batch = records.lock().unwrap().take_through(self.cursor);
+            if let Some(timeline) = &self.record_timeline {
+                timeline.lock().unwrap().apply(batch);
+            }
+        }
     }
 
     /// Play `seat` into `into` from here on — the producing end of a
@@ -318,17 +338,30 @@ impl Playback {
         sample_tick.checked_add(offset) == Some(self.cursor) && obs.custom.iter().any(|&open| open)
     }
 
+    fn tick(&mut self, inputs: [crate::HostInput; 2]) -> Result<(), crate::Error> {
+        if let Some(failure) = &self.failure {
+            return Err(crate::Error::Backend(failure.clone().into()));
+        }
+        if let Err(error) = self.link.tick(inputs) {
+            self.failure = Some(error.to_string());
+            self.discard_audio();
+            return Err(error);
+        }
+        Ok(())
+    }
+
     /// Feed the next recorded input pair. Returns false at end-of-stream.
-    pub fn step(&mut self) -> bool {
+    pub fn step(&mut self) -> Result<bool, crate::Error> {
         let Some(&row) = self.inputs.get(self.cursor as usize) else {
-            return false;
+            return Ok(false);
         };
-        self.link.tick(row);
+        self.tick(row)?;
         if let Some(audio) = self.audio.as_mut() {
             audio.pump(&mut *self.link);
         }
         self.cursor += 1;
-        true
+        self.drain_records();
+        Ok(true)
     }
 
     /// [`Self::step`] with the tick's sound thrown away instead of
@@ -339,18 +372,22 @@ impl Playback {
     /// out as a burst of fast-forward music. Discarding per tick is what
     /// keeps a seek silent; purging only at the landing catches just
     /// whatever happened to still be queued when it got there.
-    pub fn step_muted(&mut self) -> bool {
+    pub fn step_muted(&mut self) -> Result<bool, crate::Error> {
         let Some(&row) = self.inputs.get(self.cursor as usize) else {
-            return false;
+            return Ok(false);
         };
-        self.link.tick(row);
+        self.tick(row)?;
         self.discard_audio();
         self.cursor += 1;
-        true
+        self.drain_records();
+        Ok(true)
     }
 
     /// Capture the pair (with both frames) at the current cursor.
     pub fn capture(&mut self) -> Result<Arc<Capture>, crate::Error> {
+        if let Some(failure) = &self.failure {
+            return Err(crate::Error::Backend(failure.clone().into()));
+        }
         let snap = self.link.snapshot(None)?;
         let f0 = self.link.side(0).frame().unwrap_or_default();
         let f1 = self.link.side(1).frame().unwrap_or_default();
@@ -366,7 +403,13 @@ impl Playback {
     /// Restore the pair to `capture` and move the cursor there.
     pub fn load(&mut self, capture: &Capture) -> Result<(), crate::Error> {
         self.link.restore(&capture.snap)?;
+        self.failure = None;
         self.cursor = capture.tick();
+        // A stats pass can land on the display pair's initial capture before
+        // its consumer is attached. Preserve startup errors for that consumer.
+        if self.record_timeline.is_some() {
+            self.drain_records();
+        }
         Ok(())
     }
 
@@ -456,12 +499,12 @@ impl SeekChase {
         on_progress: &mut dyn FnMut(u32),
         publish_landing: &mut dyn FnMut(&Capture),
         on_resume: &mut dyn FnMut(),
-    ) -> SeekStep {
+    ) -> Result<SeekStep, crate::Error> {
         if ctrl.is_cancelled() {
             return self.finish(ctrl, on_resume);
         }
         if self.target.is_none() && !ctrl.is_dirty() {
-            return SeekStep::Idle;
+            return Ok(SeekStep::Idle);
         }
         // One lock for the whole slice: with an unbounded budget (a
         // worker thread) that means the pair is held for the entire
@@ -492,10 +535,18 @@ impl SeekChase {
                 self.target = None;
                 self.landing = None;
                 drop(guard);
-                return SeekStep::Working;
+                return Ok(SeekStep::Working);
             }
-            if !pb.step_muted() {
-                break;
+            match pb.step_muted() {
+                Ok(true) => {}
+                Ok(false) => break,
+                Err(error) => {
+                    self.target = None;
+                    self.landing = None;
+                    ctrl.end_pass();
+                    ctrl.take_resume();
+                    return Err(error);
+                }
             }
             on_progress(pb.cursor());
             match pb.capture() {
@@ -511,7 +562,7 @@ impl SeekChase {
         }
         if pb.cursor() < target && pb.cursor() < pb.total() {
             drop(guard);
-            return SeekStep::Working;
+            return Ok(SeekStep::Working);
         }
         // The walk discarded its sound per tick; this catches what a
         // walk never stepped over — the pre-seek tail a zero-length
@@ -576,14 +627,14 @@ impl SeekChase {
 
     /// End the pass: clear the chase, and run the resume the seek
     /// scheduled unless a newer request has already superseded it.
-    fn finish(&mut self, ctrl: &SeekController, on_resume: &mut dyn FnMut()) -> SeekStep {
+    fn finish(&mut self, ctrl: &SeekController, on_resume: &mut dyn FnMut()) -> Result<SeekStep, crate::Error> {
         self.target = None;
         self.landing = None;
         ctrl.end_pass();
         if !ctrl.is_dirty() && !ctrl.is_cancelled() && ctrl.take_resume() {
             on_resume();
         }
-        SeekStep::Landed
+        Ok(SeekStep::Landed)
     }
 }
 
@@ -618,12 +669,12 @@ impl Replay {
     /// Feed the next recorded input pair, capturing the tick into the
     /// rewind ring (keyframes shared into the store). `false` at end of
     /// recording.
-    pub fn step(&mut self) -> bool {
+    pub fn step(&mut self) -> Result<bool, crate::Error> {
         let mut pb = self.playback.lock().unwrap();
         if pb.at_end() {
-            return false;
+            return Ok(false);
         }
-        pb.step();
+        pb.step()?;
         match pb.capture() {
             Ok(snap) => {
                 if self.store.snapshot_needed(snap.tick()) {
@@ -633,7 +684,7 @@ impl Replay {
             }
             Err(e) => log::warn!("replay: frame capture failed: {e:?}"),
         }
-        true
+        Ok(true)
     }
 
     /// Input pairs consumed so far — the playhead tick.
@@ -681,7 +732,7 @@ impl Replay {
         on_progress: &mut dyn FnMut(u32),
         publish: &mut dyn FnMut(&LiveFrames),
         on_resume: &mut dyn FnMut(),
-    ) -> SeekStep {
+    ) -> Result<SeekStep, crate::Error> {
         self.chase.step(
             ctrl,
             &self.playback,
@@ -750,6 +801,18 @@ pub struct StatsPass {
 }
 
 impl StatsPass {
+    /// Collect confirmed named values and events into a shared timeline. The
+    /// host can read it while the linear pass advances and after it finishes.
+    /// Attach before the first step so the timeline contains the whole pass.
+    pub fn collect_records_into(&mut self, timeline: Arc<Mutex<crate::telemetry::stream::Timeline>>) {
+        if let Some(records) = &self.playback.records {
+            *timeline.lock().unwrap() =
+                crate::telemetry::stream::Timeline::new(records.lock().unwrap().sources().clone());
+            self.playback.record_timeline = Some(timeline);
+            self.playback.drain_records();
+        }
+    }
+
     /// Run up to `budget` ticks of the pass. `true` while there is more
     /// to do; `false` once the recording is finished or the pass was
     /// cancelled.
@@ -758,7 +821,7 @@ impl StatsPass {
             if self.cancel.load(Ordering::Relaxed) {
                 return Ok(false);
             }
-            if !self.playback.step() {
+            if !self.playback.step()? {
                 return Ok(false);
             }
             let tick = self.playback.cursor();
@@ -824,6 +887,7 @@ impl StatsPass {
 /// What an engine's replay boot hands back: the pair, primed and
 /// poised at tick 0.
 pub struct BootedReplay {
+    pub records: Option<crate::telemetry::stream::Handle>,
     /// The primed pair, rendering on both sides.
     pub link: Box<dyn Link>,
     /// The store the pair's telemetry feeds, when the boot was asked to
@@ -927,10 +991,9 @@ impl ReplaySet {
 
     /// Boot the display pair. Blocks for the priming walk.
     pub fn playback(&self) -> Result<Replay, crate::Error> {
-        // The display pair is observed too: unlike the stats pass, it does
-        // not fold or drain those readings, but replay presentation can react
-        // to live state (for example, custom-screen fast-forwarding) without
-        // inferring game state from inputs or frames.
+        // The display pair retains legacy battle readings for live presentation
+        // (for example, custom-screen fast-forwarding). Named records are drained
+        // each tick; their permanent history belongs to the separate stats pass.
         let booted = match self.boot.boot(true, &self.cancel) {
             Ok(booted) => booted,
             Err(e) => {
@@ -939,7 +1002,9 @@ impl ReplaySet {
                 return Err(e);
             }
         };
-        let mut playback = Playback::new(booted.link, self.inputs.clone()).with_telemetry(booted.telemetry);
+        let mut playback = Playback::new(booted.link, self.inputs.clone())
+            .with_records(booted.records)
+            .with_telemetry(booted.telemetry);
         // The primed pre-battle state, captured before the first input:
         // the keyframe every backward seek bottoms out on, and the
         // state the stats pass lands its own pair on instead of walking
@@ -975,7 +1040,7 @@ impl ReplaySet {
             FirstCapture::Available(capture) => capture,
             _ => return Err(crate::Error::Unsupported("no primed capture to land on")),
         };
-        let mut playback = Playback::new(bare.link, self.inputs.clone());
+        let mut playback = Playback::new(bare.link, self.inputs.clone()).with_records(bare.records);
         playback.load(&capture)?;
         Ok(Replay::new(playback, self.store.clone()))
     }
@@ -997,7 +1062,7 @@ impl ReplaySet {
         if let Some(capture) = land_on {
             match self.boot.boot_unprimed(false) {
                 Ok(bare) => {
-                    let mut playback = Playback::new(bare.link, self.inputs.clone());
+                    let mut playback = Playback::new(bare.link, self.inputs.clone()).with_records(bare.records);
                     match playback.load(capture) {
                         Ok(()) => return Ok(playback),
                         Err(e) => log::warn!("linear pass: primed-state landing failed, repriming: {e:?}"),
@@ -1007,7 +1072,7 @@ impl ReplaySet {
             }
         }
         let booted = self.boot.boot(false, &self.cancel)?;
-        Ok(Playback::new(booted.link, self.inputs.clone()))
+        Ok(Playback::new(booted.link, self.inputs.clone()).with_records(booted.records))
     }
 
     /// Re-simulate the whole recording front to back and fold its
@@ -1035,7 +1100,7 @@ impl ReplaySet {
         let Some(telemetry) = booted.telemetry else {
             return Err(crate::Error::Unsupported("this game reports no telemetry"));
         };
-        let mut playback = Playback::new(booted.link, self.inputs.clone());
+        let mut playback = Playback::new(booted.link, self.inputs.clone()).with_records(booted.records);
         for player in 0..2 {
             playback.side(player).set_render(false);
         }
@@ -1045,7 +1110,7 @@ impl ReplaySet {
             if cancel.load(Ordering::Relaxed) || self.cancel.load(Ordering::Relaxed) {
                 return Err(crate::Error::Cancelled);
             }
-            if !playback.step() {
+            if !playback.step()? {
                 break;
             }
             let tick = playback.cursor();
@@ -1060,7 +1125,7 @@ impl ReplaySet {
     /// Boot the statistics pass. Blocks for the priming walk.
     pub fn stats(&self) -> Result<StatsPass, crate::Error> {
         let booted = self.boot.boot(true, &self.cancel)?;
-        let mut playback = Playback::new(booted.link, self.inputs.clone());
+        let mut playback = Playback::new(booted.link, self.inputs.clone()).with_records(booted.records);
         // Keyframe at tick 0: the primed pre-battle state every backward
         // seek bottoms out on.
         self.store.push(0, playback.capture()?);
@@ -1083,7 +1148,7 @@ impl ReplaySet {
         let bare = self.boot.boot_unprimed(true)?;
         match self.wait_first_capture() {
             FirstCapture::Available(capture) => {
-                let mut playback = Playback::new(bare.link, self.inputs.clone());
+                let mut playback = Playback::new(bare.link, self.inputs.clone()).with_records(bare.records);
                 match playback.load(&capture) {
                     // The capture is already in the store — the display
                     // boot pushed it — so no tick-0 push here.
@@ -1165,6 +1230,7 @@ impl ReplaySet {
 /// call that made it — each of its two simulations boots later, on
 /// whichever thread the host decided should pay for it.
 pub struct ReplayConfig {
+    pub record_factory: Option<Arc<dyn crate::telemetry::stream::Factory>>,
     /// Per-seat ROM images, already patched.
     pub roms: [Vec<u8>; 2],
     /// Per-seat save memory as it stood when the match started.
@@ -1175,11 +1241,12 @@ pub struct ReplayConfig {
     /// where the original did.
     pub rng_seed: [u8; 16],
     pub rtc: std::time::SystemTime,
-    pub match_type: (u8, u8),
+    pub match_type: u8,
     /// Which seat the recording was taken from.
     pub local_player: usize,
-    /// The peer's cartridge, for the seat this backend does not own.
-    pub peer_rom: crate::PeerRom,
+    /// Legacy cartridge lookup for the seat this backend does not own.
+    /// Package backends already own both seats and leave this unset.
+    pub peer_rom: Option<crate::PeerRom>,
     /// Collect per-round statistics as the pass runs. A host that only
     /// wants to watch leaves this off and the pass just lays keyframes.
     pub want_stats: bool,

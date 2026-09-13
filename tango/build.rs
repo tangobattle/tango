@@ -1,5 +1,59 @@
 extern crate embed_resource;
 
+/// Ship the ordinary directory packages with the app. Generated data contains
+/// only paths and bytes; package validation and dependency resolution remain in
+/// the same runtime used for installed packages.
+fn bundle_packages() -> Result<(), Box<dyn std::error::Error>> {
+    use std::fmt::Write;
+    use std::path::Path;
+
+    fn files(root: &Path, path: &Path, output: &mut String) -> Result<(), Box<dyn std::error::Error>> {
+        let mut entries = std::fs::read_dir(path)?.collect::<Result<Vec<_>, _>>()?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let kind = entry.file_type()?;
+            let path = entry.path();
+            if kind.is_symlink() {
+                return Err(format!("bundled package contains a symlink: {}", path.display()).into());
+            }
+            if kind.is_dir() {
+                files(root, &path, output)?;
+            } else if kind.is_file() {
+                let relative = path
+                    .strip_prefix(root)?
+                    .to_str()
+                    .ok_or("non-UTF-8 package path")?
+                    .replace('\\', "/");
+                writeln!(
+                    output,
+                    "({relative:?}, include_bytes!({:?})),",
+                    path.to_str().ok_or("non-UTF-8 path")?
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    let root = Path::new(&std::env::var("CARGO_MANIFEST_DIR")?)
+        .join("../packages")
+        .canonicalize()?;
+    println!("cargo:rerun-if-changed={}", root.display());
+    let mut entries = std::fs::read_dir(&root)?.collect::<Result<Vec<_>, _>>()?;
+    entries.sort_by_key(|entry| entry.file_name());
+    let mut output = String::from("&[\n");
+    for entry in entries {
+        let path = entry.path();
+        if entry.file_type()?.is_dir() && path.join("package.toml").is_file() {
+            output.push_str("&[\n");
+            files(&path, &path, &mut output)?;
+            output.push_str("],\n");
+        }
+    }
+    output.push_str("]\n");
+    std::fs::write(Path::new(&std::env::var("OUT_DIR")?).join("packages.rs"), output)?;
+    Ok(())
+}
+
 fn generate_rc(icon_path: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
     let major = std::env::var("CARGO_PKG_VERSION_MAJOR")?;
     let minor = std::env::var("CARGO_PKG_VERSION_MINOR")?;
@@ -41,6 +95,7 @@ END
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    bundle_packages()?;
     let target_os = std::env::var("CARGO_CFG_TARGET_OS")?;
 
     if target_os == "windows" {

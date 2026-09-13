@@ -1,0 +1,9 @@
+telemetry-hp = HP
+telemetry-x = 横位置
+telemetry-y = 縦位置
+telemetry-you = 自分
+telemetry-opponent = 相手
+telemetry-chips = 使用チップ { $count } 枚
+telemetry-empty = 記録されたデータがありません。
+telemetry-incomplete = 一部のデータを収集できませんでした。
+telemetry-time = { $seconds } 秒

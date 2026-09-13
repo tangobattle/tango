@@ -1,0 +1,30 @@
+{
+  "lsp": {
+    "luau-lsp": {
+      "settings": {
+        "roblox": {
+          "enabled": false
+        },
+        "fflags": {
+          "enable_by_default": true,
+          "enable_new_solver": true,
+          "sync": false
+        },
+        "luau-lsp": {
+          "platform": {
+            "type": "standard"
+          },
+          "sourcemap": {
+            "enabled": false
+          },
+          "require": {
+            "useOriginalRequireByStringSemantics": true
+          },
+          "types": {
+            "definitionFiles": ["tango-script/sdk/tango.d.luau"]
+          }
+        }
+      }
+    }
+  }
+}

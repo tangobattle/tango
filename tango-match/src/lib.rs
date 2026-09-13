@@ -27,7 +27,9 @@
 pub mod analysis;
 pub mod audio;
 pub mod battle;
+pub mod bytes;
 pub mod engine;
+pub mod gamemode;
 #[cfg(target_arch = "wasm32")]
 pub mod hosting;
 pub mod input;

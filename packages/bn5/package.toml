@@ -1,0 +1,25 @@
+api = 1
+name = "bn5"
+version = "0.1.0"
+default_gamemode = "triple"
+
+[dependencies]
+bn-common = "0.1.0"
+editor-common = "0.1.0"
+gba = "0.1.0"
+
+[[gamemode]]
+name = "single"
+path = "./gamemode/single"
+
+[[gamemode]]
+name = "triple"
+path = "./gamemode/triple"
+
+[[telemetry]]
+name = "bn5"
+path = "./telemetry"
+
+[[editor]]
+name = "bn5"
+path = "./editor"

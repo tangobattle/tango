@@ -259,18 +259,11 @@ fn VerdictLine(verdict: Verdict) -> Element {
 /// on the library screen: it's part of the negotiation, not part of the
 /// loadout.
 #[component]
-fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
+fn MatchTypes(loadout: ReadSignal<Loadout>, selected: u8) -> Element {
     let Some(game) = loadout().game else {
         return rsx! {};
     };
-    // Entry `i` is how many subtypes mode `i` has — e.g. BN6 is `[1, 1]`.
-    let options: Vec<(u8, u8)> = game
-        .family
-        .match_types
-        .iter()
-        .enumerate()
-        .flat_map(|(mode, subtypes)| (0..*subtypes).map(move |sub| (mode as u8, sub as u8)))
-        .collect();
+    let options: Vec<u8> = (0..game.family.match_types.len() as u8).collect();
     if options.len() < 2 {
         return rsx! {};
     }
@@ -279,13 +272,13 @@ fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
         div { class: "card",
             h2 { "Match type" }
             div { class: "list",
-                for (mode , subtype) in options {
+                for id in options {
                     button {
-                        key: "{mode}-{subtype}",
+                        key: "{id}",
                         class: "item",
-                        "aria-selected": "{selected == (mode, subtype)}",
-                        onclick: move |_| crate::link::set_match_type((mode, subtype)),
-                        span { class: "grow title", "{crate::lang::match_type_name(game, mode, subtype)}" }
+                        "aria-selected": "{selected == id}",
+                        onclick: move |_| crate::link::set_match_type(id),
+                        span { class: "grow title", "{crate::lang::match_type_name(game, id)}" }
                     }
                 }
             }

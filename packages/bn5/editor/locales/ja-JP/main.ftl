@@ -1,0 +1,9 @@
+unknown-save = ロックマンエグゼ5のセーブデータを認識できません。
+unsupported-rom = 対応していないロックマンエグゼ5のROMです。
+rom-save-mismatch = ROMとセーブデータのバージョンが一致していません。
+unknown-action = 不明なエディター操作です。
+rom-required = 編集するには対応するROMを読み込んでください。
+invalid-equipped-folder = 装備中のフォルダが正しくありません。
+invalid-navi = 選択されているナビが正しくありません。
+save-dark = 完全な悪
+save-light = 善
