@@ -1,5 +1,5 @@
 //! App-side constructors for [`LoadedSave`] — a loaded save bundled
-//! with the UI that renders it, produced through `Game::save_editor`'s
+//! with the UI that renders it, produced through the registry's
 //! opaque embedding API. Everything that needs app collaborators stays
 //! here: applying the selected patch, whose scanner types and storage
 //! root are the app's.
@@ -7,6 +7,12 @@
 use std::sync::Arc;
 
 pub use tango_gamesupport::{AppliedPatch, LoadedSave, PreparedSave};
+
+/// All selections come from the library registry, which pairs every enabled
+/// game with its editor through the library's `ui` feature.
+pub fn editor(game: crate::library::rom::GameRef) -> &'static dyn tango_gamesupport::SaveEditor {
+    crate::library::game::save_editor(game).expect("selected game must have a registered editor")
+}
 
 /// Build from a *raw* (unpatched) ROM, applying the selected patch
 /// first, then bake the frontend art for it. On apply failure we fall
@@ -63,7 +69,7 @@ pub fn from_patched_rom(
     save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
 ) -> LoadedSave {
-    prepare_from_patched_rom(game, rom, save_path, save, applied_patch).load()
+    editor(game).load(prepare_from_patched_rom(game, rom, save_path, save, applied_patch))
 }
 
 /// Prepare the parsed save and effective patched-ROM assets for callers that

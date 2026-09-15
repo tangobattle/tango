@@ -31,15 +31,6 @@ impl Drop for Binding {
     }
 }
 
-// The bound stream isn't Debug; a placeholder keeps the app Message
-// (which carries a freshly-spawned session's binding in a `Slot`)
-// derivable.
-impl std::fmt::Debug for Binding {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Binding { .. }")
-    }
-}
-
 /// A [`Source`] that delegates to another, swappable at runtime. The
 /// host audio backend binds to this once at startup; the app then binds
 /// each session's [`Stream`] into it on open and drops the Binding on

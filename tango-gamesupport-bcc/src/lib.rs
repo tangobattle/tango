@@ -124,8 +124,6 @@ pub static BCC_FAMILY: Family = Family {
     games: &[&BCC],
     match_types: MATCH_TYPES,
     players_colored_by_seat: true,
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bcc"),
 };
 
@@ -134,8 +132,6 @@ pub static EXEBCGP_FAMILY: Family = Family {
     games: &[&EXEBCGP],
     match_types: MATCH_TYPES,
     players_colored_by_seat: true,
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exebcgp"),
 };
 

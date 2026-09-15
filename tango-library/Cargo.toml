@@ -8,12 +8,11 @@ publish = false
 # The user's game library and its persistence, extracted from the tango
 # bin crate so a second frontend (a browser build over IndexedDB) reuses the
 # registry, the scanners, the patch catalog, and the config model
-# verbatim. No UI toolkit, and no direct filesystem or HTTP access: all
+# verbatim. Editors are optional (`ui`). No direct filesystem or HTTP access: all
 # I/O goes through the `storage::Storage` / `http::Http` traits, whose
 # std implementations are behind the default `native` feature. Builds
 # for native AND wasm32.
 [dependencies]
-futures.workspace = true
 log.workspace = true
 mailparse.workspace = true
 semver.workspace = true
@@ -43,6 +42,7 @@ tango-gamesupport-exeoss = { path = "../tango-gamesupport-exeoss", optional = tr
 # The `native` feature's std implementations only. Nothing outside
 # `storage::std_impl` / `http::reqwest_impl` / `bnlc` may reference these,
 # or the wasm32 build breaks.
+futures = { workspace = true, optional = true }
 reqwest = { workspace = true, features = ["stream"], optional = true }
 steamlocate = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["time"], optional = true }
@@ -58,9 +58,24 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-
 
 [features]
 default = ["native"]
+# Attach editors only for games selected by gamesupport-*; enabling UI alone
+# does not pull in any games. The registry owns both feature paths.
+ui = [
+    "tango-gamesupport/ui",
+    "tango-gamesupport-bcc?/ui",
+    "tango-gamesupport-bn1?/ui",
+    "tango-gamesupport-bn2?/ui",
+    "tango-gamesupport-bn3?/ui",
+    "tango-gamesupport-bn4?/ui",
+    "tango-gamesupport-bn5?/ui",
+    "tango-gamesupport-bn5ds?/ui",
+    "tango-gamesupport-bn6?/ui",
+    "tango-gamesupport-exe45?/ui",
+    "tango-gamesupport-exeoss?/ui",
+]
 # std filesystem + reqwest HTTP + Steam (BNLC) discovery. A wasm build
 # turns this off and supplies its own IndexedDB / fetch implementations.
-native = ["dep:reqwest", "dep:steamlocate", "dep:tokio", "dep:walkdir", "dep:zip", "reqwest/native-tls"]
+native = ["dep:futures", "dep:reqwest", "dep:steamlocate", "dep:tokio", "dep:walkdir", "dep:zip", "reqwest/native-tls"]
 gamesupport-bcc = ["dep:tango-gamesupport-bcc"]
 gamesupport-bn1 = ["dep:tango-gamesupport-bn1"]
 gamesupport-bn2 = ["dep:tango-gamesupport-bn2"]

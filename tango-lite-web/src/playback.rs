@@ -16,7 +16,6 @@
 use num_traits::ToPrimitive;
 use std::sync::Arc;
 
-use tango_library::game;
 use tango_library::rom::GameRef;
 
 /// Both sides' games and the exact ROMs they were played on.
@@ -27,37 +26,17 @@ use tango_library::rom::GameRef;
 /// re-simulates the same match through a different pipeline and so
 /// needs the identical pair.
 pub fn resolve(replay: &tango_replay::Replay) -> Result<([GameRef; 2], [Arc<Vec<u8>>; 2]), String> {
-    let sides = [replay.metadata.p1_side.as_ref(), replay.metadata.p2_side.as_ref()];
-    let mut games: Vec<GameRef> = Vec::new();
-    let mut roms: Vec<Arc<Vec<u8>>> = Vec::new();
-    for (index, side) in sides.iter().enumerate() {
-        let info = side
-            .and_then(|s| s.game_info.as_ref())
-            .ok_or_else(|| format!("the recording doesn't say what player {} was playing", index + 1))?;
-        // Also rejects a replay whose family has bumped its replay
-        // version since the recording — a different ROM isn't the only
-        // thing that re-simulates to a different match; changed engine
-        // support does too.
-        let game = game::find_for_replay_side(info).map_err(|e| e.to_string())?;
-        // The patch has to be the one that was played, not the newest:
-        // a patch changes the ROM, and a different ROM re-simulates to
-        // a different match.
-        let patch = info
-            .patch
-            .as_ref()
-            .map(|p| {
-                p.version
-                    .parse::<semver::Version>()
-                    .map(|version| (p.name.clone(), version))
-                    .map_err(|_| format!("{} has an unreadable version ({})", p.name, p.version))
-            })
-            .transpose()?;
-        let rom =
-            crate::library::patched_rom(game, patch.as_ref()).map_err(|e| format!("player {}: {e}", index + 1))?;
-        games.push(game);
-        roms.push(Arc::new(rom));
-    }
-    Ok(([games[0], games[1]], [roms[0].clone(), roms[1].clone()]))
+    let resolved = crate::library::with(|library| {
+        tango_library::replays::resolve_roms(
+            &library.files,
+            &library.roms,
+            &library.config.patches_path(),
+            &replay.metadata,
+        )
+    })
+    .ok_or_else(|| "library not open".to_owned())?
+    .map_err(|e| e.to_string())?;
+    Ok((resolved.games, resolved.roms.map(Arc::new)))
 }
 
 /// Boot the recording at `path` and hand it to the pump.

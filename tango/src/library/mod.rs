@@ -1,9 +1,9 @@
 //! The on-disk game library, as this frontend sees it.
 //!
-//! The library itself lives in the [`tango_library`] crate, which knows
-//! nothing about a UI toolkit and reaches storage and the network only
+//! The library itself lives in the [`tango_library`] crate. Its core
+//! operations are independent of UI and reach storage and the network only
 //! through its `Storage` / `Http` traits — so a browser build can reuse
-//! the registry, the scanners, and the patch catalog over OPFS and
+//! the registry, the scanners, and the patch catalog over IndexedDB and
 //! `fetch`. This module re-exports that surface (so `crate::library::*`
 //! keeps resolving), binds the native implementations of the two seams,
 //! and adds the parts that are genuinely host-side:

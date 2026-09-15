@@ -4,6 +4,47 @@ use crate::storage::{Listing, Storage};
 pub type GameRef = tango_gamesupport::GameRef;
 pub type Scanner = scanner::Scanner<std::collections::HashMap<GameRef, Vec<u8>>>;
 
+#[derive(Debug, thiserror::Error)]
+pub enum LoadError {
+    #[error("ROM for {family} v{variant} is not in the library")]
+    MissingRom { family: &'static str, variant: u8 },
+    #[error("apply {name} {version}: {source}")]
+    Patch {
+        name: String,
+        version: semver::Version,
+        #[source]
+        source: crate::patch::Error,
+    },
+}
+
+/// Load the scanned ROM with the exact requested patch. The scanner keeps
+/// the clean image; every session and replay consumer gets its own bytes.
+/// Release the scanner lock before reading or applying a patch.
+pub fn load(
+    storage: &dyn Storage,
+    roms: &Scanner,
+    patches_path: &std::path::Path,
+    game: GameRef,
+    patch: Option<(&str, &semver::Version)>,
+) -> Result<Vec<u8>, LoadError> {
+    let raw = roms.read().get(&game).cloned().ok_or(LoadError::MissingRom {
+        family: game.family.id,
+        variant: game.variant,
+    })?;
+    match patch {
+        None => Ok(raw),
+        Some((name, version)) => {
+            crate::patch::apply_patch(storage, &raw, game, patches_path, name, version).map_err(|source| {
+                LoadError::Patch {
+                    name: name.to_owned(),
+                    version: version.clone(),
+                    source,
+                }
+            })
+        }
+    }
+}
+
 /// Everything [`scan_roms`] reads: the configured roms dir plus any
 /// BNLC Steam per-game archives. Feeds the scanner's change-detection
 /// fingerprint so an unchanged-on-disk rescan can be skipped.

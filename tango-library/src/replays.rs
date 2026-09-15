@@ -1,8 +1,8 @@
-//! The replay index: what replays exist and what their headers say.
+//! Replay indexing and resolution of the games and ROMs a recording needs.
 //!
 //! Re-simulating a replay to produce match stats is deliberately *not*
 //! here — that needs an emulator core and the analysis engine, which is
-//! the session layer's business. This module only reads headers.
+//! the session layer's business. This module prepares its library inputs.
 
 use crate::scanner;
 use crate::storage::{Listing, Storage};
@@ -45,6 +45,82 @@ pub struct ReplayStats {
 }
 
 pub type Scanner = scanner::Scanner<Vec<ScannedReplay>>;
+
+/// The exact games and patched ROMs a replay ran, in absolute player order.
+/// Playback, analysis, and video export all use the same resolution path.
+pub struct ResolvedRoms {
+    pub games: [crate::rom::GameRef; 2],
+    pub roms: [Vec<u8>; 2],
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ResolveError {
+    #[error("replay player {player} has no game info")]
+    MissingGameInfo { player: u8 },
+    #[error("replay player {player}: {source}")]
+    Game {
+        player: u8,
+        #[source]
+        source: crate::game::ReplaySideError,
+    },
+    #[error("replay player {player}: invalid patch version: {source}")]
+    PatchVersion {
+        player: u8,
+        #[source]
+        source: semver::Error,
+    },
+    #[error("replay player {player}: {source}")]
+    Rom {
+        player: u8,
+        #[source]
+        source: crate::rom::LoadError,
+    },
+}
+
+/// Resolve both recorded seats, checking simulation versions and applying
+/// the recorded patch versions. Never substitutes a newer patch or a clean
+/// ROM when a recording's patch is unavailable.
+pub fn resolve_roms(
+    storage: &dyn Storage,
+    roms: &crate::rom::Scanner,
+    patches_path: &std::path::Path,
+    metadata: &tango_replay::Metadata,
+) -> Result<ResolvedRoms, ResolveError> {
+    let resolve = |index: u8| {
+        let player = index + 1;
+        let info = metadata
+            .side(index)
+            .and_then(|side| side.game_info.as_ref())
+            .ok_or(ResolveError::MissingGameInfo { player })?;
+        let game = crate::game::find_for_replay_side(info).map_err(|source| ResolveError::Game { player, source })?;
+        let patch = info
+            .patch
+            .as_ref()
+            .map(|patch| {
+                patch
+                    .version
+                    .parse::<semver::Version>()
+                    .map(|version| (patch.name.as_str(), version))
+                    .map_err(|source| ResolveError::PatchVersion { player, source })
+            })
+            .transpose()?;
+        let rom = crate::rom::load(
+            storage,
+            roms,
+            patches_path,
+            game,
+            patch.as_ref().map(|(name, version)| (*name, version)),
+        )
+        .map_err(|source| ResolveError::Rom { player, source })?;
+        Ok((game, rom))
+    };
+    let (p1, p1_rom) = resolve(0)?;
+    let (p2, p2_rom) = resolve(1)?;
+    Ok(ResolvedRoms {
+        games: [p1, p2],
+        roms: [p1_rom, p2_rom],
+    })
+}
 
 /// Whether the replay's local-side game resolves for re-simulation
 /// ([`crate::game::find_for_replay_side`]). A replay with no recorded
@@ -125,3 +201,6 @@ pub fn format_rel_path(replays_path: &std::path::Path, path: &std::path::Path) -
         format!("/{s}/")
     }
 }
+
+#[cfg(all(test, feature = "native", feature = "gamesupport-bn6", not(target_arch = "wasm32")))]
+mod tests;

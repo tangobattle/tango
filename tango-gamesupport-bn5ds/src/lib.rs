@@ -185,8 +185,6 @@ pub static BN5DS_FAMILY: Family = Family {
     games: &[&BN5DS],
     match_types: MATCH_TYPES,
     players_colored_by_seat: false,
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bn5ds"),
 };
 
@@ -195,8 +193,6 @@ pub static EXE5DS_FAMILY: Family = Family {
     games: &[&EXE5DS],
     match_types: MATCH_TYPES,
     players_colored_by_seat: false,
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe5ds"),
 };
 

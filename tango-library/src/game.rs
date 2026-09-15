@@ -3,12 +3,11 @@
 //! Every game Tango supports lives in its own `tango-gamesupport-<game>`
 //! crate, which groups its variants and their localized strings into one
 //! or more [`tango_gamesupport::Family`] values exported as `FAMILIES`.
-//! [`FAMILIES`] below is the one feature-gated list that enables them;
-//! from it we derive the [`GAMES`] registry ([`detect`] /
-//! [`find_by_family_and_variant`] / [`find_by_rom_info`]) *and* the
-//! game-name localizer ([`family_str`] and the display helpers). To add a
-//! game, enable its crate's feature and list it here — nothing else in
-//! the app is game-specific.
+//! The registration list below pairs these families with their optional
+//! editors. It supplies [`FAMILIES`], the [`GAMES`] registry ([`detect`] /
+//! [`find_by_family_and_variant`] / [`find_by_rom_info`]), and the
+//! game-name localizer ([`family_str`] and the display helpers). Add games
+//! here and forward their features through the frontend manifests.
 //!
 //! Game-name localization is deliberately separate from the app's general
 //! `crate::i18n` path: each family owns its own Fluent bundle keyed by
@@ -25,36 +24,62 @@ use fluent_templates::fluent_bundle::FluentResource;
 
 pub use tango_gamesupport::{Family, Game, Region};
 
-/// Every game family enabled in this build, collected from the per-game
-/// crates that are compiled in. Each crate is an optional
-/// `tango-gamesupport-<game>` dependency gated behind its own
-/// `gamesupport-<game>` feature, so this list reflects exactly the
-/// enabled features. This is the sole extension point.
+/// A game's core families and, in editor builds, its UI implementation.
+/// Keeping the editor here leaves `Family` independent of Cargo feature
+/// unification: a headless game can coexist with an editor consumer.
+struct GameSupport {
+    families: &'static [&'static Family],
+    #[cfg(feature = "ui")]
+    editor: &'static dyn tango_gamesupport::SaveEditor,
+}
+
+macro_rules! register_games {
+    ($($feature:literal => ($families:path, $editor:path)),* $(,)?) => {
+        static SUPPORT: &[GameSupport] = &[
+            $(
+                #[cfg(feature = $feature)]
+                GameSupport {
+                    families: $families,
+                    #[cfg(feature = "ui")]
+                    editor: &$editor,
+                },
+            )*
+        ];
+    };
+}
+
+// The sole registration list. Order is the series order used by pickers.
+register_games! {
+    "gamesupport-bn1" => (tango_gamesupport_bn1::FAMILIES, tango_gamesupport_bn1::ui::SAVE_EDITOR),
+    "gamesupport-exeoss" => (tango_gamesupport_exeoss::FAMILIES, tango_gamesupport_exeoss::ui::SAVE_EDITOR),
+    "gamesupport-bn2" => (tango_gamesupport_bn2::FAMILIES, tango_gamesupport_bn2::ui::SAVE_EDITOR),
+    "gamesupport-bn3" => (tango_gamesupport_bn3::FAMILIES, tango_gamesupport_bn3::ui::SAVE_EDITOR),
+    "gamesupport-bn4" => (tango_gamesupport_bn4::FAMILIES, tango_gamesupport_bn4::ui::SAVE_EDITOR),
+    "gamesupport-exe45" => (tango_gamesupport_exe45::FAMILIES, tango_gamesupport_exe45::ui::SAVE_EDITOR),
+    "gamesupport-bn5" => (tango_gamesupport_bn5::FAMILIES, tango_gamesupport_bn5::ui::SAVE_EDITOR),
+    "gamesupport-bn5ds" => (tango_gamesupport_bn5ds::FAMILIES, tango_gamesupport_bn5ds::ui::SAVE_EDITOR),
+    "gamesupport-bn6" => (tango_gamesupport_bn6::FAMILIES, tango_gamesupport_bn6::ui::SAVE_EDITOR),
+    "gamesupport-bcc" => (tango_gamesupport_bcc::FAMILIES, tango_gamesupport_bcc::ui::SAVE_EDITOR),
+}
+
+/// Every enabled family, in registration order.
 pub static FAMILIES: LazyLock<Vec<&'static Family>> = LazyLock::new(|| {
-    #[allow(unused_mut)]
-    let mut families: Vec<&'static Family> = Vec::new();
-    #[cfg(feature = "gamesupport-bn1")]
-    families.extend_from_slice(tango_gamesupport_bn1::FAMILIES);
-    #[cfg(feature = "gamesupport-exeoss")]
-    families.extend_from_slice(tango_gamesupport_exeoss::FAMILIES);
-    #[cfg(feature = "gamesupport-bn2")]
-    families.extend_from_slice(tango_gamesupport_bn2::FAMILIES);
-    #[cfg(feature = "gamesupport-bn3")]
-    families.extend_from_slice(tango_gamesupport_bn3::FAMILIES);
-    #[cfg(feature = "gamesupport-bn4")]
-    families.extend_from_slice(tango_gamesupport_bn4::FAMILIES);
-    #[cfg(feature = "gamesupport-exe45")]
-    families.extend_from_slice(tango_gamesupport_exe45::FAMILIES);
-    #[cfg(feature = "gamesupport-bn5")]
-    families.extend_from_slice(tango_gamesupport_bn5::FAMILIES);
-    #[cfg(feature = "gamesupport-bn5ds")]
-    families.extend_from_slice(tango_gamesupport_bn5ds::FAMILIES);
-    #[cfg(feature = "gamesupport-bn6")]
-    families.extend_from_slice(tango_gamesupport_bn6::FAMILIES);
-    #[cfg(feature = "gamesupport-bcc")]
-    families.extend_from_slice(tango_gamesupport_bcc::FAMILIES);
-    families
+    SUPPORT
+        .iter()
+        .flat_map(|support| support.families.iter().copied())
+        .collect()
 });
+
+/// Editor for a game from this registry. UI support is optional and enables
+/// editors for exactly the registered games, including the empty editor
+/// for games with no editable save model.
+#[cfg(feature = "ui")]
+pub fn save_editor(game: GameRef) -> Option<&'static dyn tango_gamesupport::SaveEditor> {
+    SUPPORT
+        .iter()
+        .find(|support| support.families.iter().any(|family| std::ptr::eq(*family, game.family)))
+        .map(|support| support.editor)
+}
 
 /// The flat game registry, derived from [`FAMILIES`].
 pub static GAMES: LazyLock<Vec<GameRef>> = LazyLock::new(|| tango_gamesupport::games_of(&FAMILIES));
@@ -123,13 +148,6 @@ pub fn find_for_replay_side(gi: &tango_replay::metadata::GameInfo) -> Result<Gam
         });
     }
     Ok(game)
-}
-
-/// Identity now that a [`GameRef`] *is* the full registration. Kept so
-/// the call sites that previously mapped a bare gamedb entry to its
-/// app-level game read unchanged; every registered game is supported.
-pub fn from_gamedb_entry(entry: GameRef) -> Option<GameRef> {
-    Some(entry)
 }
 
 // ---------- game-name localization (dedicated path, separate from i18n) ----------
@@ -270,4 +288,28 @@ pub fn family_static(family: &str) -> Option<&'static str> {
 /// sort the family picker so the user's own-region families lead.
 pub fn family_matches_language(lang: &unic_langid::LanguageIdentifier, family: &str) -> bool {
     games_in_family(family).any(|g| region_to_language(g.region()).matches(lang, true, true))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_game_round_trips_through_its_family_and_rom_identity() {
+        let mut families = std::collections::HashSet::new();
+        for family in FAMILIES.iter() {
+            assert!(families.insert(family.id), "duplicate family {}", family.id);
+            for &game in family.games {
+                assert!(std::ptr::eq(game.family, *family));
+                assert_eq!(find_by_family_and_variant(family.id, game.variant), Some(game));
+                assert_eq!(find_by_rom_info(game.rom_code, game.revision), Some(game));
+                #[cfg(feature = "ui")]
+                assert!(save_editor(game).is_some(), "missing editor for {}", family.id);
+            }
+        }
+        assert_eq!(
+            GAMES.len(),
+            FAMILIES.iter().map(|family| family.games.len()).sum::<usize>()
+        );
+    }
 }

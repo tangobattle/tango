@@ -563,14 +563,11 @@ fn templates_for_game(
             }
         }
     }
-    // Fall back to bundled per-game templates registered via the Game
-    // trait. Patch templates take precedence: if a patch ships a
+    // Fall back to bundled templates in the Game registration.
+    // Patch templates take precedence: if a patch ships a
     // "heat-guts" template, it overrides the built-in of the same name.
-    if let Some(game_impl) = game::from_gamedb_entry(game) {
-        // A netplay-only game ships no templates.
-        for (name, save) in game_impl.save_templates.iter().flat_map(|t| t.iter()) {
-            out.entry((*name).to_string()).or_insert_with(|| save.clone_box());
-        }
+    for (name, save) in game.save_templates.iter().flat_map(|t| t.iter()) {
+        out.entry((*name).to_string()).or_insert_with(|| save.clone_box());
     }
     if out.is_empty() {
         None

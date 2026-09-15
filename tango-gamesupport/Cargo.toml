@@ -10,8 +10,9 @@ image.workspace = true
 tango-match = { path = "../tango-match" }
 thiserror.workspace = true
 
-# The save-editor embedding API (the `ui` feature): the SaveUi trait,
-# its opaque envelopes, and the `Game::save_ui` slot. Shape-oblivious —
+# The save-editor embedding API (the `ui` feature): SaveEditor and its
+# opaque envelopes. Game and Family stay independent of this feature.
+# Shape-oblivious —
 # the actual UI lives in the private tango-gamesupport-common-ui. Off for
 # headless consumers (engine hosts), which then link no
 # UI toolkit.

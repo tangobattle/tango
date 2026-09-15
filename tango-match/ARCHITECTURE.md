@@ -1,154 +1,110 @@
-# tango-match architecture
+# Match engine
 
-tango-match is the deterministic match engine for the Mega Man Battle
-Network games: both games run locally as a pair of mgba cores linked
-through mgba's lockstep SIO driver, and that pair is the rollback unit.
-The games speak their *real* link protocol over the emulated cable — no
-handshake skips, no packet munging, no shadow co-simulation — so the
-only game-specific code is data-side (priming and RAM-poll telemetry),
-and it lives outside this crate. This document is the map; the module
-docs hold the details.
+`tango-match` coordinates deterministic simulation over emulator-independent
+interfaces. GBA games use `tango-backend-mgba`; DS games use
+`tango-backend-melonds`. A game's registration supplies a `Backend`, so
+sessions and replay consumers use the same engine API for either console.
 
-The crate is deliberately runtime-free: no networking, no tokio, no
-threads of its own, no audio output. Hosts (tango-session) drive it in
-real time — `advance` once per frame — and everything in here is a
-synchronous, reproducible function of its inputs.
+The crate owns no network connection, UI, audio device, or drive thread.
+The host advances the simulation and decides how to pace it. See
+[the workspace architecture](../ARCHITECTURE.md) for the surrounding layers.
 
-## Glossary
+## Interfaces
 
-| Term | Meaning |
+| Type | Responsibility |
 | --- | --- |
-| **pair** | The two linked cores ([`mgba_rollback::Link`]). Core `i` runs player `i`'s ROM + save **on both peers** — the pair is symmetric, so both sides simulate the identical match. (mgba-rollback links go to four players; every game tango supports is a two-player link battle, so this engine is two-player throughout.) |
-| **session** | `mgba_rollback::session::Session`: the rollback engine over the pair. Settles ticks with confirmed remote inputs, speculates ahead on predicted ones, rolls back and re-simulates on misprediction (getgud underneath). |
-| **priming** | Walking a freshly booted pair to its link battle: PC-sited traps at known menu-code anchors poke control state so the games' own boot → comm-menu → battle flow runs itself, pads idle throughout, real link exchanges included. Ends when both games' own battle-start code fires (`PrimedLatch`). |
-| **trap** | A callback on a ROM program-counter address (`Link::set_traps`). Used only for priming and for the round-lifecycle anchors — never for netcode. |
-| **joyflags** | The GBA's 10-bit pad state. The only thing that crosses the wire (and the only thing replays record) per tick. |
-| **confirmed** | Ticks `[0, confirmed)` are settled against real remote input and can never be rolled back. Everything downstream that must be final (replay records, stats, round events) keys off this boundary. |
-| **present delay** | How many ticks behind the local input frontier the displayed frame trails. Purely local (each side picks its own); trades displayed-rollback visibility against input latency. |
-| **skew / throttler** | Clock-sync: `skew()` reads how far this peer leads; the re-exported `Throttler` tells the host how much fps to shave so the leading side slows instead of the trailing side starving. |
-| **telemetry** | Per-tick RAM polls (HP, custom screen, chips) plus trap-driven lifecycle events (round start, match end), recorded eagerly for speculative ticks and truncated again on rollback — what stands is exactly what the current timeline simulated. |
+| `Backend` | Game-specific entry point: rates, layout, simulation version, solo/match/replay construction |
+| `Link` | Two linked consoles advanced, captured, and restored as one unit |
+| `Side` | Borrowed view of one console's display, audio, save data, and telemetry |
+| `Console` | One independently running console |
+| `HostInput` | Buttons and optional stylus coordinates |
+| `Snapshot` | Opaque capture understood by its originating backend |
 
-## Layer map
+Virtual dispatch happens at console/frame operations. Game-specific offsets,
+priming traps, and RAM interpretation remain in the game support and backend
+crates.
 
-```
-mgba (emulator)
-  └── mgba-rollback (the pair: lockstep SIO driver, savestates, Session)
-        + getgud (generic rollback)
-              └── tango-match (this crate: Match, playback, telemetry,
-                  analysis, replay format)
-                    ▲ implemented by: tango-gamesupport-<game> crates
-                    │   (GameSupport: primer traps + telemetry pollers)
-                    └ driven by: tango-session (drive threads, netcode,
-                        audio routing, replay/stats IO scheduling)
-```
+## Live simulation
 
-## Modules
+`engine::Match` wraps a `getgud` rollback session over a `Link`. Both peers
+simulate the same pair, in absolute player order. Each advance supplies local
+input, predicts missing remote input, and re-simulates from a snapshot when a
+prediction changes. `Link::sanitize` normalizes inputs to the console's
+actual controls before simulation and transmission.
 
-- **`lib.rs`** — the per-game contract: [`GameSupport`] (primer traps +
-  a `CorePoller` per core + patched-ROM-dependent chip/buster
-  semantics), `PrimeConfig` (match type, RNG seed derivation, BGM
-  silence), `PrimedLatch`. Re-exports the host-facing mgba-rollback
-  surface (`Link`, `LinkHandle`, `TickObserver`, `Throttler`).
+The host receives confirmed input pairs and telemetry. The boundary
+`[0, confirmed)` identifies settled ticks; replay writing and statistics
+consume only that settled history. `Throttler` turns clock skew and
+speculation balance into a pacing adjustment for the leading peer.
 
-- **`engine`** — [`Match`]: boots the pair, primes it (bounded by
-  `MAX_PRIME_TICKS`), deepens + clears the audio buffers (host-side
-  only; sample buffers aren't in savestates), then runs the rollback
-  session with the telemetry observer attached. The host calls
-  `advance(local_keys)` per frame and gets the outgoing input packet +
-  a report; `add_remote_input` feeds the peer's packets in tick order;
-  `advance` returns final input pairs beside the outgoing packet for replay and
-  telemetry consumers;
-  `checkpoint`/`digest_at` expose settled-state digests for cross-peer
-  desync detection; `with_pair`/`pair_handle`/`local_video_buffer` are
-  the video/audio readout paths.
+`solo::Solo` drives one console for single-player sessions. Training uses a
+local linked match with a host-supplied dummy controller.
 
-- **`playback`** — linear re-simulation of recorded matches:
-  [`Playback`] (boot + prime + feed the stream), whole-pair
-  [`Snapshot`]s with both framebuffers, the sparse `SnapshotStore`
-  (keyframe per `KEYFRAME_INTERVAL`), the dense `RewindRing`
-  (`REWIND_FRAMES` behind the playhead, so single-frame back-steps land
-  on exact snapshots), the `SeekController` + `run_seek_worker` chase
-  (newest target supersedes mid-flight), and `run_prefetch` (a second
-  pair racing ahead for keyframes, round marks, and optionally the
-  stats analysis — landing on the display pair's primed tick-0 capture
-  instead of walking a prime of its own, where the engine's boot can
-  hand over a bare pair). The host owns all the threads; this module
-  provides the work they do.
+## Audio and display
 
-- **`telemetry`** — the observation layer over the pair. Battle values
-  are polled from EWRAM after every simulated tick (each core answers
-  for its own player where a game only knows its local side); round
-  lifecycle is trap-driven off the games' own battle-start/match-end
-  code paths (match-end anchors on *both* cores — on a one-sided
-  decline only the decliner's game exits). Both kinds revoke cleanly
-  under rollback because re-simulation re-fires them identically.
+The simulation pushes audio into `audio::channel`. A host consumes the ring
+without locking the emulator. Snapshot bookkeeping records audio publication
+marks: rollback revokes queued speculative sound, and sound already consumed
+becomes a debt that regenerated audio pays down.
 
-- **`analysis`** — `StatsBuilder`/`MatchStats`: one aggregation path
-  for live matches (the session folds each confirmed batch as it
-  plays) and offline re-analysis (`analyze` re-simulates a replay on a
-  headless pair). The `.stats` sidecar codec lives here
-  (`FORMAT_VERSION`, currently v8; readers reject other versions and
-  recompute).
+The backend declares a `ScreenLayout` and supplies RGBA8 frames matching it.
+The host selects visible seats and screens, allowing replay PiP, training
+views, and DS layout preferences without teaching the simulation about UI
+widgets. Replay/video consumers keep the backend's rational frame and sample
+rates exact until pacing or resampling requires floating point.
 
-- **`replay`** — the on-disk format: `TOOT`, schema [`VERSION`] 0x1C —
-  boot configuration + one continuous run of confirmed `[p0, p1]` pair
-  ticks with inline round-start markers. Playback is "reboot, re-prime,
-  feed the stream verbatim". Trap-engine recordings (0x1B and older)
-  are rejected: the engine that played them is gone.
+## Replay and analysis
 
-- **`battle`** — `RoundSample`, the per-tick stats sample the
-  gamesupport pollers report and the analysis fold consumes.
+The recording format lives in **`tango-replay`**, not this crate. It stores
+boot metadata, SRAM, RNG seed, and confirmed input pairs. The library resolves
+recorded game identities, simulation versions, and exact patches before any
+re-simulation begins.
 
-- **`input`** — `Input` (what replays store) and `JOYFLAGS_MASK`.
+`replay::ReplaySet` is constructed through the backend's `ReplayBoot`:
 
-## Determinism invariants
+- `Playback` advances recorded inputs over a linked pair.
+- `Capture` includes simulation state and frames for seek previews.
+- `SnapshotStore` holds sparse keyframes; `RewindRing` retains recent frames.
+- `Replay` combines playback with seek operations.
+- `StatsPass` re-simulates for keyframes, round marks, and optional statistics.
+- `SeekController` lets a newer seek supersede work on an older target.
 
-- **Both peers build bit-identical pairs.** Same ROMs/saves/RTC/seed in
-  the same core order (core 0 always runs player 0's game), and priming
-  is a pure function of emulation state + `PrimeConfig` — so both peers
-  reach the same pre-session state, and the session starts from
-  identical snapshots on both sides.
-- **The cart RTC is pinned** to the negotiated match clock on every
-  pair (live, playback, analysis) — RTC-reading games (exe45) stay
-  deterministic, and replays record the same value as `ts`.
-- **RNG reseed is derived, not drawn**: `PrimeConfig::core_rng_seed`
-  computes each core's per-stream seeds from the shared match seed —
-  identical on both peers, distinct between cores, never zero.
-- **Priming never skips the link handshake.** The comm-menu bring-up
-  states are where the real handshake happens; jumping them lands in
-  the games' "communication failed" path. Pokes are data-side only,
-  pads stay idle, and every menu cursor is at its deterministic init
-  position.
-- **Traps re-fire identically under rollback re-simulation**, so
-  telemetry (samples *and* lifecycle events) can be recorded eagerly
-  for speculative ticks and truncated on rewind; everything at or
-  below `confirmed` is final.
-- **The replay stream is the whole match.** No per-round state in the
-  format — rounds are re-derived from telemetry (the prefetch pass) or
-  the inline markers. Any tick is reachable from the nearest snapshot
-  at or before it.
-- **Audio bring-up cannot perturb simulation**: sample buffers aren't
-  part of savestates. (It's still done identically on both cores so
-  the pairs stay configured bit-identically.)
+`tango-session::replay` exposes the work as driven workers. The desktop gives
+playback, seeking, and prefetching their own threads. The browser uses a
+combined driver that budgets the work across event-loop turns.
 
-## Error policy
+`analysis::StatsBuilder` folds confirmed samples and events for live matches
+and offline replay analysis. `telemetry` stores rollback-aware observations;
+`battle` defines their data. The stats codec is here; filesystem sidecar paths
+and persistence live in `tango-session::stats`.
 
-Construction and stepping return `anyhow::Result` — a wedged priming
-walk trips `MAX_PRIME_TICKS` instead of hanging, a failed advance
-surfaces to the host, which decides teardown policy (tango-session
-cancels the match). There are no determinism tripwire panics left in
-this crate: cross-peer divergence is *detected* (settled digests via
-`checkpoint`/`digest_at`), not asserted.
+## Determinism contracts
 
-## Test coverage map
+- Both peers use identical ROMs, saves, RNG seed, match settings, and RTC in
+  identical seat order. The RTC is the negotiated match clock, also recorded
+  for playback.
+- Priming reaches a real linked battle through the games' own protocol. Game
+  hooks automate setup; they do not replace the emulated link.
+- Backend snapshots include both consoles and the state of their connection.
+  Restoring a snapshot must reproduce the same future for the same inputs.
+- Speculative telemetry is truncated on rollback. Confirmed inputs, stats,
+  and match events refer to the settled timeline.
+- Audio output and presentation choices must not alter simulation state.
+- `Backend::sim_version` changes when the same inputs would produce a
+  different match. Lobby compatibility and replay loading compare the same
+  opaque value. Wire-format changes use the protocol version; recording-layout
+  changes use `tango_replay::VERSION`.
 
-There is no in-crate test suite (the trap-era golden suite is gone).
-Verification is recipe-based:
+Construction and advancement return `Result`. Priming is bounded and
+cancellable. The session layer turns failures into status and shutdown; a
+frontend decides how to present them.
 
-| Path | Coverage |
-| --- | --- |
-| Live engine, priming, per-game support | Manual matches through the app. Minimum smoke across families: one of bn1–3 (silent-walk priming) and one of bn4+ — through a round end and match end. |
-| Playback, seek, snapshots | Manual — scrub the replay viewer backward across a round boundary and forward past the prefetch frontier. |
-| Analysis / stats fold | Recompute a known replay's sidecar and compare against the Replays tab's chart; `examples/replay_inspect.rs` dumps a recording. |
-| Rollback prediction quality | `examples/predictor-eval.rs` measures rollback counts across a replay corpus — rerun it before changing the input predictor. |
-| Cross-peer desync | Runtime detection via settled digests (`checkpoint`/`digest_at`), surfaced by the host. |
+## Verification
+
+The crate has ROM-free tests for rollback/input ordering, audio, statistics,
+and replay infrastructure. Run `cargo test --locked -p tango-match`.
+Workspace and frontend checks are listed in [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+Automated checks do not replace real-game validation for changes to backend
+emulation or game hooks: play a match through round and match end, seek a
+recording across round boundaries, and compare replay statistics and export.

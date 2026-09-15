@@ -45,7 +45,7 @@ tango-net-protocol = { path = "../tango-net-protocol" }
 tango-lobby = { path = "../tango-lobby" }
 # Reads packages and the index; the app never writes a package.
 tango-patch = { workspace = true, features = ["package", "index"] }
-tango-library = { path = "../tango-library" }
+tango-library = { path = "../tango-library", features = ["ui"] }
 tango-match = { path = "../tango-match" }
 tango-replay = { path = "../tango-replay" }
 tango-replay-renderer = { path = "../tango-replay-renderer" }
@@ -87,16 +87,6 @@ unic-langid.workspace = true
 tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
 tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui" }
 tango-ui = { path = "../tango-ui" }
-tango-gamesupport-bcc = { path = "../tango-gamesupport-bcc", optional = true }
-tango-gamesupport-bn1 = { path = "../tango-gamesupport-bn1", optional = true }
-tango-gamesupport-bn2 = { path = "../tango-gamesupport-bn2", optional = true }
-tango-gamesupport-bn3 = { path = "../tango-gamesupport-bn3", optional = true }
-tango-gamesupport-bn4 = { path = "../tango-gamesupport-bn4", optional = true }
-tango-gamesupport-bn5 = { path = "../tango-gamesupport-bn5", optional = true }
-tango-gamesupport-bn5ds = { path = "../tango-gamesupport-bn5ds", optional = true }
-tango-gamesupport-bn6 = { path = "../tango-gamesupport-bn6", optional = true }
-tango-gamesupport-exe45 = { path = "../tango-gamesupport-exe45", optional = true }
-tango-gamesupport-exeoss = { path = "../tango-gamesupport-exeoss", optional = true }
 # Named directly only for `Container` and `Settings`, which the export
 # dialog builds; the rendering itself is tango-replay-renderer's.
 encoder-facade.workspace = true
@@ -134,16 +124,16 @@ tango-patch = { workspace = true, features = ["package", "index", "bundle"] }
 
 [features]
 default = ["gamesupport-all"]
-gamesupport-bcc = ["dep:tango-gamesupport-bcc", "tango-gamesupport-bcc/ui", "tango-library/gamesupport-bcc"]
-gamesupport-bn1 = ["dep:tango-gamesupport-bn1", "tango-gamesupport-bn1/ui", "tango-library/gamesupport-bn1"]
-gamesupport-bn2 = ["dep:tango-gamesupport-bn2", "tango-gamesupport-bn2/ui", "tango-library/gamesupport-bn2"]
-gamesupport-bn3 = ["dep:tango-gamesupport-bn3", "tango-gamesupport-bn3/ui", "tango-library/gamesupport-bn3"]
-gamesupport-bn4 = ["dep:tango-gamesupport-bn4", "tango-gamesupport-bn4/ui", "tango-library/gamesupport-bn4"]
-gamesupport-bn5 = ["dep:tango-gamesupport-bn5", "tango-gamesupport-bn5/ui", "tango-library/gamesupport-bn5"]
-gamesupport-bn5ds = ["dep:tango-gamesupport-bn5ds", "tango-gamesupport-bn5ds/ui", "tango-library/gamesupport-bn5ds"]
-gamesupport-bn6 = ["dep:tango-gamesupport-bn6", "tango-gamesupport-bn6/ui", "tango-library/gamesupport-bn6"]
-gamesupport-exe45 = ["dep:tango-gamesupport-exe45", "tango-gamesupport-exe45/ui", "tango-library/gamesupport-exe45"]
-gamesupport-exeoss = ["dep:tango-gamesupport-exeoss", "tango-gamesupport-exeoss/ui", "tango-library/gamesupport-exeoss"]
+gamesupport-bcc = ["tango-library/gamesupport-bcc"]
+gamesupport-bn1 = ["tango-library/gamesupport-bn1"]
+gamesupport-bn2 = ["tango-library/gamesupport-bn2"]
+gamesupport-bn3 = ["tango-library/gamesupport-bn3"]
+gamesupport-bn4 = ["tango-library/gamesupport-bn4"]
+gamesupport-bn5 = ["tango-library/gamesupport-bn5"]
+gamesupport-bn5ds = ["tango-library/gamesupport-bn5ds"]
+gamesupport-bn6 = ["tango-library/gamesupport-bn6"]
+gamesupport-exe45 = ["tango-library/gamesupport-exe45"]
+gamesupport-exeoss = ["tango-library/gamesupport-exeoss"]
 gamesupport-all = [
     "gamesupport-bcc",
     "gamesupport-bn1",
@@ -177,13 +167,3 @@ features = ["reveal"]
 # range here keeps both halves on 0.61.
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-core = "0.61"
-
-# These optional dependencies activate the per-game editors through features;
-# registration itself is owned by tango-library.
-[package.metadata.cargo-machete]
-ignored = [
-    "tango-gamesupport-bcc", "tango-gamesupport-bn1", "tango-gamesupport-bn2",
-    "tango-gamesupport-bn3", "tango-gamesupport-bn4", "tango-gamesupport-bn5",
-    "tango-gamesupport-bn5ds", "tango-gamesupport-bn6", "tango-gamesupport-exe45",
-    "tango-gamesupport-exeoss",
-]

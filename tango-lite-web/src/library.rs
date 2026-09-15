@@ -514,25 +514,15 @@ pub fn patches_for(game: GameRef) -> Vec<(String, semver::Version, bool)> {
 /// The ROM to actually run for `(game, patch)`: the stored dump with the
 /// patch's BPS applied, or the dump itself when unpatched.
 pub fn patched_rom(game: GameRef, patch_pick: Option<&(String, semver::Version)>) -> Result<Vec<u8>, String> {
-    let Some(library) = LIBRARY.with(|l| l.borrow().clone()) else {
-        return Err("library not open".into());
-    };
-    let raw = library
-        .roms
-        .read()
-        .get(&game)
-        .cloned()
-        .ok_or_else(|| format!("no rom for {}", game.family_and_variant().0))?;
-    let Some((name, version)) = patch_pick else {
-        return Ok(raw);
-    };
-    patch::apply_patch(
-        &library.files,
-        &raw,
-        game,
-        &library.config.patches_path(),
-        name,
-        version,
-    )
-    .map_err(|e| format!("apply {name} {version}: {e}"))
+    with(|library| {
+        rom::load(
+            &library.files,
+            &library.roms,
+            &library.config.patches_path(),
+            game,
+            patch_pick.map(|(name, version)| (name.as_str(), version)),
+        )
+    })
+    .ok_or_else(|| "library not open".to_owned())?
+    .map_err(|e| e.to_string())
 }

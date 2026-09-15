@@ -2,18 +2,14 @@
 //! Message + update + view + subscription. Owned by App as
 //! `session: session::State` and routed via `Message::Session(_)`.
 //!
-//! The sessions themselves — the drive threads, the audio stream, the
-//! netplay transport — live in the [`tango_session`] crate, which
-//! knows nothing about iced; this module re-exports its surface (so
-//! `crate::session::pvp::PvpSession` etc. keep resolving), owns the
-//! iced-shaped state layered on top (the PvP setup panes, the replay
-//! scrub bookkeeping, the post-match results cook), and dispatches
-//! each session kind to its view.
-//!
-//! The Play / Replays tabs are responsible for STARTING sessions
-//! (they construct an Session via [`build_playback`] /
-//! [`spawn_singleplayer`] and stuff it into `state.active`); this
-//! module handles everything that happens after.
+//! Portable drivers and controls live in [`tango_session`]. `launch` resolves
+//! library inputs and starts desktop workers; `runtime` owns their cleanup
+//! and save persistence. Hosts install the resulting [`Launch`] through
+//! [`State::install`], which also resets the presentation for the new session.
+
+mod launch;
+mod runtime;
+pub use launch::{build_playback, spawn_pvp, spawn_singleplayer, spawn_training, Launch};
 
 pub mod scrubber;
 pub mod view;
@@ -22,9 +18,6 @@ pub use tango_session::{pvp, replay, singleplayer, training, Session};
 
 use crate::config;
 use crate::i18n::t;
-use crate::library::game;
-use crate::library::patch;
-use crate::library::Scanners;
 use crate::platform::audio;
 use crate::platform::video::framebuffer::Effect;
 use crate::selection;
@@ -36,7 +29,6 @@ use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, stack, text};
 use iced::{mouse, Alignment, Color, Element, Fill, Length, Point, Rectangle, Renderer, Theme};
 use lucide_icons::Icon;
-use num_traits::ToPrimitive;
 use pvp::{suggest_frame_delay, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
 use unic_langid::LanguageIdentifier;
 
@@ -270,12 +262,6 @@ impl Scrub {
             }
         }
     }
-
-    /// Drop all scrub state, drag and hover alike — used when the
-    /// session closes.
-    pub fn clear(&mut self) {
-        *self = Self::default();
-    }
 }
 
 /// How the match on the results screen came to its end. The disconnect
@@ -411,93 +397,17 @@ fn capture_results(session: &dyn Session, panes: Option<&PvpPanes>) -> Option<Ma
     }
 }
 
-/// Per-session UI state. App holds `session: State`; the Play and
-/// Where a single-player session's savedata goes.
-///
-/// The session keeps its SRAM in memory — it runs on a link, like every
-/// other session kind, and a link takes its save as bytes — so nothing
-/// writes the user's `.sav` unless we do. This copies it out on a timer
-/// while the game runs and once more at teardown, skipping the write
-/// when the image hasn't changed (a game that isn't saving shouldn't
-/// keep touching the disk).
-struct SaveBackup {
-    path: std::path::PathBuf,
-    /// The file as it was when the session booted. A cart's live
-    /// savedata can be shorter than its file — BN1's SRAM is 32K inside
-    /// a 64K `.sav` — and the memory-mapped path this replaced only
-    /// ever wrote the leading bytes, so the tail is preserved rather
-    /// than truncated away.
-    original: Vec<u8>,
-    /// The file's contents as last written, so an unchanged save costs
-    /// nothing.
-    written: Vec<u8>,
-    next_check: std::time::Instant,
-}
-
-impl SaveBackup {
-    /// How often the running session's savedata is compared against
-    /// what's on disk. Long enough to be free, short enough that a
-    /// crash costs a few seconds of play rather than the session.
-    const INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
-
-    fn new(path: std::path::PathBuf, initial: Vec<u8>) -> Self {
-        Self {
-            path,
-            written: initial.clone(),
-            original: initial,
-            next_check: std::time::Instant::now() + Self::INTERVAL,
-        }
-    }
-
-    /// Write the cart's `image` back if it changed anything. Failures
-    /// are logged, not surfaced: a full disk shouldn't take the session
-    /// down mid-battle, and the next check tries again.
-    fn store(&mut self, image: Option<Vec<u8>>) {
-        let Some(image) = image else { return };
-        let mut file = self.original.clone();
-        if image.len() >= file.len() {
-            file = image;
-        } else {
-            file[..image.len()].copy_from_slice(&image);
-        }
-        if file == self.written {
-            return;
-        }
-        if let Err(e) = std::fs::write(&self.path, &file) {
-            log::error!("writing {}: {e}", self.path.display());
-            return;
-        }
-        self.written = file;
-    }
-}
-
-/// Replays tabs swap an `Session` into `active` to start a
-/// session, then [`State::update`] handles the rest until [`Close`]
-/// clears it.
+/// Session presentation and one owned desktop runtime.
 pub struct State {
-    pub active: Option<Box<dyn Session>>,
-    /// The threads driving `active` — one for the kinds with a single
-    /// loop, three for replay playback (playhead, seek, prefetch).
-    /// Joined after the session drops, so a torn-down session can't
-    /// still be stepping while the next one boots.
-    drive: Vec<std::thread::JoinHandle<()>>,
-    /// Set alongside a single-player `active`; see [`SaveBackup`].
-    singleplayer_save: Option<SaveBackup>,
+    active: Option<runtime::RunningSession>,
     /// Count of sessions ever installed — bumped by
-    /// [`session_installed`](Self::session_installed), and the frame
+    /// [`install`](Self::install), and the frame
     /// [`subscription`]'s identity for the active session. Keying the
     /// wake stream by anything address-based (the `Notify` Arc's
     /// pointer) would be ABA-prone: a new session can allocate at a
     /// dropped one's address, and iced would keep the old stream —
     /// parked on the old Notify — instead of spinning up the new one.
     session_seq: u64,
-    /// Keeps the active session's audio stream routed into the host
-    /// output for exactly the session's lifetime — dropping it returns
-    /// the [`audio::LateBinder`] to silence. Set beside `active` at
-    /// install (the spawn helpers hand it back alongside the session),
-    /// cleared first in [`close_session`](State::close_session) so the
-    /// stream stops pulling before the session's cores wind down.
-    pub audio_binding: Option<audio::Binding>,
     /// PvP-only: the two sides' loaded assets + save-view panel state
     /// for the in-match setup drawers — the presentation state the
     /// session engine deliberately doesn't carry. Set alongside
@@ -581,7 +491,7 @@ pub struct State {
     /// Wall-clock of the last cursor movement over the session
     /// view — drives the floating controls' auto-hide. Bumped by
     /// [`Message::MouseMoved`] and on session start
-    /// ([`State::session_installed`]).
+    /// ([`State::install`]).
     pub last_mouse_move: std::time::Instant,
     /// Cursor is currently over the floating controls bar — pins
     /// it visible regardless of the idle timer.
@@ -619,10 +529,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             active: None,
-            drive: Vec::new(),
-            singleplayer_save: None,
             session_seq: 0,
-            audio_binding: None,
             pvp_panes: None,
             replay_path: None,
             results: None,
@@ -655,7 +562,11 @@ impl State {
         Self::default()
     }
 
-    /// True iff a session is running. Drives main.rs's view routing.
+    pub fn active(&self) -> Option<&(dyn Session + 'static)> {
+        self.active.as_deref()
+    }
+
+    /// Whether a session is running.
     pub fn is_active(&self) -> bool {
         self.active.is_some()
     }
@@ -876,32 +787,24 @@ impl State {
         task
     }
 
-    /// Post-install hook — the App calls this right after stuffing a
-    /// new session into [`active`](Self::active). Stamps the session's
-    /// identity ([`session_seq`](Self::session_seq), which keys the
-    /// frame subscription) and resets the floating controls' idle
-    /// timer so the bar greets the user visible even if the mouse
-    /// hasn't moved in a while. Also clears the hover pin: closing a
-    /// session removes its widgets without any `on_exit` firing (the
-    /// cursor is usually ON the close button), and a latched
-    /// `controls_hovered` would pin the next session's chrome on
-    /// screen permanently.
-    pub fn session_installed(&mut self) {
-        self.session_seq += 1;
+    /// Replace the current runtime and install its presentation in one step.
+    /// Old audio and workers are released before the new stream is bound.
+    pub fn install(&mut self, mut launch: Launch, binder: &audio::LateBinder, config: &config::Config) {
+        self.close_session();
+        if let Some(pvp) = launch.runtime.downcast_ref::<pvp::PvpSession>() {
+            // The local slider remains live while an async launch is building.
+            pvp.set_frame_delay(config.frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY));
+        }
+        launch.runtime.bind_audio(binder);
+        self.active = Some(launch.runtime);
+        self.pvp_panes = launch.pvp_panes;
+        self.replay_path = launch.replay_path;
+        if config.show_opponent_setup && self.pvp_panes.as_ref().is_some_and(|p| p.opponent_loaded.is_some()) {
+            self.opponent_panel.open();
+        }
+        self.session_seq = self.session_seq.wrapping_add(1);
         self.last_mouse_move = std::time::Instant::now();
-        self.controls_hovered = false;
-        // Hold-to-fast-forward is session-local state. In particular,
-        // replay playback uses discrete speed presets instead.
-        self.speed_up_engaged = false;
-        // Same reasoning as the hover pin — a menu whose widget went
-        // away with the old session never publishes its close.
-        self.bar_menu_open = false;
-        // Belt-and-braces: a hold left over from a previous session
-        // (its release swallowed with the session view) must not
-        // count against the new one.
-        self.esc_hold = None;
-        // A touch, likewise: its release went with the old widgets.
-        self.stylus = Stylus::default();
+        self.controls_anim = anim::Transition::new(true);
     }
 
     /// Tear down the active session: PvP pre-drop close request, then
@@ -912,75 +815,30 @@ impl State {
     /// which has to wind the finished session down before installing the
     /// next one over the slot.
     pub(crate) fn close_session(&mut self) {
-        if let Some(s) = self.active.as_ref() {
-            s.request_close();
-        }
-        // Last write before the session (and its SRAM) goes away.
-        self.flush_singleplayer_save();
-        self.singleplayer_save = None;
-        // Unbind audio before dropping the session so the output stream
-        // stops pulling from cores that are about to wind down.
-        self.audio_binding = None;
         self.active = None;
-        // Dropping the session stopped its loops; wait for the threads
-        // to notice before anything else claims the audio device.
-        for drive in self.drive.drain(..) {
-            let _ = drive.join();
-        }
         self.pvp_panes = None;
         self.replay_path = None;
         self.current_frame = None;
         self.pip_frame = None;
+        self.input_held = Default::default();
+        self.speed_up_engaged = false;
         self.controls_hovered = false;
         self.bar_menu_open = false;
-        self.disconnect.close();
-        self.frame_delay_control.close();
-        self.scrub.clear();
+        self.settings = anim::Overlay::new(false);
+        self.disconnect = anim::Overlay::new(false);
+        self.frame_delay_control = anim::Overlay::new(false);
+        self.self_panel = anim::Overlay::new(false);
+        self.opponent_panel = anim::Overlay::new(false);
+        self.metric_history.clear();
+        self.scrub = Scrub::default();
         self.esc_hold = None;
+        self.prime_wait_since = None;
         self.stylus = Stylus::default();
     }
 
-    /// Start keeping `path` current with the newly installed
-    /// single-player session's savedata. Called by the host right after
-    /// it installs one; other session kinds own their own persistence
-    /// (PvP writes replays, replay playback writes nothing).
-    pub fn attach_save_backup(&mut self, path: std::path::PathBuf, initial: Vec<u8>) {
-        self.singleplayer_save = Some(SaveBackup::new(path, initial));
-    }
-
-    /// Take ownership of the threads driving the session just installed.
-    pub fn attach_drive_threads(&mut self, drive: impl IntoIterator<Item = std::thread::JoinHandle<()>>) {
-        self.drive = drive.into_iter().collect();
-    }
-
-    /// Copy the running single-player session's savedata to disk if the
-    /// backup interval has elapsed. Called once per displayed frame.
     fn autosave_singleplayer(&mut self) {
-        let Some(backup) = self.singleplayer_save.as_mut() else {
-            return;
-        };
-        if std::time::Instant::now() < backup.next_check {
-            return;
-        }
-        backup.next_check = std::time::Instant::now() + SaveBackup::INTERVAL;
-        let image = self
-            .active
-            .as_deref()
-            .and_then(|s| s.downcast_ref::<singleplayer::SinglePlayerSession>())
-            .and_then(|s| s.export_save());
-        backup.store(image);
-    }
-
-    /// Write the single-player savedata out now, whatever the timer
-    /// says — the session is about to go.
-    fn flush_singleplayer_save(&mut self) {
-        let image = self
-            .active
-            .as_deref()
-            .and_then(|s| s.downcast_ref::<singleplayer::SinglePlayerSession>())
-            .and_then(|s| s.export_save());
-        if let Some(backup) = self.singleplayer_save.as_mut() {
-            backup.store(image);
+        if let Some(active) = self.active.as_mut() {
+            active.autosave();
         }
     }
 
@@ -1334,533 +1192,6 @@ const ESC_QUIT_HOLD: std::time::Duration = std::time::Duration::from_secs(3);
 /// thumbnail; it only runs when the hovered keyframe changes.
 fn thumbnail_handle(width: u32, height: u32, pixels: Vec<u8>) -> iced::widget::image::Handle {
     iced::widget::image::Handle::from_rgba(width, height, pixels)
-}
-
-/// Route a freshly-built session's audio stream into the host output,
-/// returning the RAII binding the caller stores beside the session
-/// ([`State::audio_binding`]). A failed bind is logged and downgraded
-/// to silence rather than aborting the session — no session kind
-/// depends on the audio device.
-fn bind_session_audio(audio_binder: &audio::LateBinder, stream: audio::Stream) -> Option<audio::Binding> {
-    match audio_binder.bind(Some(Box::new(stream))) {
-        Ok(b) => Some(b),
-        Err(e) => {
-            log::warn!("session audio bind failed: {e:?}");
-            None
-        }
-    }
-}
-
-/// Decode a `.tangoreplay`, resolve both sides' ROM (+ optional
-/// patch) from the scanners, and spin up a playback session with its
-/// audio routed into the shared output. Ready to drop straight into
-/// the app's `session` slot (the binding goes in
-/// [`State::audio_binding`]).
-pub fn build_playback(
-    scanners: &Scanners,
-    config: &config::Config,
-    audio_binder: &audio::LateBinder,
-    path: &std::path::Path,
-    // Have the prefetch pass double as the match-stats analysis — see
-    // [`replay::PrefetchStatsJob`] and `App::replay_stats_takeover`.
-    stats_job: Option<replay::PrefetchStatsJob>,
-    // The recording's round boundaries when its analysis is already
-    // cached, so the scrub bar draws them from the first frame.
-    round_boundaries: Vec<u32>,
-) -> anyhow::Result<(
-    replay::ReplaySession,
-    Option<audio::Binding>,
-    Vec<std::thread::JoinHandle<()>>,
-)> {
-    let f = std::fs::File::open(path)?;
-    let replay = std::sync::Arc::new(tango_replay::Replay::decode(f)?);
-    let patches_path = config.patches_path();
-    let resolve_rom = |side: Option<&tango_replay::metadata::Side>| -> anyhow::Result<(
-        &'static game::Game,
-        std::sync::Arc<Vec<u8>>,
-    )> {
-        let gi = side
-            .and_then(|s| s.game_info.as_ref())
-            .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
-        // Also rejects a replay whose family has bumped its replay
-        // version since the recording — re-simulating it on changed
-        // engine support would play back a different match.
-        let entry = crate::library::game::find_for_replay_side(gi)?;
-        let g = game::from_gamedb_entry(entry).ok_or_else(|| {
-            anyhow::anyhow!("no impl for {}/{}", gi.rom_family, gi.rom_variant)
-        })?;
-        let rom = scanners
-            .roms
-            .read()
-            .get(&entry)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
-        let rom = if let Some(patch_info) = gi.patch.as_ref() {
-            let v = semver::Version::parse(&patch_info.version)?;
-            patch::apply_patch(crate::library::storage(), &rom, entry, &patches_path, &patch_info.name, &v)?
-        } else {
-            rom
-        };
-        Ok((g, std::sync::Arc::new(rom)))
-    };
-
-    let (p1_game, p1_rom) = resolve_rom(replay.metadata.side(0))?;
-    let (p2_game, p2_rom) = resolve_rom(replay.metadata.side(1))?;
-    let (session, workers, audio) = replay::ReplaySession::new(
-        [p1_game, p2_game],
-        [p1_rom, p2_rom],
-        replay,
-        // Both seats always share one engine, so either seat's rate is
-        // the session's.
-        p1_game.pvp.tps().to_f32().unwrap(),
-        audio_binder.sample_rate(),
-        config.opponent_view != config::OpponentView::Off,
-        stats_job,
-        round_boundaries,
-    )?;
-    session.set_custom_screen_speedup(config.replay_custom_screen_speedup);
-    // Three loops, three threads — ours to spawn, and ours to pace: the
-    // playhead runs at the transport's speed, while the seek chase and
-    // the prefetch pass run flat out.
-    let (drive, seek, prefetch) = workers.split();
-    let mut threads = Vec::with_capacity(3);
-    threads.push(
-        std::thread::Builder::new()
-            .name("tango-sio-replay-drive".to_owned())
-            .spawn(move || {
-                let mut pacer = Pacer::new();
-                let mut drive = drive;
-                loop {
-                    if drive.paused() {
-                        // Park on the gate rather than spinning through
-                        // ticks that do nothing; the cadence restarts on
-                        // the wake so paused time accrues no debt.
-                        drive.wait_while_paused();
-                        pacer.resync();
-                        continue;
-                    }
-                    use tango_session::Drive as _;
-                    if !drive.tick() {
-                        break;
-                    }
-                    pacer.wait(drive.fps_target());
-                }
-                use tango_session::Drive as _;
-                drive.finish();
-            })?,
-    );
-    threads.push(
-        std::thread::Builder::new()
-            .name("tango-sio-replay-seek".to_owned())
-            .spawn(move || {
-                // Park until the transport asks for a seek, then walk the
-                // whole chase in one go — a thread has nothing better to
-                // do, and the pair is better held once than per tick.
-                while seek.wait_for_request() {
-                    while seek.step(u32::MAX) {}
-                }
-            })?,
-    );
-    threads.push(
-        std::thread::Builder::new()
-            .name("tango-sio-replay-prefetch".to_owned())
-            .spawn(move || run_prefetch_pass(prefetch))?,
-    );
-    Ok((session, bind_session_audio(audio_binder, audio), threads))
-}
-
-/// Build the live PvP session from the netplay handoff data
-/// plus the local selection + scanners, along with the [`PvpPanes`]
-/// presentation state (both sides' Loadeds + save-view panels) the
-/// App installs beside it. Async because PvpSession::new awaits the
-/// lobby loop's receiver handoff, and because remote-side rom
-/// resolution might apply a patch.
-pub async fn spawn_pvp(
-    scanners: Scanners,
-    config: config::Config,
-    audio_binder: audio::LateBinder,
-    local_game: crate::library::rom::GameRef,
-    local_patch: Option<(String, semver::Version)>,
-    pre_match: crate::netplay::PreMatchData,
-) -> anyhow::Result<(
-    pvp::PvpSession,
-    PvpPanes,
-    Option<audio::Binding>,
-    std::thread::JoinHandle<()>,
-)> {
-    let local_game_impl =
-        game::from_gamedb_entry(local_game).ok_or_else(|| anyhow::anyhow!("no impl for local game"))?;
-    let local_rom_raw = scanners
-        .roms
-        .read()
-        .get(&local_game)
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("local rom not scanned"))?;
-    let local_rom_bytes = if let Some((name, version)) = local_patch.as_ref() {
-        patch::apply_patch(
-            crate::library::storage(),
-            &local_rom_raw,
-            local_game,
-            &config.patches_path(),
-            name,
-            version,
-        )?
-    } else {
-        local_rom_raw
-    };
-
-    // Remote-side game + rom. Falls back to the local game if
-    // the remote's GameInfo is missing, but a Compatible verdict
-    // would have caught that.
-    let remote_gi = pre_match
-        .remote_settings
-        .game_info
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("remote settings missing game info"))?;
-    let remote_game = crate::library::game::find_by_family_and_variant(
-        &remote_gi.family_and_variant.0,
-        remote_gi.family_and_variant.1,
-    )
-    .ok_or_else(|| anyhow::anyhow!("unknown remote rom"))?;
-    let remote_game_impl =
-        game::from_gamedb_entry(remote_game).ok_or_else(|| anyhow::anyhow!("no impl for remote game"))?;
-    let remote_rom_raw = scanners
-        .roms
-        .read()
-        .get(&remote_game)
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("remote rom not scanned"))?;
-    let remote_rom_bytes = if let Some(p) = remote_gi.patch.as_ref() {
-        patch::apply_patch(
-            crate::library::storage(),
-            &remote_rom_raw,
-            remote_game,
-            &config.patches_path(),
-            &p.name,
-            &p.version,
-        )?
-    } else {
-        remote_rom_raw
-    };
-
-    // Always build the remote model long enough to validate the exact committed
-    // save the match will run. A valid blinded setup is still discarded from
-    // the drawer below; an invalid one keeps only the structured violations
-    // needed by the advisory warning.
-    let remote_prepared = {
-        let remote_save = remote_game
-            .parse_save(&pre_match.remote_save_data)
-            .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
-        // `remote_rom_bytes` is already the patched image we run in the
-        // session, so resolve the matching `rom_overrides` + charset and
-        // hand both straight to preparation — no second BPS apply.
-        let applied_patch = remote_gi.patch.as_ref().and_then(|p| {
-            let patches = scanners.patches.read();
-            let version_meta = patches.version(&p.name, &p.version)?;
-            Some(crate::selection::AppliedPatch {
-                name: p.name.clone(),
-                version: p.version.clone(),
-                rom_overrides: version_meta.rom_overrides_for(remote_game),
-            })
-        });
-        crate::selection::prepare_from_patched_rom(
-            remote_game,
-            remote_rom_bytes.clone(),
-            std::path::PathBuf::new(),
-            remote_save,
-            applied_patch,
-        )
-    };
-    let opponent_build_warnings = remote_game.family.save_editor.validate_save(&remote_prepared);
-    let remote_loaded = remote_prepared.load();
-    let opponent_loaded = (!pre_match.remote_settings.blind_setup).then_some(remote_loaded);
-
-    // Build the local-side LoadedSave so the in-session "my setup"
-    // toggle can render the same save-view we use for the
-    // opponent panel.
-    let local_loaded = {
-        let local_save = local_game
-            .parse_save(&pre_match.local_save_data)
-            .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
-        // Same as the opponent side: `local_rom_bytes` is already
-        // patched, so layer the overrides on via `from_patched_rom`
-        // instead of re-applying the BPS patch.
-        let applied_patch = local_patch.as_ref().and_then(|(name, version)| {
-            let patches = scanners.patches.read();
-            let version_meta = patches.version(name, version)?;
-            Some(crate::selection::AppliedPatch {
-                name: name.clone(),
-                version: version.clone(),
-                rom_overrides: version_meta.rom_overrides_for(local_game),
-            })
-        });
-        crate::selection::from_patched_rom(
-            local_game,
-            local_rom_bytes.clone(),
-            std::path::PathBuf::new(),
-            local_save,
-            applied_patch,
-        )
-    };
-    let (session, boot, audio) = pvp::PvpSession::new(pvp::PvpSessionArgs {
-        local_game: local_game_impl,
-        local_rom: std::sync::Arc::new(local_rom_bytes),
-        remote_game: remote_game_impl,
-        remote_rom: std::sync::Arc::new(remote_rom_bytes),
-        pre_match,
-        // Presentation delay is purely local — read straight from config (clamped
-        // to the supported range), not negotiated with the peer.
-        frame_delay: config.frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
-        disable_bgm: config.disable_bgm_in_pvp,
-        replays: Some(&pvp::DirReplayStore(config.replays_path())),
-        cache_path: &config.cache_path(),
-        expected_fps: local_game_impl.pvp.tps().to_f32().unwrap(),
-        sample_rate: audio_binder.sample_rate(),
-    })
-    .await?;
-    // The drive thread boots the pair on its first tick — priming is
-    // seconds of emulation on a DS-class game, and the session is
-    // installed and on screen (saying so) for all of it, rather than
-    // the user waiting it out on the lobby.
-    let drive = spawn_drive_thread("tango-sio-drive", boot)?;
-    Ok((
-        session,
-        PvpPanes {
-            local_loaded: Some(local_loaded),
-            opponent_loaded,
-            opponent_build_warnings,
-            build_warning_dismissed: false,
-            build_warning_violations_expanded: false,
-            // Clamped on the way in: the persisted pair predates the
-            // current bounds on an older config, or the window it was
-            // sized against is gone.
-            pane_widths: [0, 1]
-                .map(|i| config.pvp_setup_pane_widths[i].clamp(view::SETUP_PANE_MIN_WIDTH, view::SETUP_PANE_MAX_WIDTH)),
-            pane_drag: None,
-        },
-        bind_session_audio(&audio_binder, audio),
-        drive,
-    ))
-}
-
-/// Wall-clock frame pacer for the drive threads below. It accumulates
-/// absolute `1/fps` deadlines (drift-free on average) and sleeps to
-/// each; a loop that falls far behind — a debugger pause, a laptop lid —
-/// resynchronizes its cadence instead of sprinting to catch up.
-///
-/// This is the host's job, not the session's: a session only knows how
-/// to advance a frame and what rate it wants. A browser host paces the
-/// same drivers off its event loop, with nothing to sleep at all.
-struct Pacer {
-    next_tick: std::time::Instant,
-}
-
-impl Pacer {
-    /// How far behind the deadline a loop must fall before the pacer
-    /// gives up catching up and resynchronizes from now.
-    const RESYNC_AFTER: std::time::Duration = std::time::Duration::from_millis(250);
-
-    fn new() -> Self {
-        Self {
-            next_tick: std::time::Instant::now(),
-        }
-    }
-
-    /// Sleep until the next `1/fps` deadline — call once per emulated
-    /// frame, after stepping it. A non-positive `fps` degrades to 60 (a
-    /// should-never-happen guard; the drivers only ever ask for a
-    /// positive rate).
-    fn wait(&mut self, fps: f32) {
-        let fps = if fps > 0.0 { fps } else { 60.0 };
-        self.next_tick += std::time::Duration::from_secs_f64(1.0 / fps as f64);
-        let now = std::time::Instant::now();
-        if self.next_tick > now {
-            std::thread::sleep(self.next_tick - now);
-        } else if now - self.next_tick > Self::RESYNC_AFTER {
-            // Fell way behind: don't sprint to catch up, just
-            // resynchronize the cadence.
-            self.next_tick = now;
-        }
-    }
-
-    /// Restart the cadence from now — after a park or a stall, so the
-    /// idle time doesn't accrue pacing debt the next `wait` burns off.
-    fn resync(&mut self) {
-        self.next_tick = std::time::Instant::now();
-    }
-}
-
-/// Race the prefetch pair through the whole replay: keyframes so
-/// seeking backwards works, round marks for recordings without them,
-/// and — when the tab asked for it — the match-stats analysis, previewed
-/// as it folds and cached when it finishes.
-fn run_prefetch_pass(worker: replay::PrefetchWorker) {
-    /// Live-preview cadence. Each report clones the folded rounds and
-    /// becomes a chart rebuild on the UI thread, so pace it to the
-    /// display rather than to the simulation.
-    const PREVIEW_EVERY: std::time::Duration = std::time::Duration::from_millis(33);
-
-    let mut worker = worker;
-    let mut last_preview = std::time::Instant::now();
-    // Progress and round marks publish once per slice, so the slice
-    // size is also the scrub-bar overlay's refresh granularity.
-    while worker.step(256) {
-        let now = std::time::Instant::now();
-        if now.duration_since(last_preview) < PREVIEW_EVERY {
-            continue;
-        }
-        last_preview = now;
-        let (Some(job), Some(preview)) = (worker.stats_job(), worker.preview()) else {
-            continue;
-        };
-        let _ = job.partial_tx.unbounded_send(preview);
-    }
-    let Some(stats) = worker.finished() else { return };
-    if let Some(job) = worker.stats_job() {
-        if let Err(e) = tango_session::stats::write_match_stats(&job.stats_file, &stats) {
-            log::warn!("prefetch stats cache write failed: {e:?}");
-        }
-        *job.done.lock().unwrap() = Some(stats);
-    }
-}
-
-/// Run a session's driver on a thread of its own, paced to the fps the
-/// session publishes — the desktop's answer to "who turns the crank".
-/// (A browser host pumps the same driver from its event loop instead.)
-///
-/// The loop ends when the session is dropped, which is what makes
-/// `tick` return false; the caller joins the handle after dropping it.
-fn spawn_drive_thread(
-    name: &str,
-    mut driver: impl tango_session::Drive + Send + 'static,
-) -> std::io::Result<std::thread::JoinHandle<()>> {
-    // The thread runs inside our runtime's context, so a driver that
-    // wants to fire an async send or a timer just calls `tokio::spawn`
-    // — no runtime handle to thread down to the call site.
-    let rt = tokio::runtime::Handle::current();
-    std::thread::Builder::new().name(name.to_owned()).spawn(move || {
-        let _guard = rt.enter();
-        let mut pacer = Pacer::new();
-        while driver.tick() {
-            pacer.wait(driver.fps_target());
-        }
-        // The session is over: wind it down rather than dropping it, or
-        // a PvP match's replay never gets its end-of-stream sentinel and
-        // reads back as truncated.
-        driver.finish();
-    })
-}
-
-/// Boot the supplied selection in single-player mode. Caller must
-/// already have a complete (game + rom + save) LoadedSave — there's no
-/// fallback for missing pieces, so the Play button is responsible for
-/// gating.
-pub fn spawn_singleplayer(
-    scanners: &Scanners,
-    config: &config::Config,
-    audio_binder: &audio::LateBinder,
-    loaded: &selection::LoadedSave,
-) -> anyhow::Result<(
-    singleplayer::SinglePlayerSession,
-    Option<audio::Binding>,
-    Vec<u8>,
-    std::thread::JoinHandle<()>,
-)> {
-    let game = game::from_gamedb_entry(loaded.game)
-        .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
-    // LoadedSave stashes the *parsed* ROM (assets), not the raw bytes —
-    // grab them back from the scanner and re-apply the patch if any so
-    // the emulator sees the same image it would in the legacy app.
-    let raw = scanners
-        .roms
-        .read()
-        .get(&loaded.game)
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
-    let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
-        patch::apply_patch(
-            crate::library::storage(),
-            &raw,
-            loaded.game,
-            &config.patches_path(),
-            &p.name,
-            &p.version,
-        )?
-    } else {
-        raw
-    };
-    // The session runs on a link, which holds its savedata in memory
-    // rather than memory-mapping the file the emulator used to write
-    // through —
-    // so the bytes go in here and come back out through
-    // [`SaveBackup`], which is what actually keeps the file current.
-    let save = std::fs::read(&loaded.save_path)?;
-    let (session, driver, audio) = singleplayer::SinglePlayerSession::new(
-        game,
-        std::sync::Arc::new(rom_bytes),
-        Some(save.clone()),
-        // Leave the cart clock on the real one, as it has always been.
-        None,
-        game.pvp.tps().to_f32().unwrap(),
-        audio_binder.sample_rate(),
-    )?;
-    let drive = spawn_drive_thread("singleplayer", driver)?;
-    Ok((session, bind_session_audio(audio_binder, audio), save, drive))
-}
-
-/// Boot the supplied selection in training mode — a local link battle
-/// (both cores run this selection) against a do-nothing dummy controller
-/// ([`training::NoopController`]) wired in as the integration seam. Same
-/// gating contract as [`spawn_singleplayer`]: the caller must already
-/// hold a complete (game + rom + save) LoadedSave.
-pub fn spawn_training(
-    scanners: &Scanners,
-    config: &config::Config,
-    audio_binder: &audio::LateBinder,
-    loaded: &selection::LoadedSave,
-) -> anyhow::Result<(
-    training::TrainingSession,
-    Option<audio::Binding>,
-    std::thread::JoinHandle<()>,
-)> {
-    let game = game::from_gamedb_entry(loaded.game)
-        .ok_or_else(|| anyhow::anyhow!("no game impl for {:?}", loaded.game.family_and_variant()))?;
-    // LoadedSave stashes the *parsed* ROM (assets), not the raw bytes —
-    // grab them back from the scanner and re-apply the patch if any so
-    // the emulator sees the same image PvP would.
-    let raw = scanners
-        .roms
-        .read()
-        .get(&loaded.game)
-        .cloned()
-        .ok_or_else(|| anyhow::anyhow!("rom not in scanner cache"))?;
-    let rom_bytes = if let Some(p) = loaded.patch.as_ref() {
-        patch::apply_patch(
-            crate::library::storage(),
-            &raw,
-            loaded.game,
-            &config.patches_path(),
-            &p.name,
-            &p.version,
-        )?
-    } else {
-        raw
-    };
-    // The battle runs off an in-memory SRAM image (same as PvP), so
-    // nothing training does is written back to the save file.
-    let (session, driver, audio) = training::TrainingSession::new(
-        game,
-        std::sync::Arc::new(rom_bytes),
-        loaded.editor.sram(loaded),
-        std::time::SystemTime::now(),
-        rand::random(),
-        game.pvp.tps().to_f32().unwrap(),
-        audio_binder.sample_rate(),
-        Box::new(training::NoopController),
-    )?;
-    session.set_opponent_visible(config.opponent_view != config::OpponentView::Off);
-    let drive = spawn_drive_thread("training", driver)?;
-    Ok((session, bind_session_audio(audio_binder, audio), drive))
 }
 
 /// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub

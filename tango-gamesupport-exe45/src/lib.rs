@@ -85,8 +85,6 @@ pub static EXE45_FAMILY: Family = Family {
     games: &[&EXE45],
     match_types: MATCH_TYPES,
     players_colored_by_seat: false,
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe45"),
 };
 

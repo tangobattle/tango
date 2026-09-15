@@ -3,6 +3,7 @@
 
 from collections import defaultdict
 from pathlib import Path
+import re
 import sys
 import tomllib
 
@@ -43,6 +44,20 @@ def check(root: Path) -> list[str]:
             if len(enabled) != len(set(enabled)) or set(enabled) != games:
                 errors.append(f"{label}: gamesupport-all must list every game feature exactly once")
             game_sets[name] = games
+            if name == "tango-library":
+                expected_ui = {"tango-gamesupport/ui", *(f"tango-{game}?/ui" for game in games)}
+                if set(features.get("ui", [])) != expected_ui:
+                    errors.append(f"{label}: ui must enable editors weakly for every optional game")
+                registered = set(re.findall(
+                    r'"(gamesupport-[a-z0-9]+)"\s*=>',
+                    (root / "tango-library/src/game.rs").read_text(),
+                ))
+                if registered != games:
+                    errors.append(f"{label}: game features must match the registry")
+            else:
+                for game in games:
+                    if features[game] != [f"tango-library/{game}"]:
+                        errors.append(f"{label}: {game} must forward only to tango-library")
 
     for dependency, manifests in sorted(external.items()):
         if len(manifests) > 1 and dependency not in shared:

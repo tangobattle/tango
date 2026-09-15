@@ -7,8 +7,8 @@
 //! of it works.
 //!
 //! The private UI layer implements [`SaveEditor`] once (a generic shell
-//! over its per-game interface), so `Game::save_editor` is a real,
-//! renderable trait object — no downcasting anywhere in the dispatch.
+//! over its per-game interface). The library registry pairs enabled games
+//! with these editors; the core Game and Family types stay UI-independent.
 
 use unic_langid::LanguageIdentifier;
 
@@ -101,15 +101,6 @@ pub struct LoadedSave {
     pub payload: Box<dyn LoadedSavePayload>,
 }
 
-impl PreparedSave {
-    /// Let the family's editor consume the prepared data and add presentation
-    /// state and baked art.
-    pub fn load(self) -> LoadedSave {
-        let editor = self.game.family.save_editor;
-        editor.load(self)
-    }
-}
-
 /// What the app must act on after an [`SaveEditor::update`] — deliberately
 /// app-semantic only (clipboard, launches, disk writes); staged edits
 /// are applied to the data internally and never surface.
@@ -134,8 +125,8 @@ pub enum SaveEditorEvent {
     Cancel,
 }
 
-/// A family's save editor, as [`crate::Family::save_editor`] carries it. It
-/// validates and loads prepared saves, then renders and updates the resulting
+/// A family's save editor, paired with its games by the library registry.
+/// Validates and loads prepared saves, then renders and updates the resulting
 /// editor data; every concrete model and presentation shape stays private.
 pub trait SaveEditor: Send + Sync {
     /// Validate an already-prepared save without constructing editor state or

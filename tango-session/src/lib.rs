@@ -64,18 +64,11 @@ pub use tango_match::keys;
 pub use tango_match::HostInput;
 
 /// Why a session failed to construct or boot, any kind. One enum for
-/// all session kinds — their failure sets overlap heavily (core
-/// boot, thread spawn, engine priming), and hosts route every variant
-/// the same way (log + stay on the menu).
+/// all session kinds: storage, engine boot, replay validation, and transport
+/// setup. Hosts choose how to present the failure.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// The game's engine does not offer this kind of session — a
-    /// netplay-only game asked to be played on its own, say.
-    #[error("this session does not support the game's engine")]
-    UnsupportedEngine,
-
-    /// File IO (the single-player save open, the replay writer) or a
-    /// failed thread spawn.
+    /// Storage I/O, including creation of a replay recording.
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
@@ -83,10 +76,6 @@ pub enum Error {
     #[error(transparent)]
     Match(#[from] tango_match::Error),
 
-    /// Whatever an engine-bound session's emulator reported. Boxed
-    /// because this crate names no emulator to type it against.
-    #[error(transparent)]
-    Engine(Box<dyn std::error::Error + Send + Sync>),
     /// The netplay handoff's transport bundle failed to assemble.
     #[error(transparent)]
     LinkBringUp(#[from] crate::net::link::BringUpError),
@@ -104,9 +93,6 @@ pub enum Error {
     /// A side's negotiated settings arrived without game info.
     #[error("{side} settings missing game info")]
     MissingGameInfo { side: &'static str },
-    /// The PvP drive thread died before reporting boot success.
-    #[error("sio drive thread died during boot")]
-    DriveThreadDied,
 }
 
 /// The local player's latest input, shared between a host's event
@@ -368,8 +354,8 @@ pub trait Session: std::any::Any {
     /// Pre-drop teardown. Default no-op — only PvP has any: it cancels
     /// its token so the receive loop announces the quit to the peer
     /// instead of leaving them hanging on a reconnect window. Replay
-    /// and single-player sessions close by being dropped (the emulation
-    /// thread joins in Drop).
+    /// and single-player sessions cancel their drivers when dropped; the
+    /// host joins any threads it started.
     fn request_close(&self) {}
 
     /// True once the session has ended on its own — currently used

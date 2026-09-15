@@ -246,8 +246,6 @@ pub static EXE5_FAMILY: Family = Family {
     games: &[&EXE5B, &EXE5C],
     match_types: MATCH_TYPES,
     players_colored_by_seat: false,
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exe5"),
 };
 
@@ -256,8 +254,6 @@ pub static BN5_FAMILY: Family = Family {
     games: &[&BN5P, &BN5C],
     match_types: MATCH_TYPES,
     players_colored_by_seat: false,
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("bn5"),
 };
 

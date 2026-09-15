@@ -11,7 +11,7 @@ use crate::editor::GameSaveEditor;
 use tango_gamesupport::LoadedSave;
 use unic_langid::LanguageIdentifier;
 
-/// What every game crate's `Game::save_editor` slot points at: its
+/// What each game registers as its editor: its
 /// [`GameSaveEditor`] wrapped in the one implementation of the public
 /// `tango_gamesupport::SaveEditor`. The public trait speaks opaque marker
 /// traits ([`SaveEditorMessage`](tango_gamesupport::SaveEditorMessage) et al.);

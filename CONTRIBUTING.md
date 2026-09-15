@@ -21,19 +21,20 @@ cargo test --locked --no-default-features \
 ```
 
 Exercise the real filesystem/HTTP patch adapter, a registered game, the
-session drivers, and save editor with separate commands:
+session drivers, and save editor together:
 
 ```sh
 cargo test --locked --lib -p tango-library \
   --features tango-library/gamesupport-bn6 \
-  -p tango-session
-cargo test --locked --lib -p tango-gamesupport-common-ui
+  -p tango-session -p tango-gamesupport-common-ui
+cargo test --locked --lib -p tango-library \
+  --features tango-library/ui,tango-library/gamesupport-bn6
 ```
 
-Keep these commands separate: Cargo unifies features across the selected
-packages. The editor enables `tango-gamesupport/ui`, which requires any
-game aggregator in the same build to enable its own `ui` feature too.
-The native library check intentionally exercises headless BN6 support.
+The first command deliberately combines headless BN6 registrations with
+an editor consumer. `Game` and `Family` have the same shape regardless of
+UI features, so Cargo feature unification must not break this combination.
+The second checks the library's optional game-to-editor registration.
 
 For wider native coverage, including every game, use:
 
@@ -54,10 +55,13 @@ The `ci` workflow builds platform checks on `main` to warm release caches.
 
 ## Ownership and boundaries
 
+[ARCHITECTURE.md](ARCHITECTURE.md) maps dependencies and the main flows.
+
 Keep game-specific offsets, save formats, and ROM assets in the game's
 `-dataview` crate. Keep emulator hooks and registrations in its aggregator
-crate, and editor presentation in its `-ui` crate. The aggregator's `ui`
-feature is the boundary that keeps headless consumers free of UI code.
+crate, and editor presentation in its `-ui` crate. The library registry
+connects families to editors through its optional `ui` feature. Its weak
+feature forwarding enables editors only for games already selected.
 
 `tango-match` defines backend-independent simulation contracts.
 `tango-session` exposes drivers advanced by the host; desktop threads
@@ -76,9 +80,20 @@ not bypass these adapters with direct filesystem or networking calls.
 Within the larger modules:
 
 - `tango/src/app/mod.rs` owns state, initialization, and subscriptions.
-  `message.rs` defines messages and destinations, `dispatch.rs` routes
-  incoming messages, `update.rs` handles tab effects, and `view.rs`
-  renders the shell.
+  `message.rs` defines messages and destinations; `dispatch.rs` routes
+  messages and tracks screen transitions. Feature modules (`play`,
+  `replay`, `patches`, `settings`, `library`, `lobby`, `sessions`) keep
+  handlers with their effects and helpers. `desktop.rs` owns OS actions
+  and presence; `view.rs` renders the shell.
+- `tango/src/session/launch.rs` constructs a `Launch` from library inputs.
+  `State::install` is the only installation path. `runtime.rs` owns audio,
+  save persistence, and worker teardown, including abandoned launches.
+- `tango-session/src/pvp/` separates the public session controls from
+  setup, frame driving, network supervision, and recording.
+- `tango-library::rom::load` prepares a clean or patched ROM;
+  `tango-library::replays::resolve_roms` applies recorded versions and
+  checks simulation compatibility for playback, analysis, and export
+  in both frontends.
 - `tango-library/src/patch/mod.rs` exposes the patch API and ROM patching.
   `catalog.rs` merges and scans metadata; `download.rs` fetches and
   validates packages. The public `patch::*` entry points remain stable.
@@ -99,9 +114,10 @@ can accidentally pull native code into a browser build.
 When adding a game, register its families in
 `tango-library/src/game.rs` and add the corresponding `gamesupport-*`
 feature to the library and both frontends. Include it in each
-`gamesupport-all` list. The desktop additionally forwards the game's
-`ui` feature. `tools/check_workspace.py` catches divergent game lists,
-repeated dependency versions, and missing workspace lint inheritance.
+`gamesupport-all` list and add `tango-gamesupport-<game>?/ui` to the library's
+`ui` feature. Frontend game features forward only to the library; the
+desktop enables `tango-library/ui`. `tools/check_workspace.py` checks
+registration, feature forwarding, shared dependencies, and workspace lints.
 
 Run `cargo fmt --all` after Rust edits. Keep comments about current
 behavior and constraints beside the code; keep setup and architecture

@@ -50,7 +50,8 @@ root build uses `default-members`, excluding the browser-only target.
 Use explicit packages when checking portable code; `--workspace` also
 selects the browser, which cannot compile for a native target.
 
-[CONTRIBUTING.md](CONTRIBUTING.md) documents checks, module ownership, and
+[ARCHITECTURE.md](ARCHITECTURE.md) traces session startup, netplay, and
+replay processing. [CONTRIBUTING.md](CONTRIBUTING.md) documents checks and
 how to add a game or dependency.
 
 ## License

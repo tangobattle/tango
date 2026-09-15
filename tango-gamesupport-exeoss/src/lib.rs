@@ -127,8 +127,6 @@ pub static EXEOSS_FAMILY: Family = Family {
     games: &[&EXEOSS],
     match_types: MATCH_TYPES,
     players_colored_by_seat: false,
-    #[cfg(feature = "ui")]
-    save_editor: &ui::SAVE_EDITOR,
     translations: family_translations!("exeoss"),
 };
 

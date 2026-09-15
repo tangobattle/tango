@@ -1,6 +1,5 @@
 //! Application messages and navigation destinations.
 
-use crate::platform::audio;
 use crate::{netplay, session, tabs};
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,29 +49,12 @@ pub enum Message {
     Welcome(tabs::welcome::Message),
     Session(session::Message),
     Netplay(netplay::Delivery),
-    /// Carries the freshly-constructed PvP session (plus its setup-pane
-    /// presentation state and audio binding) back into the App after the
-    /// async build task in `spawn_pvp` resolves. Ferried in a once-take
-    /// cell because PvpSession isn't Clone. The leading `u64` is the
-    /// netplay attempt id captured at handoff: leaving the lobby stays
-    /// possible while the build runs (it bumps the id), and a stale id
-    /// here means the session has no lobby behind it and gets wound
-    /// down instead of installed.
-    #[allow(clippy::type_complexity)]
+    /// A launch owns the session and its workers until it is installed or
+    /// discarded. The attempt id rejects results from a lobby already left.
+    /// The once-taken slot lets iced clone messages without cloning a session.
     PvpSessionBuilt(
         u64,
-        std::sync::Arc<
-            std::sync::Mutex<
-                Option<
-                    anyhow::Result<(
-                        session::pvp::PvpSession,
-                        session::PvpPanes,
-                        Option<audio::Binding>,
-                        std::thread::JoinHandle<()>,
-                    )>,
-                >,
-            >,
-        >,
+        std::sync::Arc<std::sync::Mutex<Option<anyhow::Result<session::Launch>>>>,
     ),
     /// 1 Hz tick: refresh Discord rich-presence + drain any
     /// Discord-initiated join secret into the play link-code

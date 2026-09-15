@@ -6,14 +6,14 @@
 //! - ROM identity (`family`/`variant`, `rom_code`/`revision`, `crc32`,
 //!   `region`) — formerly the `tango-gamedb` crate.
 //! - The save/ROM parsers (`parse_save_fn` / `load_rom_assets_fn`).
-//! - The PvP engine support ([`tango_backend_mgba::GameSupport`]).
+//! - The emulator backend ([`tango_match::Backend`]).
 //! - The app-facing presentation bits (`save_templates`, `logo_image`,
 //!   `background`).
 //!
 //! What the two versions of a family share sits on the [`Family`]
-//! instead — its `match_types`, `players_colored_by_seat` and
-//! `save_editor`. The family is what the app's pickers offer and what
-//! its per-family memories are keyed by, so a property that cannot
+//! instead — its `match_types` and `players_colored_by_seat`. The family is
+//! what the app's pickers offer and what its per-family memories are keyed
+//! by, so a property that cannot
 //! differ between Gregar and Falzar is stated once, where it is asked
 //! for.
 //!
@@ -85,7 +85,7 @@ pub struct BackgroundRef {
 /// A parsed save, as [`Game::parse_save`] hands it out. Implemented
 /// only by the private gamesupport layer — the full view surface behind
 /// it is private knowledge; the app clones it, serializes it, and hands
-/// it back to [`SaveEditor::load`].
+/// it back to the editor when the host enables UI support.
 pub trait SaveData: std::any::Any + Send + Sync {
     /// Serialize back to a cartridge SRAM dump.
     fn to_sram_dump(&self) -> Vec<u8>;
@@ -269,22 +269,6 @@ pub struct Family {
     /// Battle Chip Challenge instead paints P1 red and P2 blue for both
     /// players, and its panels follow that fixed order.
     pub players_colored_by_seat: bool,
-    /// The family's save editor — a real, renderable
-    /// [`save_editor::SaveEditor`] (load / render / update; every shape
-    /// behind it is opaque). Exists only when this crate's `ui` feature
-    /// is on — headless builds (the pvp probes, engine hosts) have no
-    /// field. A game crate built alongside a `ui` consumer must have its
-    /// own `ui` feature on to initialize it (tango's `gamesupport-*`
-    /// features pair the two); mixing them is a missing-field error
-    /// here, on purpose.
-    ///
-    /// Every family has one — a netplay-only family points at the shared
-    /// empty editor, which renders the shell with no section tabs — so
-    /// embedders never need an editor-less path. The editor reads the
-    /// save's own game info for anything version-specific, so one per
-    /// family is one per version too.
-    #[cfg(feature = "ui")]
-    pub save_editor: &'static dyn save_editor::SaveEditor,
     /// Per-locale Fluent fragments for this family, one `(lang, source)`
     /// entry per locale. Keys are *bare* (`name`, `short`,
     /// `variant-<n>`, `variant-<n>-short`, `match-type-<m>-<s>`,

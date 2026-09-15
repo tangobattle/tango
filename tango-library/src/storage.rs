@@ -1,24 +1,13 @@
 //! The filesystem seam.
 //!
-//! Every path the library reads or writes goes through [`Storage`] so a
-//! frontend can supply the backing store: `std::fs` natively,
-//! [OPFS](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system)
-//! in a browser build.
+//! Every library path is accessed through [`Storage`]. Native adapters use
+//! the filesystem; the browser uses a synchronous memory image that mirrors
+//! writes to IndexedDB. This keeps ROM/save parsing and patch application
+//! synchronous on both hosts.
 //!
-//! # Why the file operations are synchronous and only `list` is not
-//!
-//! OPFS exposes `createSyncAccessHandle()`, which gives genuinely
-//! synchronous reads and writes — but *only inside a dedicated Worker*.
-//! That is where a browser build has to put the emulator anyway (the
-//! session drive loops are threads), so the library running beside it
-//! can be synchronous too. Keeping it that way matters: it is what lets
-//! `patch::apply_patch` and the save/ROM loads stay sync, instead of
-//! turning every session-construction path async to no benefit.
-//!
-//! Directory *enumeration* has no synchronous form — `FileSystemDirectoryHandle`
-//! is async-iterated whatever thread you are on — so [`Storage::list`]
-//! alone returns a future. That is the one thing the scanners already do
-//! off the UI thread, so it costs nothing.
+//! Directory enumeration returns a future because a backing store may need
+//! asynchronous I/O. Scanners receive its completed [`Listing`] and perform
+//! parsing separately, without requiring an async API for every read.
 
 use crate::marker::{BoxFuture, WasmNotSend, WasmNotSync};
 use std::path::{Path, PathBuf};
@@ -69,15 +58,12 @@ pub struct Entry {
     pub path: PathBuf,
     pub len: u64,
     /// Modification time in milliseconds since the Unix epoch, when the
-    /// backend tracks one. A plain integer rather than `SystemTime`
-    /// because that is the only form OPFS offers (`File.lastModified`),
-    /// and because `SystemTime` arithmetic is a trap on wasm32.
+    /// backend tracks one. A plain integer also works with browser timestamps.
     pub modified: Option<u64>,
 }
 
 /// A store of files addressed by path. Paths are ordinary `Path`s — on a
-/// browser backend they are just `/`-separated keys into the OPFS
-/// directory tree, which is why nothing here uses `OsStr`-only APIs.
+/// browser backend they are `/`-separated keys into its file store.
 ///
 /// Implementations report failures as `std::io::Error`; a missing file
 /// must be `ErrorKind::NotFound`, since callers branch on it.
@@ -87,8 +73,6 @@ pub trait Storage: WasmNotSend + WasmNotSync + 'static {
     /// Open a file for random access. Scans that only need a header —
     /// the replay index reads one out of files that run to megabytes —
     /// go through this rather than pulling whole files into memory.
-    /// OPFS supports it: `FileSystemSyncAccessHandle::read` takes an
-    /// offset.
     fn open(&self, path: &Path) -> std::io::Result<Box<dyn ReadSeek>>;
     /// Create or replace a file, creating parent directories as needed.
     fn write(&self, path: &Path, data: &[u8]) -> std::io::Result<()>;
@@ -103,13 +87,8 @@ pub trait Storage: WasmNotSend + WasmNotSync + 'static {
     /// than failing — the content directories are all created lazily,
     /// and a per-root error is not worth failing a whole rescan over.
     ///
-    /// The only operation here that is async, and the reason is
-    /// external: `FileSystemDirectoryHandle` iterates asynchronously
-    /// whatever thread you are on, so a browser backend has no
-    /// synchronous form to offer. Everything downstream — the scans
-    /// themselves — works from the returned snapshot and stays
-    /// synchronous, which is what keeps a rescan a plain blocking call
-    /// rather than an async pipeline.
+    /// Backends may enumerate asynchronously. Scans parse the returned
+    /// snapshot synchronously; native hosts run that work off the UI thread.
     fn list<'a>(&'a self, roots: &'a [PathBuf]) -> ListFuture<'a>;
 }
 
@@ -125,8 +104,7 @@ pub fn read_opt(storage: &dyn Storage, path: &Path) -> std::io::Result<Option<Ve
 
 /// Write through a sibling temporary and rename into place, so an
 /// interrupted write can't leave a truncated file where a valid one was.
-/// `rename` is required to be replacing, which both `std::fs` and OPFS's
-/// move-with-overwrite give us.
+/// The backend's `rename` must replace an existing destination.
 pub fn write_atomic(storage: &dyn Storage, path: &Path, data: &[u8]) -> std::io::Result<()> {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return Err(std::io::Error::other("no file name"));

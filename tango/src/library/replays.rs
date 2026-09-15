@@ -39,31 +39,8 @@ pub fn compute_and_cache_match_stats(
     let storage = crate::library::storage();
     let replay = tango_replay::Replay::decode(storage.open(&path)?)?;
 
-    let resolve = |side: Option<&tango_replay::metadata::Side>| -> anyhow::Result<(GameRef, Vec<u8>)> {
-        let gi = side
-            .and_then(|s| s.game_info.as_ref())
-            .ok_or_else(|| anyhow::anyhow!("replay side has no game info"))?;
-        // The stats re-simulation is as version-sensitive as playback,
-        // so this resolve also enforces the family's replay version.
-        let entry = crate::library::game::find_for_replay_side(gi)?;
-        let rom = scanners
-            .roms
-            .read()
-            .get(&entry)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("rom for {}/{} not scanned", gi.rom_family, gi.rom_variant))?;
-        let rom = if let Some(patch_info) = gi.patch.as_ref() {
-            let v = semver::Version::parse(&patch_info.version)?;
-            crate::library::patch::apply_patch(storage, &rom, entry, &patches_path, &patch_info.name, &v)?
-        } else {
-            rom
-        };
-        Ok((entry, rom))
-    };
-    let (p1_game, p1_rom) = resolve(replay.metadata.side(0))?;
-    let (p2_game, p2_rom) = resolve(replay.metadata.side(1))?;
-
-    let stats = analyze_replay(&replay, [p1_game, p2_game], [p1_rom, p2_rom], on_progress, cancel)?;
+    let resolved = resolve_roms(storage, &scanners.roms, &patches_path, &replay.metadata)?;
+    let stats = analyze_replay(&replay, resolved.games, resolved.roms, on_progress, cancel)?;
     write_match_stats(&stats_path(&cache_path, &replays_path, &path), &stats)?;
     Ok(stats)
 }

@@ -10,7 +10,8 @@
 //!   extra source of ROMs — native only, and absent from a wasm build.
 //! * [`config`]: the persisted settings model.
 //!
-//! Nothing here knows about a UI toolkit, and nothing here touches the
+//! The optional `ui` feature attaches save editors to registered games.
+//! Core library operations use no UI toolkit and never access the
 //! filesystem or the network directly: [`storage::Storage`] and
 //! [`http::Http`] are the two seams, and a frontend supplies both. The
 //! `native` feature (on by default) provides `std::fs` and reqwest

@@ -188,7 +188,7 @@ pub trait GameSaveEditor: Send + Sync {
 /// path as every other one instead of needing an editor-less one.
 pub struct EmptyEditor;
 
-/// What a netplay-only game's `Game::save_editor` points at.
+/// Editor registered for a game with no editable save model.
 pub static EMPTY_SAVE_EDITOR: SaveEditorShell<EmptyEditor> = SaveEditorShell(EmptyEditor);
 
 impl GameSaveEditor for EmptyEditor {
