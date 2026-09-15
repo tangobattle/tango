@@ -34,14 +34,19 @@ struct GameSupport {
 }
 
 macro_rules! register_games {
-    ($($feature:literal => ($families:path, $editor:path)),* $(,)?) => {
+    (
+        $(
+            $feature:literal => $crate_name:ident $(:: $crate_rest:ident)*
+        ),*
+        $(,)?
+    ) => {
         static SUPPORT: &[GameSupport] = &[
             $(
                 #[cfg(feature = $feature)]
                 GameSupport {
-                    families: $families,
+                    families: $crate_name $(:: $crate_rest)* ::FAMILIES,
                     #[cfg(feature = "ui")]
-                    editor: &$editor,
+                    editor: &$crate_name $(:: $crate_rest)* ::ui::SAVE_EDITOR,
                 },
             )*
         ];
@@ -50,16 +55,16 @@ macro_rules! register_games {
 
 // The sole registration list. Order is the series order used by pickers.
 register_games! {
-    "gamesupport-bn1" => (tango_gamesupport_bn1::FAMILIES, tango_gamesupport_bn1::ui::SAVE_EDITOR),
-    "gamesupport-exeoss" => (tango_gamesupport_exeoss::FAMILIES, tango_gamesupport_exeoss::ui::SAVE_EDITOR),
-    "gamesupport-bn2" => (tango_gamesupport_bn2::FAMILIES, tango_gamesupport_bn2::ui::SAVE_EDITOR),
-    "gamesupport-bn3" => (tango_gamesupport_bn3::FAMILIES, tango_gamesupport_bn3::ui::SAVE_EDITOR),
-    "gamesupport-bn4" => (tango_gamesupport_bn4::FAMILIES, tango_gamesupport_bn4::ui::SAVE_EDITOR),
-    "gamesupport-exe45" => (tango_gamesupport_exe45::FAMILIES, tango_gamesupport_exe45::ui::SAVE_EDITOR),
-    "gamesupport-bn5" => (tango_gamesupport_bn5::FAMILIES, tango_gamesupport_bn5::ui::SAVE_EDITOR),
-    "gamesupport-bn5ds" => (tango_gamesupport_bn5ds::FAMILIES, tango_gamesupport_bn5ds::ui::SAVE_EDITOR),
-    "gamesupport-bn6" => (tango_gamesupport_bn6::FAMILIES, tango_gamesupport_bn6::ui::SAVE_EDITOR),
-    "gamesupport-bcc" => (tango_gamesupport_bcc::FAMILIES, tango_gamesupport_bcc::ui::SAVE_EDITOR),
+    "gamesupport-bn1" => tango_gamesupport_bn1,
+    "gamesupport-exeoss" => tango_gamesupport_exeoss,
+    "gamesupport-bn2" => tango_gamesupport_bn2,
+    "gamesupport-bn3" => tango_gamesupport_bn3,
+    "gamesupport-bn4" => tango_gamesupport_bn4,
+    "gamesupport-exe45" => tango_gamesupport_exe45,
+    "gamesupport-bn5" => tango_gamesupport_bn5,
+    "gamesupport-bn5ds" => tango_gamesupport_bn5ds,
+    "gamesupport-bn6" => tango_gamesupport_bn6,
+    "gamesupport-bcc" => tango_gamesupport_bcc,
 }
 
 /// Every enabled family, in registration order.
