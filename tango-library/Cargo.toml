@@ -101,3 +101,17 @@ gamesupport-all = [
 
 [lints]
 workspace = true
+
+[package.metadata.cargo-machete]
+ignored = [
+    "tango-gamesupport-bcc",
+    "tango-gamesupport-bn1",
+    "tango-gamesupport-bn2",
+    "tango-gamesupport-bn3",
+    "tango-gamesupport-bn4",
+    "tango-gamesupport-bn5",
+    "tango-gamesupport-bn5ds",
+    "tango-gamesupport-bn6",
+    "tango-gamesupport-exe45",
+    "tango-gamesupport-exeoss",
+]
