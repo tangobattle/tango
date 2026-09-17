@@ -20,12 +20,13 @@ pub struct Ui;
 pub static SAVE_EDITOR: SaveEditorShell<Ui> = SaveEditorShell(Ui);
 
 impl GameSaveEditor for Ui {
-    fn validate_save(
+    fn build_warnings(
         &self,
-        save: &tango_gamesupport_common_ui::editor::Save,
+        _save: &tango_gamesupport_common_ui::editor::Save,
         assets: &tango_gamesupport_common_ui::editor::Assets,
+        validation: &tango_gamesupport_common_ui::dataview::build::Validation,
     ) -> Vec<tango_gamesupport_common_ui::editor::OpaqueBuildWarnings> {
-        deck::warnings(save, assets)
+        deck::warnings_from_validation(assets, validation)
     }
 
     fn tabs(&self, _loaded: &OpenSave) -> Vec<Tab> {

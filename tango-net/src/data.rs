@@ -87,14 +87,6 @@ type InStream = rennet::InStream<protocol::InMatch>;
 /// horizon is protocol-visible — every implementation must agree).
 pub use tango_net_protocol::data::{MAX_QUEUE_LENGTH, RECONNECT_QUEUE_LENGTH};
 
-// The pure codec crate carries its own copy of the key mask so it
-// doesn't drag in the emulator stack; this crate sees both, so a drift
-// becomes a build failure here.
-const _: () = assert!(
-    tango_net_protocol::data::KEYS_MASK as u32 == tango_match::keys::MASK,
-    "tango-net-protocol's KEYS_MASK drifted from tango-match's"
-);
-
 /// Send-pump queue depth. Deeper than the unacked-local-input cap so that
 /// under a genuinely stalled wire the overflow bail fires before the pump's
 /// channel ever blocks the frame — backpressure semantics match the old

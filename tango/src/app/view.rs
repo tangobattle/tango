@@ -253,7 +253,7 @@ impl App {
                         self.loaded.as_ref(),
                         self.config.streamer_mode,
                         &self.config,
-                        &self.downloads,
+                        self.downloads.entries(),
                         !self.library_scanned,
                         tabs::play::LobbyBandCtx {
                             phase: &self.netplay.phase,
@@ -274,7 +274,7 @@ impl App {
                     &self.scanners,
                     &self.config,
                     &self.netplay.phase,
-                    &self.downloads,
+                    self.downloads.entries(),
                     !self.replays_scanned,
                 )
                 .map(Message::Replays),
@@ -284,7 +284,7 @@ impl App {
                     lang,
                     &self.scanners,
                     &self.config,
-                    &self.downloads,
+                    self.downloads.entries(),
                     !self.library_scanned,
                 )
                 .map(Message::Patches),

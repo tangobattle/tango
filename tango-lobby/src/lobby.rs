@@ -42,17 +42,17 @@ pub(crate) enum Command {
 /// block, a stuck consumer would keep the cancel arm from being re-polled
 /// and the task could hang past `cancel.cancel()`.
 pub(crate) async fn run_pump(
-    mut receiver: tango_session::net::Receiver,
-    sender: Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
+    mut receiver: tango_net::Receiver,
+    sender: Arc<tokio::sync::Mutex<tango_net::Sender>>,
     mut commands: futures::channel::mpsc::UnboundedReceiver<Command>,
     progress: Progress,
     cancel: CancellationToken,
-) -> tango_session::net::Receiver {
+) -> tango_net::Receiver {
     use futures::StreamExt as _;
 
     // First tick after a full period, so we don't ping before the peer
     // has finished coming up.
-    let mut ping_timer = tango_session::platform::Ticker::every(tango_session::net::PING_INTERVAL);
+    let mut ping_timer = tango_platform::Ticker::every(tango_net::PING_INTERVAL);
     loop {
         tokio::select! {
             biased;
@@ -134,7 +134,7 @@ pub(crate) async fn run_pump(
 /// that's being torn down, so a failed send is logged, not reported.
 async fn flush_on_exit(
     commands: &mut futures::channel::mpsc::UnboundedReceiver<Command>,
-    sender: &Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
+    sender: &Arc<tokio::sync::Mutex<tango_net::Sender>>,
 ) {
     while let Ok(cmd) = commands.try_recv() {
         if matches!(cmd, Command::Reveal(_)) {
@@ -154,7 +154,7 @@ async fn flush_on_exit(
 /// watching for an end-of-stream sentinel.
 async fn perform(
     cmd: Command,
-    sender: &Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
+    sender: &Arc<tokio::sync::Mutex<tango_net::Sender>>,
     progress: &Progress,
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
@@ -166,7 +166,7 @@ async fn perform(
             let sender = sender.clone();
             let progress = progress.clone();
             let cancel = cancel.clone();
-            tango_session::platform::spawn(async move {
+            tango_platform::spawn(async move {
                 let stream = async {
                     wire(
                         "send_chunk_start",
@@ -199,7 +199,7 @@ async fn perform(
 /// out of [`perform`] so [`flush_on_exit`] can put them on the wire
 /// without going near the reveal's spawn (which would only bail on the
 /// cancellation that got us there).
-async fn send_one(cmd: Command, sender: &Arc<tokio::sync::Mutex<tango_session::net::Sender>>) -> Result<(), Error> {
+async fn send_one(cmd: Command, sender: &Arc<tokio::sync::Mutex<tango_net::Sender>>) -> Result<(), Error> {
     match cmd {
         Command::Settings(s) => wire("send_settings", sender.lock().await.send_settings(*s).await),
         Command::Commit(c) => wire("send_commit", sender.lock().await.send_commit(c).await),

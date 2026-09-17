@@ -38,10 +38,9 @@ web-time.workspace = true
 zstd.workspace = true
 
 datachannel-wrapper.workspace = true
-tango-library = { path = "../tango-library", default-features = false }
 tango-net-protocol = { path = "../tango-net-protocol" }
-tango-patch = { workspace = true, features = ["package", "index"] }
-tango-session = { path = "../tango-session" }
+tango-net = { path = "../tango-net" }
+tango-platform = { path = "../tango-platform" }
 tango-signaling.workspace = true
 
 [lints]

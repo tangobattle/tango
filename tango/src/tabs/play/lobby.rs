@@ -129,7 +129,7 @@ impl<'a> Lobby<'a> {
                 (Some(l), Some(r)) => {
                     let roms = self.scanners.roms.read();
                     let patches = self.scanners.patches.read();
-                    Status::Verdict(netplay::compat::check(l, r, &roms, &patches))
+                    Status::Verdict(netplay::check_compatibility(l, r, &roms, &patches))
                 }
                 _ => Status::Handshake,
             },

@@ -1,13 +1,9 @@
 //! The shell: which screen is up, and the one place the non-reactive
 //! world is mirrored into signals.
 //!
-//! The engine, the library and the netplay state machine all live in
-//! thread-locals rather than signals — none of them is `Clone`, the
-//! engine is touched sixty times a second, and what the UI wants off
-//! them is a handful of numbers. So instead of pushing, a single
-//! heartbeat polls them ~10 times a second and writes into a signal only
-//! when the value has actually changed. Dioxus does the rest: an
-//! unchanged signal is not a re-render.
+//! The host owns library, engine and link handles. A heartbeat samples
+//! their status into reactive signals; frame-by-frame emulation does not
+//! trigger UI renders. Components obtain the same host through context.
 
 use dioxus::prelude::*;
 use num_traits::ToPrimitive;
@@ -33,6 +29,13 @@ enum Screen {
 // they are.
 #[allow(non_snake_case)]
 pub fn App() -> Element {
+    let host: crate::host::Context = use_context_provider(|| Signal::new(crate::host::Host::default()));
+    use_hook(move || std::rc::Rc::new(crate::input::install_keyboard(host().engine)));
+    let owned = host();
+    use_drop(move || {
+        crate::link::disconnect(&owned.link);
+        engine::stop(&owned.engine);
+    });
     let mut opened = use_signal(|| false);
     let mut screen = use_signal(|| Screen::Library);
     let mut loadout = use_signal(Loadout::default);
@@ -49,10 +52,10 @@ pub fn App() -> Element {
     // index is best-effort — offline, the cached copy from last time is
     // still browsable, which is exactly what it's stored for.
     use_future(move || async move {
-        crate::library::open().await;
-        loadout.write().reconcile();
+        crate::library::open(&host().library).await;
+        crate::loadout::reconcile(&mut loadout.write(), &host().library);
         opened.set(true);
-        if let Err(e) = crate::library::fetch_index().await {
+        if let Err(e) = crate::library::fetch_index(&host().library).await {
             log::warn!("patch index unavailable: {e}");
         }
     });
@@ -62,24 +65,24 @@ pub fn App() -> Element {
         loop {
             tango_session::platform::sleep(HEARTBEAT).await;
 
-            let current = crate::library::revision();
+            let current = crate::library::revision(&host().library);
             if *revision.peek() != current {
                 revision.set(current);
                 // A rescan can retire the picked save or patch, and a
                 // stale pick is a play button that fails on press.
                 let mut next = loadout.peek().clone();
-                next.reconcile();
+                crate::loadout::reconcile(&mut next, &host().library);
                 if *loadout.peek() != next {
                     loadout.set(next);
                 }
             }
 
-            let snapshot = crate::link::snapshot();
+            let snapshot = crate::link::snapshot(&host().link);
             if *link_snapshot.peek() != snapshot {
                 link_snapshot.set(snapshot);
             }
 
-            let status = engine::status();
+            let status = engine::status(&host().engine);
             if *engine_status.peek() != status {
                 engine_status.set(status);
             }
@@ -88,7 +91,7 @@ pub fn App() -> Element {
             // left, the link died — puts the user back where they
             // started it from. Collected here rather than watched for on
             // `status`, which is `None` by the time anyone looks.
-            if let Some(kind) = engine::take_ended() {
+            if let Some(kind) = engine::take_ended(&host().engine) {
                 crate::input::touch_clear();
                 crate::input::gamepads_clear();
                 engine_status.set(None);
@@ -103,7 +106,7 @@ pub fn App() -> Element {
 
     // What we're bringing is also what the lobby advertises and what the
     // handoff builds the match from, so every pick change goes over.
-    use_effect(move || crate::link::set_loadout(loadout()));
+    use_effect(move || crate::link::set_loadout(&host().link, loadout()));
 
     // A match that started elsewhere (the peer readied last) takes over
     // the screen when its first frame lands.
@@ -127,10 +130,10 @@ pub fn App() -> Element {
                         status: engine_status(),
                         onexit: move |_| {
                             let kind = engine_status.peek().as_ref().map(|status| status.kind);
-                            engine::stop();
+                            engine::stop(&host().engine);
                             // Quitting is a navigation of its own; don't
                             // let the latch fire a second one.
-                            let _ = engine::take_ended();
+                            let _ = engine::take_ended(&host().engine);
                             crate::input::touch_clear();
                             crate::input::gamepads_clear();
                             engine_status.set(None);
@@ -148,7 +151,7 @@ pub fn App() -> Element {
                     crate::ui::library::Library {
                         loadout,
                         revision: revision(),
-                        onplay: move |_| start_single_player(loadout(), screen),
+                        onplay: move |_| start_single_player(host, loadout(), screen),
                     }
                     Tabs { screen }
                 },
@@ -221,22 +224,21 @@ fn Tabs(screen: Signal<Screen>) -> Element {
 /// is async (the worklet module has to load) — and this runs from the
 /// click that is the user gesture the audio context needs, which is the
 /// whole reason the sink is built here rather than at startup.
-fn start_single_player(loadout: Loadout, mut screen: Signal<Screen>) {
+fn start_single_player(host: crate::host::Context, loadout: Loadout, mut screen: Signal<Screen>) {
     spawn(async move {
         let Some(game) = loadout.game else { return };
-        let rom = match loadout.rom() {
-            Ok(rom) => rom,
+        let resolved = match crate::loadout::resolve(&loadout, &host().library) {
+            Ok(resolved) => resolved,
             Err(e) => {
                 log::error!("{e}");
                 return;
             }
         };
-        let save = loadout.save_bytes();
-        let sink = crate::audio::sink().await;
+        let sink = host().engine.audio_sink().await;
         let session = tango_session::singleplayer::SinglePlayerSession::new(
             game,
-            std::sync::Arc::new(rom),
-            save,
+            resolved.rom,
+            Some(resolved.sram),
             // A browser has no cart clock to read, so the match clock
             // that PvP negotiates has a single-player counterpart: pin
             // it to now, once, at boot.
@@ -246,7 +248,14 @@ fn start_single_player(loadout: Loadout, mut screen: Signal<Screen>) {
         );
         match session {
             Ok((session, driver, stream)) => {
-                crate::engine::start_single_player(session, driver, stream, sink, loadout.save_path.clone());
+                crate::engine::start_single_player(
+                    &host().engine,
+                    session,
+                    driver,
+                    stream,
+                    sink,
+                    loadout.save_path.clone(),
+                );
                 screen.set(Screen::Play);
             }
             Err(e) => log::error!("failed to boot {}: {e}", crate::ui::game_label(game)),

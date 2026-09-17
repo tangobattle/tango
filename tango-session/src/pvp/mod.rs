@@ -19,13 +19,17 @@ mod setup;
 mod supervisor;
 
 pub use driver::{PvpBoot, PvpDriver};
-#[cfg(not(target_arch = "wasm32"))]
-pub use recording::DirReplayStore;
 pub use recording::{Recording, ReplayStore};
 
+// The pure codec crate carries its own copy of the key mask so it
+// doesn't drag in the emulator stack; this crate sees both, so a drift
+// becomes a build failure here.
+const _: () = assert!(
+    tango_net_protocol::data::KEYS_MASK as u32 == tango_match::keys::MASK,
+    "tango-net-protocol's KEYS_MASK drifted from tango-match's"
+);
+
 use std::collections::VecDeque;
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -190,39 +194,7 @@ pub struct PvpSession {
     started_at: web_time::Instant,
 }
 
-/// Everything the app needs to build a PvpSession: the negotiated match
-/// terms plus the live transport bundle. Drained out of the matchmaking
-/// lobby (or the direct-connect path) after both sides exchanged
-/// StartMatch.
-pub struct PreMatchData {
-    /// The transport bundle — every live handle the peer link owns for the
-    /// match's lifetime (channels, peer connection, reconnect recipe).
-    /// `Link::bring_up` assembles it.
-    pub link_parts: crate::net::link::LinkParts,
-    pub is_offerer: bool,
-    pub rng_seed: [u8; 16],
-    /// The match clock, milliseconds since the unix epoch: the offerer's
-    /// commit-time wall clock, identical on both peers. Every core (primary,
-    /// shadow, re-sim stepper) pins its cart RTC here so RTC-reading games
-    /// (exe45) stay deterministic, and the replay metadata records it as `ts`
-    /// so playback pins to the same value.
-    pub match_ts: u64,
-    pub local_save_data: Vec<u8>,
-    pub remote_save_data: Vec<u8>,
-    pub local_settings: tango_net_protocol::control::Settings,
-    pub remote_settings: tango_net_protocol::control::Settings,
-    pub link_code: String,
-    pub match_type: (u8, u8),
-}
-
-// The channel/peer-conn handles aren't `Debug`; a placeholder keeps any
-// enclosing message (the app carries this in a `Slot<PreMatchData>`)
-// derivable, same as `Channels`.
-impl std::fmt::Debug for PreMatchData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("PreMatchData { .. }")
-    }
-}
+pub use tango_net::handoff::PreMatchData;
 
 /// Everything [`PvpSession::new`] needs, as named fields. Assembled by
 /// the app's `spawn_pvp` glue.
@@ -245,12 +217,8 @@ pub struct PvpSessionArgs<'a> {
     pub disable_bgm: bool,
     /// Where the match is recorded, or `None` not to record it.
     pub replays: Option<&'a dyn ReplayStore>,
-    /// Where the match-stats sidecar goes. Native-only: the cache is a
-    /// file keyed against the store's directory, and a host whose
-    /// [`ReplayStore`] has no [`root`](ReplayStore::root) has nowhere
-    /// to put one and nothing to key it by.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub cache_path: &'a Path,
+    /// Optional host-owned destination for the finished recording's statistics.
+    pub stats_sink: Option<Arc<dyn crate::stats::StatsSink>>,
     pub expected_fps: f32,
     /// The host output rate the session's audio stream resamples to.
     pub sample_rate: u32,

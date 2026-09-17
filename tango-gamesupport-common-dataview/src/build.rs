@@ -489,3 +489,30 @@ mod tests {
         assert!(!chip_code_available(['?'], save::ChipCode::Star));
     }
 }
+
+/// Common findings plus a game's own typed findings, without display state.
+#[derive(Default)]
+pub struct Validation {
+    pub common: Vec<BuildViolation>,
+    pub game: Option<Box<dyn std::any::Any + Send + Sync>>,
+}
+impl tango_gamesupport::Validation for Validation {
+    fn is_empty(&self) -> bool {
+        self.common.is_empty() && self.game.is_none()
+    }
+}
+impl Validation {
+    pub fn game<T: 'static>(&self) -> Option<&T> {
+        self.game.as_ref()?.downcast_ref()
+    }
+}
+pub fn validate(save: &dyn save::Save, assets: &dyn rom::Assets) -> Validation {
+    Validation {
+        common: if save.uses_common_rules() {
+            violations(save, assets)
+        } else {
+            vec![]
+        },
+        game: save.game_violations(assets),
+    }
+}

@@ -1,7 +1,7 @@
 //! Emulator-session machinery, UI-toolkit-agnostic: the session kinds
 //! (single-player, live PvP, replay playback), the loops that pace
-//! them, the shared audio stream, and the netplay transport they run
-//! over. The host owns everything presentational — views, input
+//! them, and the shared audio stream. Optional live netplay uses
+//! the separate `tango-net` transport crate. The host owns everything presentational — views, input
 //! mapping, per-session UI state — and drives a session through
 //! [`Session`] plus each kind's concrete surface.
 //!
@@ -13,10 +13,10 @@
 //! where there are no threads to spawn. Nothing below the driver knows
 //! which one it is.
 //!
-//! Everything here compiles for wasm32 except the stats sidecar (which
-//! wants a filesystem) and the signaling-free direct transport (which
-//! wants a UDP socket of its own). Live netplay, reconnect included,
-//! is not among the exceptions.
+//! These drivers compile for native and wasm32. Hosts own persistence
+//! through recording and statistics sinks. Disable the default `netplay`
+//! feature to use single-player, training, and replays without transport
+//! dependencies. Direct UDP transport in `tango-net` remains native-only.
 
 // In a browser the things these `Arc`s hold — the core, the transport —
 // are genuinely not `Send`, because the browser's own handles aren't.
@@ -33,6 +33,7 @@
 /// the waiting goes through [`platform`] rather than a tokio runtime a
 /// browser host doesn't have. A browser has played a real match over
 /// it; the reconnect path is the one part still unexercised there.
+#[cfg(feature = "netplay")]
 pub mod pvp;
 /// Watching a recorded match.
 pub mod replay;
@@ -45,11 +46,10 @@ pub mod training;
 pub mod audio;
 /// The netplay transport: two byte-pipe planes over one peer
 /// connection, and the signaling rendezvous that produces it.
-pub mod net;
-pub mod platform;
-/// The match-stats sidecar a finished match leaves next to its replay,
-/// so the Replays tab never re-simulates one it has already seen.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "netplay")]
+pub use tango_net as net;
+pub use tango_platform as platform;
+/// Completion sink for host-owned statistics persistence.
 pub mod stats;
 
 /// The joypad bit vocabulary [`Session::set_input`] speaks —
@@ -78,6 +78,7 @@ pub enum Error {
 
     /// The netplay handoff's transport bundle failed to assemble.
     #[error(transparent)]
+    #[cfg(feature = "netplay")]
     LinkBringUp(#[from] crate::net::link::BringUpError),
     #[error("replay has a bad local player index")]
     BadLocalPlayerIndex,

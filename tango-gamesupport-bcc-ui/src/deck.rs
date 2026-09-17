@@ -488,24 +488,18 @@ pub fn warnings(
     save: &tango_gamesupport_common_ui::editor::Save,
     assets: &tango_gamesupport_common_ui::editor::Assets,
 ) -> Vec<OpaqueBuildWarnings> {
-    let Some(save) = save
-        .as_any()
-        .downcast_ref::<tango_gamesupport_bcc_dataview::save::Save>()
-    else {
+    let validation = tango_gamesupport_common_ui::dataview::build::validate(save, assets);
+    warnings_from_validation(assets, &validation)
+}
+
+pub fn warnings_from_validation(
+    assets: &tango_gamesupport_common_ui::editor::Assets,
+    validation: &tango_gamesupport_common_ui::dataview::build::Validation,
+) -> Vec<OpaqueBuildWarnings> {
+    let Some(violations) = validation.game::<Vec<tango_gamesupport_bcc_dataview::build::DeckViolation>>() else {
         return vec![];
     };
-    let Some(bcc_assets) = assets
-        .underlying_any()
-        .downcast_ref::<tango_gamesupport_bcc_dataview::rom::Assets>()
-    else {
-        return vec![];
-    };
-    let violations = tango_gamesupport_bcc_dataview::build::violations(save, bcc_assets);
-    if violations.is_empty() {
-        vec![]
-    } else {
-        vec![std::sync::Arc::new(DeckWarnings::new(violations, assets)) as OpaqueBuildWarnings]
-    }
+    vec![std::sync::Arc::new(DeckWarnings::new(violations.clone(), assets)) as OpaqueBuildWarnings]
 }
 
 /// One card on the board — the same shape everywhere, so a card reads

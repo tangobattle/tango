@@ -1,7 +1,7 @@
 //! UI-facing re-exports of the headless legality model, plus the one
 //! editor-only slot-reordering helper.
 
-pub use crate::dataview::build::{FolderSelections, FolderUsage, MAX_COPIES_PER_PART, MAX_PATCH_CARD56_MB};
+pub use crate::build::{FolderSelections, FolderUsage, MAX_COPIES_PER_PART, MAX_PATCH_CARD56_MB};
 
 /// New index of an element originally at `i` after an ordered move that takes
 /// the element at `from` and reinserts it at `to`.

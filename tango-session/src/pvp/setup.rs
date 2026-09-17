@@ -40,8 +40,7 @@ impl PvpSession {
             frame_delay,
             disable_bgm,
             replays,
-            #[cfg(not(target_arch = "wasm32"))]
-            cache_path,
+            stats_sink,
             expected_fps,
             sample_rate,
         } = args;
@@ -58,30 +57,32 @@ impl PvpSession {
         // .sav file.
         // A netplay-only game models no save, so there is nothing to
         // parse — the engine still gets the raw SRAM either way.
-        let remote_save = remote_game
-            .parse_save(&pre_match.remote_save_data)
-            .map_err(|e| crate::Error::ParseSave {
-                side: "remote",
-                source: e,
-            })?;
+        let remote_save =
+            remote_game
+                .parse_save(&pre_match.terms.remote_save_data)
+                .map_err(|e| crate::Error::ParseSave {
+                    side: "remote",
+                    source: e,
+                })?;
         // A netplay-only game models no save, so there is nothing to
         // parse — the engine still gets the raw SRAM either way.
-        let local_save = local_game
-            .parse_save(&pre_match.local_save_data)
-            .map_err(|e| crate::Error::ParseSave {
-                side: "local",
-                source: e,
-            })?;
+        let local_save =
+            local_game
+                .parse_save(&pre_match.terms.local_save_data)
+                .map_err(|e| crate::Error::ParseSave {
+                    side: "local",
+                    source: e,
+                })?;
 
         // Player index off the shared RNG seed, same negotiation as ever:
         // both peers derive the same assignment, mirrored.
         use rand::SeedableRng;
-        let mut rng = rand_pcg::Mcg128Xsl64::from_seed(pre_match.rng_seed);
-        let local_player_index = pick_local_player_index(&mut rng, pre_match.is_offerer);
+        let mut rng = rand_pcg::Mcg128Xsl64::from_seed(pre_match.terms.rng_seed);
+        let local_player_index = pick_local_player_index(&mut rng, pre_match.terms.is_offerer);
 
         // The match clock, pinned into both carts' RTC and recorded in the
         // replay metadata so playback re-primes to the identical state.
-        let rtc_time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(pre_match.match_ts);
+        let rtc_time = std::time::UNIX_EPOCH + std::time::Duration::from_millis(pre_match.terms.match_ts);
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
@@ -137,7 +138,7 @@ impl PvpSession {
         // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
         let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
         let layout = local_game.pvp.screen_layout(tango_match::SessionMode::PvP {
-            match_type: pre_match.match_type,
+            match_type: pre_match.terms.match_type,
         });
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
@@ -191,8 +192,8 @@ impl PvpSession {
                 code: *remote_game.rom_code,
                 revision: remote_game.revision,
             },
-            match_type: pre_match.match_type,
-            rng_seed: pre_match.rng_seed,
+            match_type: pre_match.terms.match_type,
+            rng_seed: pre_match.terms.rng_seed,
             rtc: rtc_time,
             local_player: local_player_index as usize,
             present_delay: frame_delay.load(Ordering::Relaxed),
@@ -212,15 +213,8 @@ impl PvpSession {
             in_match: in_match.clone(),
             replay_writer,
             stats: stats.clone(),
-            // Keyed against the store's own directory, so a store
-            // that isn't one (a browser's) simply has no sidecar —
-            // which is also the only kind of host that has nowhere
-            // to write it.
-            #[cfg(not(target_arch = "wasm32"))]
-            stats_path: replay_path
-                .as_ref()
-                .zip(replays.and_then(|store| store.root()))
-                .map(|(path, root)| crate::stats::stats_path(cache_path, root, path)),
+            stats_key: replay_path.clone(),
+            stats_sink,
             tps_counter: tps_counter.clone(),
             screen: screen.clone(),
             wake: wake.clone(),
@@ -303,8 +297,8 @@ impl PvpSession {
             prime_error,
             boot_cancel,
             metrics,
-            link_code: pre_match.link_code,
-            remote_nickname: pre_match.remote_settings.nickname,
+            link_code: pre_match.terms.link_code,
+            remote_nickname: pre_match.terms.remote_settings.nickname,
             frame_delay,
             stats,
             replay_path,

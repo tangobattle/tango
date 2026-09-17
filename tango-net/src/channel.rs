@@ -119,7 +119,7 @@ struct DataChannelSink {
 }
 
 // A browser's channels aren't `Send`, so neither are the futures
-// that touch them; see [`crate::marker`].
+// that touch them; see [`crate::platform`].
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 impl PacketSink for DataChannelSink {
@@ -134,7 +134,7 @@ struct DataChannelStream {
 }
 
 // A browser's channels aren't `Send`, so neither are the futures
-// that touch them; see [`crate::marker`].
+// that touch them; see [`crate::platform`].
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 impl PacketStream for DataChannelStream {

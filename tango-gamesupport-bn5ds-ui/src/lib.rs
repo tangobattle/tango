@@ -35,13 +35,11 @@ use std::sync::Arc;
 use sweeten::widget::{column, row};
 use tango_gamesupport_bn5ds_dataview::build::{PartycustViolation, PartycustViolationKind};
 use tango_gamesupport_bn5ds_dataview::rom;
-use tango_gamesupport_bn5ds_dataview::save::{self, Cross, Save, SaveSet};
-use tango_gamesupport_common_dataview::save::Save as _;
+use tango_gamesupport_bn5ds_dataview::save::{self, Cross, Save};
 use tango_gamesupport_common_ui::editor::loaded::OpenSave;
 use tango_gamesupport_common_ui::editor::view as sv;
 use tango_gamesupport_common_ui::editor::view::{Action, RenderOpts, State, Tab};
 use tango_gamesupport_common_ui::editor::{BuildReport, GameSaveEditor, OpaqueBuildWarnings, SaveEditorShell};
-use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use unic_langid::LanguageIdentifier;
 
 pub struct Ui;
@@ -52,9 +50,10 @@ pub static SAVE_EDITOR: SaveEditorShell<Ui> = SaveEditorShell(Ui);
 fn warning_providers(
     save: &tango_gamesupport_common_ui::editor::Save,
     assets: &tango_gamesupport_common_ui::editor::Assets,
+    validation: &tango_gamesupport_common_ui::dataview::build::Validation,
 ) -> Vec<OpaqueBuildWarnings> {
-    let mut warnings = tango_gamesupport_common_ui::build::warnings(save, assets);
-    warnings.extend(partycust_warnings(save, assets));
+    let mut warnings = tango_gamesupport_common_ui::build::warnings_from_validation(&validation.common, assets);
+    warnings.extend(partycust_warnings_from_validation(save, assets, validation));
     warnings
 }
 
@@ -70,127 +69,9 @@ fn cart_of(loaded: &OpenSave) -> Option<&rom::Assets> {
     loaded.assets.underlying_any().downcast_ref::<rom::Assets>()
 }
 
-/// Play the cartridge's other in-game file: point the editor at it, and
-/// stamp it as the cartridge's most recently saved file so everything
-/// that reads these bytes — a session, a recording, the priming walk's
-/// file select — lands on it too.
-///
-/// Re-reads the set from the dump the loaded save carries, staged edits
-/// included, since they live in those bytes.
-#[derive(Debug)]
-struct PlayFile(u8);
-
-impl GameEdit for PlayFile {
-    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
-        let Some(mut next) = model
-            .save
-            .as_any()
-            .downcast_ref::<Save>()
-            .and_then(|save| SaveSet::parse(&save.to_sram_dump()).ok())
-            .and_then(|set| set.save(self.0))
-        else {
-            return Invalidation::default();
-        };
-        next.make_current();
-        model.save = Box::new(next);
-        // A different file can differ in what it offers to edit, so the
-        // cached capability flags are re-probed against the new save.
-        tango_gamesupport_common_ui::model::refresh_editability(model);
-        Invalidation::default()
-    }
-}
-
-/// Set the cross the played file brings.
-#[derive(Debug)]
-struct SetCross(Cross);
-
-impl GameEdit for SetCross {
-    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
-        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.set_cross(self.0);
-        }
-        Invalidation::default()
-    }
-}
-
-/// Put a navi in a party slot, or empty it — the CHANGE the game's own
-/// PARTY STATUS card offers. The dropdown only lists navis this file
-/// recruited and not the other slot's, so no duplicate can be minted;
-/// the save layer re-syncs the mirror bits the load checks a team
-/// against, takes a departing member's programs back off, and packs the
-/// pair the way the game's own machine compacts it (so emptying the
-/// first slot moves the second up, loadout and all).
-#[derive(Debug)]
-struct SetPartyNavi {
-    slot: usize,
-    navi: Option<usize>,
-}
-
-impl GameEdit for SetPartyNavi {
-    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
-        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.view_party_mut().set_navi(self.slot, self.navi);
-        }
-        Invalidation::default()
-    }
-}
-
-/// Put one more party program on a slot's member: the member's record takes
-/// the summed bonuses and the slot entry takes the program list. Only the fixed
-/// loadout length gates the offer; gauge and copy-limit errors block Save until
-/// the user corrects them.
-#[derive(Debug)]
-struct AddPartyProgram {
-    slot: usize,
-    program: usize,
-}
-
-impl GameEdit for AddPartyProgram {
-    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
-        let Some(assets) = model.assets.underlying_any().downcast_ref::<rom::Assets>() else {
-            return Invalidation::default();
-        };
-        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.view_party_mut().add_party_program(self.slot, assets, self.program);
-        }
-        Invalidation::default()
-    }
-}
-
-/// Take the program a member equips in position `at` back off.
-#[derive(Debug)]
-struct RemovePartyProgram {
-    slot: usize,
-    at: usize,
-}
-
-impl GameEdit for RemovePartyProgram {
-    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
-        let Some(assets) = model.assets.underlying_any().downcast_ref::<rom::Assets>() else {
-            return Invalidation::default();
-        };
-        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.view_party_mut().remove_party_program(self.slot, assets, self.at);
-        }
-        Invalidation::default()
-    }
-}
-
-/// A slot panel's clear-all: the slot empties, member and all. The save
-/// layer takes the departing navi's programs off with it and packs the
-/// pair, so clearing the first slot moves the second up into it the way
-/// the game's own machine compacts.
-#[derive(Debug)]
-struct ClearPartySlot(usize);
-
-impl GameEdit for ClearPartySlot {
-    fn apply(&self, model: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
-        if let Some(save) = model.save.as_any_mut().downcast_mut::<Save>() {
-            save.view_party_mut().set_navi(self.0, None);
-        }
-        Invalidation::default()
-    }
-}
+use tango_gamesupport_bn5ds_dataview::edit::{
+    AddPartyProgram, ClearPartySlot, PlayFile, RemovePartyProgram, SetCross, SetPartyNavi,
+};
 
 /// One of the cartridge's files paired with its localized label, for the
 /// switcher's dropdown — the picker renders options via `Display`,
@@ -608,18 +489,19 @@ fn partycust_warnings(
     save: &tango_gamesupport_common_ui::editor::Save,
     assets: &tango_gamesupport_common_ui::editor::Assets,
 ) -> Vec<OpaqueBuildWarnings> {
-    let (Some(file), Some(cart)) = (
-        save.as_any().downcast_ref::<Save>(),
-        assets.underlying_any().downcast_ref::<rom::Assets>(),
-    ) else {
+    let validation = tango_gamesupport_common_ui::dataview::build::validate(save, assets);
+    partycust_warnings_from_validation(save, assets, &validation)
+}
+
+fn partycust_warnings_from_validation(
+    save: &tango_gamesupport_common_ui::editor::Save,
+    assets: &tango_gamesupport_common_ui::editor::Assets,
+    validation: &tango_gamesupport_common_ui::dataview::build::Validation,
+) -> Vec<OpaqueBuildWarnings> {
+    let Some(violations) = validation.game::<Vec<PartycustViolation>>() else {
         return vec![];
     };
-    let violations = tango_gamesupport_bn5ds_dataview::build::partycust_violations(file, cart);
-    if violations.is_empty() {
-        vec![]
-    } else {
-        vec![std::sync::Arc::new(PartycustWarnings::new(violations, save, assets)) as OpaqueBuildWarnings]
-    }
+    vec![std::sync::Arc::new(PartycustWarnings::new(violations.clone(), save, assets)) as OpaqueBuildWarnings]
 }
 
 /// What the customizer's gauge paints a program's blocks: one colour
@@ -1085,12 +967,13 @@ fn cross_picker<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, save: &'
 }
 
 impl GameSaveEditor for Ui {
-    fn validate_save(
+    fn build_warnings(
         &self,
         save: &tango_gamesupport_common_ui::editor::Save,
         assets: &tango_gamesupport_common_ui::editor::Assets,
+        validation: &tango_gamesupport_common_ui::dataview::build::Validation,
     ) -> Vec<OpaqueBuildWarnings> {
-        warning_providers(save, assets)
+        warning_providers(save, assets, validation)
     }
 
     /// BN5's tabs, minus the patch cards this cart has none of. The

@@ -26,6 +26,8 @@ mod engine;
 #[cfg(target_arch = "wasm32")]
 mod export;
 #[cfg(target_arch = "wasm32")]
+mod host;
+#[cfg(target_arch = "wasm32")]
 mod http;
 #[cfg(target_arch = "wasm32")]
 mod input;
@@ -67,7 +69,6 @@ fn main() {
                 tango_match::hosting::set_wasm_glue_url(url.href());
             }
         }
-        input::install_keyboard();
         input::install_gamepads();
         dioxus::launch(app::App);
     }

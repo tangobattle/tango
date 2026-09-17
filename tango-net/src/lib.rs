@@ -19,9 +19,9 @@
 //! for data). [`direct_rtc`] is the signaling-free direct transport.
 //!
 //! The control plane's `Sender` / `Receiver` and the `protocol` module are
-//! re-exported at the root so callers can keep saying `crate::net::Sender`,
+//! re-exported at the root so callers can keep saying `crate::Sender`,
 //! `tango_net_protocol::control`, etc.; the data plane's same-named transport types stay
-//! under `crate::net::data` to keep the two straight.
+//! under `crate::data` to keep the two straight.
 
 use crate::platform::{WasmNotSend, WasmNotSync};
 
@@ -47,7 +47,7 @@ pub use data::{InMatchTx, PvpReceiver, PvpSender};
 /// in-match channel unreliable + unordered — not this trait's; it only promises
 /// boundaries.
 // A browser's channels aren't `Send`, so neither are the futures
-// that touch them; see [`crate::marker`].
+// that touch them; see [`crate::platform`].
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait PacketSink: WasmNotSend + WasmNotSync {
@@ -58,7 +58,7 @@ pub trait PacketSink: WasmNotSend + WasmNotSync {
 /// contract on message boundaries. A clean stream close is reported as
 /// `io::ErrorKind::UnexpectedEof`.
 // A browser's channels aren't `Send`, so neither are the futures
-// that touch them; see [`crate::marker`].
+// that touch them; see [`crate::platform`].
 #[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 #[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
 pub trait PacketStream: WasmNotSend + WasmNotSync {
@@ -120,3 +120,6 @@ impl LatencyCounter {
         self.marks.back().copied()
     }
 }
+
+pub use tango_platform as platform;
+pub mod handoff;

@@ -18,11 +18,16 @@ flowchart TD
     Browser --> Lobby
     Desktop --> Session[tango-session]
     Browser --> Session
-    Lobby --> Library
-    Lobby --> Session
+    Lobby --> Net[tango-net]
+    Session --> Net
+    Net --> Protocol[tango-net-protocol]
+    Net --> Platform[tango-platform]
+    Lobby --> Platform
+    Session --> Platform
     Session --> Match[tango-match]
     Session --> Protocol[tango-net-protocol]
     Session --> Replay[tango-replay]
+    Library --> Model[headless save models and validation]
     Library --> Games[per-game registrations]
     Games --> Backends[mgba / melonDS backends]
     Backends --> Match
@@ -31,15 +36,18 @@ flowchart TD
 | Layer | Owns | Does not own |
 | --- | --- | --- |
 | Frontends | Screens, input mapping, devices, scheduling, application effects | Rollback or game-specific binary layouts |
-| Library | Game registry, ROM/save/patch/replay catalogs, settings, input resolution | Emulation and session lifetime |
-| Lobby | Connection negotiation, readiness, committed settings/save exchange | Driving an active match |
-| Session | Portable drivers, audio streams, netplay supervision, session controls | UI toolkit, native output devices, desktop worker threads |
+| Library | Game registry, catalogs, settings, loadout preparation, stats cache | Emulation and session lifetime |
+| Lobby | Connection negotiation, readiness, committed settings/save exchange | Game registry, catalogs, emulation |
+| Net / platform | Transport, reconnect, portable spawning and timers | Library, game backends, UI |
+| Session | Portable drivers, audio streams, netplay supervision, session controls | Filesystem, UI toolkit, output devices, desktop worker threads |
 | Match | Backend contracts, rollback coordination, telemetry, replay seeking and analysis | Network connections, frontend pacing, storage paths |
 | Backend | Console emulation and linked-console operations | Application UI and library scans |
 | Per-game support | Registration and game-specific engine hooks | Frontend orchestration |
 
-`tango-gamesupport-<game>-dataview` owns save/ROM layouts and assets;
-`-ui` owns editor presentation. These remain separate because the browser
+`tango-gamesupport-common-dataview::model` owns save preparation, staged edits,
+ROM overrides, and checksum-correct session snapshots. Per-game `-dataview`
+crates own layouts, assets, custom edits, and structured validation findings.
+`-ui` crates render these models and format findings as warnings. These remain separate because the browser
 and headless consumers need parsing and emulation without the desktop UI.
 
 ## Game registration and features
@@ -65,7 +73,9 @@ application resources. The corresponding app feature module performs it.
 | --- | --- |
 | Selection, save operations, single-player/training launch | `app/play.rs` |
 | Playback, queue, statistics, export | `app/replay.rs` |
-| Downloads and patch tab effects | `app/patches.rs` |
+| Download lifetime, cancellation, stale-result rejection | `app/downloads.rs` |
+| Patch tab effects | `app/patches.rs` |
+| Deferred playback, queue transitions, analysis job ownership | `app/replay_controller.rs` |
 | Scan completion and selected-save reconstruction | `app/library.rs` |
 | Lobby settings, compatibility, PvP handoff | `app/lobby.rs` |
 | Session actions affecting preferences or the library | `app/sessions.rs` |
@@ -73,9 +83,9 @@ application resources. The corresponding app feature module performs it.
 | Clipboard, file manager, window events, Discord | `app/desktop.rs` |
 
 The app coordinates these features because they share the selected save,
-library, configuration, and one active session. Feature modules implement
-methods on that owner; they do not introduce service objects or a second
-event bus.
+library, configuration, and one active session. Download and replay controllers
+own their workflow state. Feature handlers coordinate their results with
+screens and the active session, using the existing iced message flow.
 
 ## Session ownership
 
@@ -95,13 +105,26 @@ state destruction. A pending launch never binds the output device.
 Post-match results survive session close so watching their replay can return
 to the results screen.
 
-The browser owns its scheduling in `engine.rs`. It uses the same portable
-session drivers; desktop thread ownership stays in the desktop crate.
+The browser's `host.rs` composes explicit library, engine, and link handles
+and supplies them to Dioxus through context. Each operation receives its
+handle; the core state has no thread-local singleton. The engine owns its
+audio sink and scheduling callbacks. Weak callback captures and listener,
+worker, and audio guards release resources when the host goes away. Pending
+match builds carry an attempt identity so a disconnect cannot install an
+abandoned match. The browser uses the same portable session drivers.
 
 ## Netplay
 
-`tango-lobby` negotiates settings and committed save data, then yields
-`PreMatchData`. `tango-session::pvp::setup` builds a session from it.
+`tango-lobby` depends on `tango-net` and `tango-platform`, independently of
+library catalogs and emulator backends. Hosts resolve compatibility facts
+(ROM availability, patch availability, compatibility tags) through the library
+and pass those values to the lobby's pure verdict function.
+
+A ready handshake yields `tango-net::handoff::PreMatchData`: cloneable
+`MatchTerms` plus separately owned live `LinkParts`. Preparation consumes the
+committed settings and saves; it does not need a network connection.
+`tango-session::pvp::setup` attaches the prepared inputs to the live link.
+Disable the session crate's default `netplay` feature for offline drivers.
 
 - `pvp/driver.rs` boots the pair, advances rollback, publishes frames,
   records confirmed inputs, and finalizes the recording.
@@ -112,8 +135,27 @@ session drivers; desktop thread ownership stays in the desktop crate.
 
 The host must call `Drive::finish` when a driver ends, so recordings receive
 their final marker. The desktop's runtime loop and browser pump do this.
+Completed match stats go to an optional host-supplied `StatsSink`. Replay
+analysis returns stats to its host too. `tango-library::stats` handles cache
+paths, encoding, and atomic writes through `Storage`; sessions never open
+cache files. The desktop supplies both recording and stats adapters.
+
 Simulation details and invariants are in
 [the match-engine guide](tango-match/ARCHITECTURE.md).
+
+## Loadout preparation
+
+Both hosts use `tango-library::loadout::Resolver` for single-player, training,
+and live matches. It resolves the exact game and patch, parses either the
+saved file or an explicitly supplied snapshot, derives patched assets, and
+returns structured validation findings without creating an editor or emulator.
+Match preparation checks both committed simulation versions. A missing patch
+fails the launch rather than silently running the clean ROM. Scanner guards
+are released before patch I/O and asset preparation.
+
+The editor's mutable save is separate from its session snapshot. Snapshotting
+repairs checksums on a clone and never writes a save file. UI warning formatters
+consume headless findings; they do not decide legality.
 
 ## Replay preparation
 
@@ -134,3 +176,10 @@ Storage and HTTP go through the library traits. Native adapters use the
 filesystem and reqwest; the browser supplies an IndexedDB-backed memory
 image and fetch. Save-editor previews can intentionally recover from a
 missing patch; simulation input preparation cannot.
+
+## Boundary checks
+
+`tools/check_workspace.py --resolved` checks allowed crate edges and resolved
+headless Cargo graphs. It also rejects direct filesystem persistence in
+session code and thread-local core state in the browser. CI exercises offline
+sessions, the standalone lobby/transport, and headless save preparation.

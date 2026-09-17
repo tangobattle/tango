@@ -9,12 +9,17 @@
 
 pub use tango_library::replays::*;
 
-// The stats-sidecar cache format + paths live in the session crate
-// (the live match and the playback prefetcher both write it there);
-// re-exported so app callers keep one replays-module surface. Written
-// at match teardown for live matches and by
-// [`compute_and_cache_match_stats`] for everything else.
-pub use tango_session::stats::{load_match_stats, stats_path, write_match_stats};
+pub use tango_library::stats::stats_path;
+pub fn load_match_stats(
+    cache: &std::path::Path,
+    root: &std::path::Path,
+    replay: &std::path::Path,
+) -> Option<tango_match::analysis::MatchStats> {
+    tango_library::stats::load_match_stats(super::storage(), cache, root, replay)
+}
+pub fn write_match_stats(path: &std::path::Path, stats: &tango_match::analysis::MatchStats) -> std::io::Result<()> {
+    tango_library::stats::write_match_stats(super::storage(), path, stats)
+}
 
 use crate::library::rom::GameRef;
 

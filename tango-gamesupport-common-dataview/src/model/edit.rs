@@ -21,7 +21,7 @@ pub enum ChipEdit {
     /// Add chip `chip_id` with `code` to the first empty folder slot.
     AddChip {
         chip_id: usize,
-        code: crate::dataview::save::ChipCode,
+        code: crate::save::ChipCode,
     },
     /// Empty `slot`.
     RemoveChip { slot: usize },
@@ -43,7 +43,7 @@ pub enum ChipEdit {
     /// the compacting `AddChip`/`RemoveChip` pair above.
     SetChip {
         slot: usize,
-        chip: Option<crate::dataview::save::Chip>,
+        chip: Option<crate::save::Chip>,
     },
 }
 
@@ -52,7 +52,7 @@ pub enum ChipEdit {
 #[derive(Debug, Clone)]
 pub enum NavicustEdit {
     /// Place a part into the first empty navicust slot.
-    AddPart(crate::dataview::save::NavicustPart),
+    AddPart(crate::save::NavicustPart),
     /// Empty navicust slot `slot`.
     RemovePart { slot: usize },
     /// Remove every installed part.
@@ -102,7 +102,7 @@ pub enum AutoBattleDataEdit {
 /// whose model lives in the game's crates rather than here (BN4's
 /// slot-based Mod Cards). The game's UI crate defines the edit type and
 /// its application; it reaches the concrete save through
-/// [`crate::dataview::save::AsAny`]. Applications follow the same
+/// [`crate::save::AsAny`]. Applications follow the same
 /// contract as the shared appliers: mutate the in-memory save (keeping
 /// any anti-cheat mirror in sync), no disk I/O.
 pub trait GameEdit: std::fmt::Debug + Send + Sync {
@@ -183,11 +183,11 @@ pub fn apply_edit(save: &mut SaveModel, edit: Edit) -> Invalidation {
 /// anti-cheat folder/library mirror so it stays in sync with the edit.
 /// No disk I/O — the commit path only checksums and writes.
 pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
-    use crate::dataview::save::Chip;
+    use crate::save::Chip;
 
     /// Rewrite the whole folder: every chip slot plus the REG/TAG pointers.
     fn write_folder(
-        chips: &mut (dyn crate::dataview::save::ChipsViewMut + '_),
+        chips: &mut (dyn crate::save::ChipsViewMut + '_),
         folder_idx: usize,
         new_chips: &[Option<Chip>],
         regular: Option<usize>,
@@ -381,7 +381,7 @@ pub fn apply_chip_edit(save: &mut SaveModel, edit: ChipEdit) {
 /// commit path only checksums and writes. A no-op on saves without a
 /// writable navicust view (no navicust, or a link navi is equipped).
 pub fn apply_navicust_edit(save: &mut SaveModel, edit: NavicustEdit) {
-    use crate::dataview::save::NavicustPart;
+    use crate::save::NavicustPart;
 
     // Disjoint field borrows: assets vs save.
     let assets = save.assets.as_ref();
@@ -460,7 +460,7 @@ pub fn apply_navi_edit(save: &mut SaveModel, edit: NaviEdit) -> Invalidation {
 /// checksums and writes. A no-op on saves without a writable
 /// patch-card list.
 pub fn apply_patch_card56_edit(save: &mut SaveModel, edit: PatchCard56Edit) {
-    use crate::dataview::save::PatchCard;
+    use crate::save::PatchCard;
 
     // Disjoint field borrows: assets vs save.
     let assets = save.assets.as_ref();

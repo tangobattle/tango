@@ -16,22 +16,39 @@ use std::cell::RefCell;
 
 use futures::StreamExt as _;
 
-use tango_library::game;
 use tango_lobby::{compat, Event, LinkIdent, MatchmakingParams, Phase, State};
 use tango_net_protocol::control as protocol;
 
 use crate::loadout::Loadout;
 
-thread_local! {
-    static LINK: RefCell<Link> = RefCell::new(Link::default());
+#[derive(Clone)]
+pub struct Handle {
+    state: std::rc::Rc<RefCell<Link>>,
+    library: crate::library::Handle,
+    engine: crate::engine::Handle,
+}
+impl Handle {
+    pub fn new(library: crate::library::Handle, engine: crate::engine::Handle) -> Self {
+        Self {
+            state: Default::default(),
+            library,
+            engine,
+        }
+    }
+    fn read<R>(&self, f: impl FnOnce(&Link) -> R) -> R {
+        f(&self.state.borrow())
+    }
+    fn update<R>(&self, f: impl FnOnce(&mut Link) -> R) -> R {
+        f(&mut self.state.borrow_mut())
+    }
 }
 
 #[derive(Default)]
 struct Link {
     net: State,
     /// What we're bringing. Pushed in by the UI whenever the pick
-    /// changes; used both to build the Settings packet and, at handoff,
-    /// to build the local side of the match.
+    /// changes to build Settings. A handoff uses the committed settings
+    /// and snapshot from the lobby, independent of later UI changes.
     loadout: Loadout,
     nickname: String,
     /// The session is being built — between both StartMatch packets and
@@ -89,9 +106,8 @@ pub enum Verdict {
     DifferentMatchTypes,
 }
 
-pub fn snapshot() -> Snapshot {
-    LINK.with(|l| {
-        let link = l.borrow();
+pub fn snapshot(handle: &Handle) -> Snapshot {
+    handle.read(|link| {
         let (phase, link_code, error) = match &link.net.phase {
             Phase::Idle => (PhaseView::Idle, String::new(), None),
             Phase::Connecting {
@@ -119,7 +135,7 @@ pub fn snapshot() -> Snapshot {
             starting: link.starting || link.net.handoff_pending(),
             opponent: remote.map(|s| s.nickname.clone()),
             opponent_game: remote.and_then(|s| s.game_info.as_ref()).map(describe_game_info),
-            verdict: verdict(&link),
+            verdict: verdict(handle, link),
             // `latest`, not `median`: the lobby line is a live readout,
             // and it is `Option` — an empty counter means no Pong has
             // come back yet, which is not the same as 0 ms.
@@ -175,15 +191,15 @@ fn describe_game_info(info: &protocol::GameInfo) -> String {
 /// Run the real compatibility check — the one the desktop runs, over the
 /// same ROM map and patch catalog. Doing it any other way is how a
 /// matchup that can't work reaches the ready button.
-fn verdict(link: &Link) -> Option<Verdict> {
+fn verdict(handle: &Handle, link: &Link) -> Option<Verdict> {
     if !matches!(link.net.phase, Phase::Lobby { .. }) {
         return None;
     }
     let (local, remote) = (link.net.lobby.local.as_ref()?, link.net.lobby.remote.as_ref()?);
-    crate::library::with(|library| {
+    crate::library::with(&handle.library, |library| {
         let roms = library.roms.read();
         let catalog = library.patches.read();
-        match compat::check(local, remote, &roms, &catalog) {
+        match check_compatibility(local, remote, &roms, &catalog) {
             compat::Verdict::Compatible => Verdict::Compatible,
             compat::Verdict::MissingGame => Verdict::MissingGame,
             compat::Verdict::MissingRom => Verdict::MissingRom,
@@ -202,8 +218,9 @@ fn verdict(link: &Link) -> Option<Verdict> {
 
 /// Dial a link code. The bring-up reports its own progress, including
 /// its own failure, so there is nothing to route back here.
-pub fn connect(link_code: String, nickname: String) {
-    let Some(endpoint) = crate::library::with(|library| library.config.matchmaking_endpoint.clone()) else {
+pub fn connect(handle: &Handle, link_code: String, nickname: String) {
+    let Some(endpoint) = crate::library::with(&handle.library, |library| library.config.matchmaking_endpoint.clone())
+    else {
         return;
     };
     let params = MatchmakingParams {
@@ -213,30 +230,33 @@ pub fn connect(link_code: String, nickname: String) {
         // TURN when they can't.
         use_relay: None,
     };
-    let (cancel, progress) = LINK.with(|l| {
-        let mut link = l.borrow_mut();
+    let (cancel, progress) = handle.update(|link| {
         link.nickname = nickname;
         link.net.begin_matchmaking(&params)
     });
-    let incoming = LINK.with(|l| l.borrow().net.take_incoming());
+    let incoming = handle.read(|link| link.net.take_incoming());
     wasm_bindgen_futures::spawn_local(tango_lobby::connect(params, cancel, progress));
     if let Some(mut incoming) = incoming {
+        let owned = handle.clone();
         wasm_bindgen_futures::spawn_local(async move {
+            let handle = &owned;
             while let Some(report) = incoming.next().await {
-                let event = LINK.with(|l| l.borrow_mut().net.apply(report));
+                let event = handle.update(|link| link.net.apply(report));
                 match event {
-                    Some(Event::MatchReady) => wasm_bindgen_futures::spawn_local(start_match()),
+                    Some(Event::MatchReady) => {
+                        let owned = handle.clone();
+                        wasm_bindgen_futures::spawn_local(async move { start_match(&owned).await });
+                    }
                     None => {}
                 }
-                after_state_change();
+                after_state_change(handle);
             }
         });
     }
 }
 
-pub fn disconnect() {
-    LINK.with(|l| {
-        let mut link = l.borrow_mut();
+pub fn disconnect(handle: &Handle) {
+    handle.update(|link| {
         link.net.disconnect();
         link.starting = false;
     });
@@ -244,9 +264,8 @@ pub fn disconnect() {
 
 /// The user picked a different game / save / patch. Both a settings
 /// resend and the record the handoff will build the match from.
-pub fn set_loadout(loadout: Loadout) {
-    let changed = LINK.with(|l| {
-        let mut link = l.borrow_mut();
+pub fn set_loadout(handle: &Handle, loadout: Loadout) {
+    let changed = handle.update(|link| {
         if link.loadout == loadout {
             return false;
         }
@@ -254,15 +273,15 @@ pub fn set_loadout(loadout: Loadout) {
         true
     });
     if changed {
-        after_state_change();
+        after_state_change(handle);
     }
 }
 
-pub fn set_match_type(match_type: (u8, u8)) {
-    LINK.with(|l| l.borrow_mut().net.set_match_type(match_type));
+pub fn set_match_type(handle: &Handle, match_type: (u8, u8)) {
+    handle.update(|link| link.net.set_match_type(match_type));
     // The resend's material-difference check does the auto-unready, so
     // it deliberately isn't done here.
-    after_state_change();
+    after_state_change(handle);
 }
 
 /// Default the match type to Triple where the game has one — that is
@@ -275,9 +294,8 @@ pub fn set_match_type(match_type: (u8, u8)) {
 /// remembers. Also repairs a pick the current game doesn't have —
 /// match-type tables differ per family, so a pick carried over from
 /// another one can be out of range.
-fn apply_default_match_type() {
-    LINK.with(|l| {
-        let mut link = l.borrow_mut();
+fn apply_default_match_type(handle: &Handle) {
+    handle.update(|link| {
         let Some(game) = link.loadout.game else { return };
         // Entry `i` is how many subtypes mode `i` has; mode 1 is Triple.
         let table = game.family.match_types;
@@ -304,9 +322,8 @@ fn apply_default_match_type() {
 /// deduped against the last value sent, so it is safe to call from any
 /// state change — which is exactly how it gets sent on lobby entry,
 /// where there is no user action to hang it off.
-fn push_settings() {
-    let settings = LINK.with(|l| {
-        let link = l.borrow();
+fn push_settings(handle: &Handle) {
+    let settings = handle.read(|link| {
         protocol::Settings {
             nickname: link.nickname.clone(),
             match_type: link.net.lobby.match_type,
@@ -316,26 +333,27 @@ fn push_settings() {
             blind_setup: false,
         }
     });
-    LINK.with(|l| l.borrow_mut().net.send_local_settings(settings));
+    handle.update(|link| link.net.send_local_settings(settings));
 }
 
 /// Press or un-press Ready. Pressing commits to a hash of the save we're
 /// bringing; the reveal follows once the peer has committed too, which
 /// is what stops either side picking a save in response to the other's.
-pub fn set_ready(ready: bool) {
+pub fn set_ready(handle: &Handle, ready: bool) {
     if !ready {
-        LINK.with(|l| l.borrow_mut().net.uncommit());
+        handle.update(|link| link.net.uncommit());
         return;
     }
-    let Some(save) = LINK.with(|l| l.borrow().loadout.save_bytes()) else {
+    let Some(save) = handle.read(|link| crate::loadout::save_bytes(&link.loadout, &handle.library)) else {
         log::warn!("netplay: ready with no save loaded");
         return;
     };
     // No session payload: this frontend embeds no save view, so there
     // is nothing to have picked one.
-    let event = LINK.with(|l| l.borrow_mut().net.commit(save));
+    let event = handle.update(|link| link.net.commit(save));
     if let Some(Event::MatchReady) = event {
-        wasm_bindgen_futures::spawn_local(start_match());
+        let owned = handle.clone();
+        wasm_bindgen_futures::spawn_local(async move { start_match(&owned).await });
     }
 }
 
@@ -350,28 +368,29 @@ pub fn set_ready(ready: bool) {
 /// * if the matchup needs a patch we don't have, go and get it. The
 ///   verdict resolves from the index, so we know the matchup would be
 ///   playable before the package is anywhere near this device.
-fn after_state_change() {
-    apply_default_match_type();
-    push_settings();
+fn after_state_change(handle: &Handle) {
+    apply_default_match_type(handle);
+    push_settings(handle);
 
-    let missing = LINK.with(|l| {
-        let link = l.borrow();
+    let missing = handle.read(|link| {
         if !matches!(link.net.phase, Phase::Lobby { .. }) {
             return None;
         }
         let (local, remote) = (link.net.lobby.local.as_ref()?, link.net.lobby.remote.as_ref()?);
-        crate::library::with(|library| {
+        crate::library::with(&handle.library, |library| {
             let roms = library.roms.read();
             let catalog = library.patches.read();
-            compat::check(local, remote, &roms, &catalog)
+            check_compatibility(local, remote, &roms, &catalog)
                 .fetchable()
                 .map(|(name, version)| (name.to_string(), version.clone()))
         })?
     });
     let Some((name, version)) = missing else { return };
+    let owned = handle.clone();
     wasm_bindgen_futures::spawn_local(async move {
+        let handle = &owned;
         log::info!("netplay: fetching {name} {version} for this matchup");
-        if let Err(e) = crate::library::install_patch(name, version).await {
+        if let Err(e) = crate::library::install_patch(&handle.library, name, version).await {
             log::warn!("netplay: patch fetch failed: {e}");
         }
     });
@@ -382,14 +401,19 @@ fn after_state_change() {
 
 /// Both sides sent StartMatch: drain the lobby into a `PreMatchData` and
 /// build the live match from it.
-async fn start_match() {
-    let pre_match = LINK.with(|l| l.borrow_mut().net.take_pre_match());
-    let Some(pre_match) = pre_match else { return };
-    LINK.with(|l| l.borrow_mut().starting = true);
+async fn start_match(handle: &Handle) {
+    let pending = handle.update(|link| {
+        let pre_match = link.net.take_pre_match()?;
+        link.starting = true;
+        Some((link.net.session_id(), pre_match))
+    });
+    let Some((attempt, pre_match)) = pending else { return };
 
-    let outcome = build(pre_match).await;
-    LINK.with(|l| {
-        let mut link = l.borrow_mut();
+    let outcome = build(handle, attempt, pre_match).await;
+    handle.update(|link| {
+        if link.net.session_id() != attempt {
+            return;
+        }
         link.starting = false;
         match outcome {
             Ok(()) => link.net.finish_handoff(),
@@ -401,49 +425,54 @@ async fn start_match() {
     });
 }
 
-async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
-    let loadout = LINK.with(|l| l.borrow().loadout.clone());
-    let local_game = loadout.game.ok_or_else(|| "no game selected".to_string())?;
-    let local_rom = loadout.rom()?;
-
-    // The match runs the peer's game here too — the pair is simulated in
-    // full on both sides — so their ROM has to be one we have, with
-    // their patch applied to it.
-    let remote_info = pre_match
-        .remote_settings
-        .game_info
-        .clone()
-        .ok_or_else(|| "opponent sent no game info".to_string())?;
-    let (family, variant) = &remote_info.family_and_variant;
-    let remote_game = game::find_by_family_and_variant(family, *variant)
-        .ok_or_else(|| format!("unknown opponent game {family} v{variant}"))?;
-    let remote_patch = remote_info.patch.as_ref().map(|p| (p.name.clone(), p.version.clone()));
-    let remote_rom = crate::library::patched_rom(remote_game, remote_patch.as_ref())?;
-
-    let sink = crate::audio::sink().await;
+async fn build(handle: &Handle, attempt: u64, pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
+    let prepared = crate::library::with(&handle.library, |library| {
+        tango_library::loadout::Resolver {
+            storage: &library.files,
+            roms: &library.roms,
+            patches: &library.patches,
+            patches_path: &library.config.patches_path(),
+        }
+        .prepare_match(
+            &pre_match.terms.local_settings,
+            &pre_match.terms.remote_settings,
+            [&pre_match.terms.local_save_data, &pre_match.terms.remote_save_data],
+        )
+    })
+    .ok_or_else(|| "library not open".to_owned())?
+    .map_err(|e| e.to_string())?;
+    let local_game = prepared.local.prepared.game;
+    let remote_game = prepared.remote.prepared.game;
+    let sink = handle.engine.audio_sink().await;
+    if handle.read(|link| link.net.session_id()) != attempt {
+        return Ok(());
+    }
     let (session, driver, stream) = tango_session::pvp::PvpSession::new(tango_session::pvp::PvpSessionArgs {
         local_game,
-        local_rom: std::sync::Arc::new(local_rom),
+        local_rom: prepared.local.rom,
         remote_game,
-        remote_rom: std::sync::Arc::new(remote_rom),
+        remote_rom: prepared.remote.rom,
         pre_match,
-        frame_delay: frame_delay(),
+        frame_delay: frame_delay(handle),
         disable_bgm: false,
         // Recorded into storage rather than a file — see
-        // `crate::recording`. The stats sidecar has no browser
-        // counterpart and is compiled out on wasm entirely.
-        replays: Some(&crate::recording::BrowserReplayStore),
+        // `crate::recording`. This host does not persist stats sidecars.
+        replays: Some(&crate::recording::BrowserReplayStore(handle.library.clone())),
+        stats_sink: None,
         expected_fps: local_game.pvp.tps().to_f32().unwrap(),
         sample_rate: crate::audio::sample_rate(),
     })
     .await
     .map_err(|e| e.to_string())?;
 
+    if handle.read(|link| link.net.session_id()) != attempt {
+        return Ok(());
+    }
     // Priming the pair to a live link battle is seconds of emulation
     // with no thread to put it on — it happens on the first pumped
     // tick, under a session that is already up and reporting it
     // (`PvpSession::is_booting`).
-    crate::engine::start_pvp(session, driver, stream, sink);
+    crate::engine::start_pvp(&handle.engine, session, driver, stream, sink);
     Ok(())
 }
 
@@ -451,12 +480,12 @@ async fn build(pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
 /// ping the first time — a phone on mobile data has a very different
 /// answer here than a desktop on ethernet, and asking the user to guess
 /// is worse than guessing for them.
-fn frame_delay() -> u32 {
+fn frame_delay(handle: &Handle) -> u32 {
     // The median rather than the latest, so one spike doesn't set the
     // whole match's display lag. It reads `ZERO` when no Pong has come
     // back yet, which is the "we don't know" case, not a 0 ms link.
-    let suggested = LINK.with(|l| {
-        let median = l.borrow().net.lobby.latency_counter.median();
+    let suggested = handle.read(|link| {
+        let median = link.net.lobby.latency_counter.median();
         (!median.is_zero()).then(|| tango_session::pvp::suggest_frame_delay(median))
     });
     suggested
@@ -468,4 +497,22 @@ fn frame_delay() -> u32 {
 /// one" button.
 pub fn random_code() -> String {
     tango_lobby::randomcode::generate(&tango_library::lang::FALLBACK_LANG)
+}
+
+pub fn check_compatibility(
+    local: &tango_net_protocol::control::Settings,
+    remote: &tango_net_protocol::control::Settings,
+    roms: &std::collections::HashMap<tango_library::rom::GameRef, Vec<u8>>,
+    catalog: &tango_library::patch::Catalog,
+) -> compat::Verdict {
+    let facts = tango_library::loadout::compatibility_facts(local, remote, roms, catalog);
+    compat::check(
+        local,
+        remote,
+        compat::Facts {
+            remote_rom_available: facts.remote_rom_available,
+            matching_tags: facts.matching_tags,
+            missing_patch: facts.missing_patch,
+        },
+    )
 }

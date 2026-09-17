@@ -15,7 +15,6 @@ license = "GPL-3.0-or-later"
 tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
 tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 tango-ui = { path = "../tango-ui" }
-tango-patch = { workspace = true, features = ["package", "index"] }
 iced.workspace = true
 iced_graphics.workspace = true
 iced_tiny_skia.workspace = true

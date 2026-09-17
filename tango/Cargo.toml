@@ -17,6 +17,7 @@ path = "src/main.rs"
 embed-resource = "1"
 
 [dependencies]
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 num-traits.workspace = true
 iced.workspace = true
 # Drop-in replacement widgets that extend iced 0.14's stock ones.
@@ -85,7 +86,6 @@ unic-langid.workspace = true
 # private gamesupport UI layer — arrives with the game crates below,
 # and the app never names it.
 tango-gamesupport = { path = "../tango-gamesupport", features = ["ui"] }
-tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui" }
 tango-ui = { path = "../tango-ui" }
 # Named directly only for `Container` and `Settings`, which the export
 # dialog builds; the rendering itself is tango-replay-renderer's.

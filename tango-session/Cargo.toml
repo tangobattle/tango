@@ -5,55 +5,32 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 publish = false
 
-# What the replay exporter needs — the half of this crate that builds
-# for the browser as well as the desktop (see the crate docs).
+# Portable session drivers; live networking is enabled by the netplay feature.
 [dependencies]
-async-trait.workspace = true
+tango-platform = { path = "../tango-platform" }
+tango-net = { path = "../tango-net", optional = true }
 bytemuck.workspace = true
 chrono = { workspace = true, default-features = true }
-# One data-channel API over libdatachannel natively and the browser's
-# own WebRTC on wasm.
-datachannel-wrapper.workspace = true
 futures.workspace = true
 log.workspace = true
 rand.workspace = true
 rand_pcg.workspace = true
-rennet.workspace = true
 tango-gamesupport = { path = "../tango-gamesupport" }
 tango-match = { path = "../tango-match" }
-tango-signaling.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-replay = { path = "../tango-replay" }
 thiserror.workspace = true
-# Only the parts of tokio that need no runtime under them: the sync
-# primitives (which are plain futures) and the `select!`/`join!` macros.
-# `time` and `rt` are native-only below — a browser has no driver for
-# either, and asking for them here is what let `tokio::time` compile for
-# wasm32 and then panic on `Instant::now` at run time. Now it doesn't
-# compile, which is where that belongs.
+# Runtime-neutral synchronization and futures macros only.
 tokio = { workspace = true, features = ["sync", "macros"] }
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
 # `std::time::Instant` panics in a browser; this is the same API backed
 # by `performance.now()` there and by std everywhere else.
 web-time.workspace = true
 
 
-# The live-session half: threads, sockets and wall clocks, none of which
-# wasm32 has. Gated so a browser build doesn't drag in tokio's mio-backed
-# networking, which doesn't compile there at all.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-# `net` for the direct transport's UDP socket (mio-backed, so it has no
-# wasm32 support at all); `rt`/`rt-multi-thread` for spawning, `time` for
-# the waits a browser takes from the page instead, `io-util` for the
-# replay reader.
-tokio = { workspace = true, features = ["io-util", "net", "rt", "rt-multi-thread", "time"] }
-tokio-util = { workspace = true, features = ["io", "rt"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-# The page's timers, for the netplay plumbing's waits — a browser has no
-# runtime to hold tokio's.
-gloo-timers = { version = "0.3", features = ["futures"] }
-wasm-bindgen-futures.workspace = true
-
 [lints]
 workspace = true
+
+[features]
+default = ["netplay"]
+netplay = ["dep:tango-net"]

@@ -81,7 +81,7 @@ pub fn prepare_from_patched_rom(
     save: tango_gamesupport::BoxedSave,
     applied_patch: Option<AppliedPatch>,
 ) -> PreparedSave {
-    tango_gamesupport_common_ui::model::prepare(game, rom, save_path, save, applied_patch)
+    tango_gamesupport_common_dataview::model::prepare(game, &rom, save_path, save, applied_patch)
 }
 
 /// Build a [`LoadedSave`] for one absolute player seat in a replay. Pulls

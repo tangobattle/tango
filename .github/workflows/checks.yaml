@@ -54,3 +54,9 @@ jobs:
         run: cargo test --locked --lib -p tango-library --features tango-library/gamesupport-bn6 -p tango-session -p tango-gamesupport-common-ui
       - name: Test game and editor registration
         run: cargo test --locked --lib -p tango-library --features tango-library/ui,tango-library/gamesupport-bn6
+      - name: Check resolved architecture boundaries
+        run: python3 tools/check_workspace.py --resolved
+      - name: Test lobby and offline sessions independently
+        run: |
+          cargo test --locked --lib -p tango-lobby -p tango-net
+          cargo test --locked --no-default-features --lib -p tango-session

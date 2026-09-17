@@ -66,6 +66,14 @@ pub enum Effect {
 }
 
 impl Loadout {
+    pub fn selection(&self) -> tango_library::loadout::LoadoutSelection {
+        tango_library::loadout::LoadoutSelection {
+            game: self.game,
+            save_path: self.save.clone(),
+            patch: self.patch.clone().zip(self.patch_version.clone()),
+        }
+    }
+
     pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
         match msg {
             Message::FamilySelected(f) => {
@@ -229,24 +237,11 @@ impl Loadout {
         config: &config::Config,
         lobby: &crate::netplay::LobbyState,
     ) -> tango_net_protocol::control::Settings {
-        use tango_net_protocol::control::{GameInfo, PatchInfo, Settings};
+        use tango_net_protocol::control::Settings;
         Settings {
             nickname: config.nickname.clone().unwrap_or_default(),
             match_type: lobby.match_type,
-            game_info: self.game.map(|game| {
-                let (family, variant) = game.family_and_variant();
-                GameInfo {
-                    family_and_variant: (family.to_string(), variant),
-                    patch: match (&self.patch, &self.patch_version) {
-                        (Some(name), Some(version)) => Some(PatchInfo {
-                            name: name.clone(),
-                            version: version.clone(),
-                        }),
-                        _ => None,
-                    },
-                    sim_version: game.pvp.sim_version(),
-                }
-            }),
+            game_info: self.selection().game_info(),
             blind_setup: lobby.blind_setup,
         }
     }

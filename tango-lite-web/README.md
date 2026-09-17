@@ -49,6 +49,7 @@ memory flags and rebuilds the standard library.
 
 | Module | Responsibility |
 | --- | --- |
+| `host.rs` | Composition and explicit library, engine, and link handles |
 | `app.rs`, `ui/` | Dioxus shell, screens, touch controls, UI polling |
 | `library.rs`, `loadout.rs` | Library state and the selected game/save/patch |
 | `storage.rs` | Synchronous memory image persisted to IndexedDB |
@@ -61,9 +62,16 @@ memory flags and rebuilds the standard library.
 | `export.rs` | Replay video export through the shared renderer |
 | `lang.rs`, `wakelock.rs` | Game-name locale and screen wake lock |
 
-The engine, library, and lobby state live in thread-locals. `app.rs`
-polls them and updates reactive signals when values change; components
-reading this state need a changing revision or prop to avoid stale views.
+`host.rs` owns explicit engine, library, and link handles. `app.rs` supplies
+that host through Dioxus context and polls status into reactive signals.
+Components receive the same handles; asynchronous work retains its own clone.
+Host teardown disconnects the lobby and stops the engine, while owned guards
+release listeners, workers, animation frames, and audio. Match setup rejects
+results belonging to a disconnected or replaced lobby attempt.
+
+Loadout resolution and validation use `tango-library::loadout`, shared with
+the desktop. Browser code supplies storage and rendering, without duplicating
+save parsing, patch selection, or compatibility policy.
 
 Storage reads are synchronous because patch application and session
 construction read through `tango_library::Storage`. IndexedDB writes

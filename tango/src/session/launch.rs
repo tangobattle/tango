@@ -122,107 +122,45 @@ pub async fn spawn_pvp(
     scanners: Scanners,
     config: config::Config,
     audio_binder: audio::LateBinder,
-    local_game: crate::library::rom::GameRef,
-    local_patch: Option<(String, semver::Version)>,
     pre_match: crate::netplay::PreMatchData,
 ) -> anyhow::Result<Launch> {
-    let local_rom_bytes = crate::library::rom::load(
-        crate::library::storage(),
-        &scanners.roms,
-        &config.patches_path(),
-        local_game,
-        local_patch.as_ref().map(|(name, version)| (name.as_str(), version)),
-    )?;
-
-    let remote_gi = pre_match
-        .remote_settings
-        .game_info
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("remote settings missing game info"))?;
-    let remote_game = crate::library::game::find_by_family_and_variant(
-        &remote_gi.family_and_variant.0,
-        remote_gi.family_and_variant.1,
-    )
-    .ok_or_else(|| anyhow::anyhow!("unknown remote rom"))?;
-    let remote_rom_bytes = crate::library::rom::load(
-        crate::library::storage(),
-        &scanners.roms,
-        &config.patches_path(),
-        remote_game,
-        remote_gi.patch.as_ref().map(|p| (p.name.as_str(), &p.version)),
-    )?;
-
-    // Always build the remote model long enough to validate the exact committed
-    // save the match will run. A valid blinded setup is still discarded from
-    // the drawer below; an invalid one keeps only the structured violations
-    // needed by the advisory warning.
-    let remote_prepared = {
-        let remote_save = remote_game
-            .parse_save(&pre_match.remote_save_data)
-            .map_err(|e| anyhow::anyhow!("parse remote save: {e:?}"))?;
-        // `remote_rom_bytes` is already the patched image we run in the
-        // session, so resolve the matching `rom_overrides` + charset and
-        // hand both straight to preparation — no second BPS apply.
-        let applied_patch = remote_gi.patch.as_ref().and_then(|p| {
-            let patches = scanners.patches.read();
-            let version_meta = patches.version(&p.name, &p.version)?;
-            Some(crate::selection::AppliedPatch {
-                name: p.name.clone(),
-                version: p.version.clone(),
-                rom_overrides: version_meta.rom_overrides_for(remote_game),
-            })
-        });
-        crate::selection::prepare_from_patched_rom(
-            remote_game,
-            remote_rom_bytes.clone(),
-            std::path::PathBuf::new(),
-            remote_save,
-            applied_patch,
-        )
+    let prepared = {
+        tango_library::loadout::Resolver {
+            storage: crate::library::storage(),
+            roms: &scanners.roms,
+            patches: &scanners.patches,
+            patches_path: &config.patches_path(),
+        }
+        .prepare_match(
+            &pre_match.terms.local_settings,
+            &pre_match.terms.remote_settings,
+            [&pre_match.terms.local_save_data, &pre_match.terms.remote_save_data],
+        )?
     };
-    let opponent_build_warnings = selection::editor(remote_game).validate_save(&remote_prepared);
-    let remote_loaded = selection::editor(remote_game).load(remote_prepared);
-    let opponent_loaded = (!pre_match.remote_settings.blind_setup).then_some(remote_loaded);
-
-    // Build the local-side LoadedSave so the in-session "my setup"
-    // toggle can render the same save-view we use for the
-    // opponent panel.
-    let local_loaded = {
-        let local_save = local_game
-            .parse_save(&pre_match.local_save_data)
-            .map_err(|e| anyhow::anyhow!("parse local save: {e:?}"))?;
-        // Same as the opponent side: `local_rom_bytes` is already
-        // patched, so layer the overrides on via `from_patched_rom`
-        // instead of re-applying the BPS patch.
-        let applied_patch = local_patch.as_ref().and_then(|(name, version)| {
-            let patches = scanners.patches.read();
-            let version_meta = patches.version(name, version)?;
-            Some(crate::selection::AppliedPatch {
-                name: name.clone(),
-                version: version.clone(),
-                rom_overrides: version_meta.rom_overrides_for(local_game),
-            })
-        });
-        crate::selection::from_patched_rom(
-            local_game,
-            local_rom_bytes.clone(),
-            std::path::PathBuf::new(),
-            local_save,
-            applied_patch,
-        )
-    };
+    let local_game = prepared.local.prepared.game;
+    let remote_game = prepared.remote.prepared.game;
+    let local_rom = prepared.local.rom;
+    let remote_rom = prepared.remote.rom;
+    let opponent_build_warnings =
+        selection::editor(remote_game).build_warnings(&prepared.remote.prepared, prepared.remote.validation.as_ref());
+    let opponent_loaded = (!pre_match.terms.remote_settings.blind_setup)
+        .then(|| selection::editor(remote_game).load(prepared.remote.prepared));
+    let local_loaded = selection::editor(local_game).load(prepared.local.prepared);
     let (session, boot, audio) = pvp::PvpSession::new(pvp::PvpSessionArgs {
         local_game,
-        local_rom: std::sync::Arc::new(local_rom_bytes),
+        local_rom,
         remote_game,
-        remote_rom: std::sync::Arc::new(remote_rom_bytes),
+        remote_rom,
         pre_match,
         // Presentation delay is purely local — read straight from config (clamped
         // to the supported range), not negotiated with the peer.
         frame_delay: config.frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
         disable_bgm: config.disable_bgm_in_pvp,
-        replays: Some(&pvp::DirReplayStore(config.replays_path())),
-        cache_path: &config.cache_path(),
+        replays: Some(&super::recording::DirReplayStore(config.replays_path())),
+        stats_sink: Some(std::sync::Arc::new(super::recording::StatsCache {
+            cache_path: config.cache_path(),
+            replays_path: config.replays_path(),
+        })),
         expected_fps: local_game.pvp.tps().to_f32().unwrap(),
         sample_rate: audio_binder.sample_rate(),
     })
@@ -254,30 +192,25 @@ pub async fn spawn_pvp(
     })
 }
 
-/// Boot the supplied selection in single-player mode. Caller must
-/// already have a complete (game + rom + save) LoadedSave — there's no
-/// fallback for missing pieces, so the Play button is responsible for
-/// gating.
+/// Boot an exact selection from its saved file, independently of editor state.
 pub fn spawn_singleplayer(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::LoadedSave,
+    selection: &tango_library::loadout::LoadoutSelection,
 ) -> anyhow::Result<Launch> {
-    let game = loaded.game;
-    let rom_bytes = crate::library::rom::load(
-        crate::library::storage(),
-        &scanners.roms,
-        &config.patches_path(),
-        game,
-        loaded.patch.as_ref().map(|p| (p.name.as_str(), &p.version)),
-    )?;
-    // Single-player runs with an in-memory save; the desktop runtime
-    // periodically writes changes back to this file and flushes on close.
-    let save = std::fs::read(&loaded.save_path)?;
+    let resolved = tango_library::loadout::Resolver {
+        storage: crate::library::storage(),
+        roms: &scanners.roms,
+        patches: &scanners.patches,
+        patches_path: &config.patches_path(),
+    }
+    .resolve(selection, None)?;
+    let game = resolved.prepared.game;
+    let save = resolved.sram;
     let (session, driver, audio) = singleplayer::SinglePlayerSession::new(
         game,
-        std::sync::Arc::new(rom_bytes),
+        resolved.rom,
         Some(save.clone()),
         // Leave the cart clock on the real one, as it has always been.
         None,
@@ -286,7 +219,7 @@ pub fn spawn_singleplayer(
     )?;
     let mut runtime = RunningSession::new(session, audio);
     runtime.spawn_driver("singleplayer", driver)?;
-    runtime.save_to(loaded.save_path.clone(), save);
+    runtime.save_to(resolved.prepared.save_path, save);
     Ok(Launch {
         runtime,
         pvp_panes: None,
@@ -296,29 +229,28 @@ pub fn spawn_singleplayer(
 
 /// Boot the supplied selection in training mode — a local link battle
 /// (both cores run this selection) against a do-nothing dummy controller
-/// ([`training::NoopController`]) wired in as the integration seam. Same
-/// gating contract as [`spawn_singleplayer`]: the caller must already
-/// hold a complete (game + rom + save) LoadedSave.
+/// ([`training::NoopController`]). The caller supplies a checksum-correct
+/// snapshot, which may include staged edits. Training never writes it back.
 pub fn spawn_training(
     scanners: &Scanners,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    loaded: &selection::LoadedSave,
+    selection: &tango_library::loadout::LoadoutSelection,
+    snapshot: &[u8],
 ) -> anyhow::Result<Launch> {
-    let game = loaded.game;
-    let rom_bytes = crate::library::rom::load(
-        crate::library::storage(),
-        &scanners.roms,
-        &config.patches_path(),
-        game,
-        loaded.patch.as_ref().map(|p| (p.name.as_str(), &p.version)),
-    )?;
-    // The battle runs off an in-memory SRAM image (same as PvP), so
-    // nothing training does is written back to the save file.
+    let resolved = tango_library::loadout::Resolver {
+        storage: crate::library::storage(),
+        roms: &scanners.roms,
+        patches: &scanners.patches,
+        patches_path: &config.patches_path(),
+    }
+    .resolve(selection, Some(snapshot))?;
+    let game = resolved.prepared.game;
+    let save = resolved.sram;
     let (session, driver, audio) = training::TrainingSession::new(
         game,
-        std::sync::Arc::new(rom_bytes),
-        loaded.editor.sram(loaded),
+        resolved.rom,
+        save,
         std::time::SystemTime::now(),
         rand::random(),
         game.pvp.tps().to_f32().unwrap(),

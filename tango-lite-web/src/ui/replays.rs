@@ -12,8 +12,9 @@ use crate::library::ReplayEntry;
 
 #[component]
 pub fn Replays(revision: ReadSignal<u64>, onerror: EventHandler<String>) -> Element {
+    let host: crate::host::Context = use_context();
     let _ = revision();
-    let entries = crate::library::replays();
+    let entries = crate::library::replays(&host().library);
 
     rsx! {
         div { class: "pane",
@@ -36,7 +37,7 @@ pub fn Replays(revision: ReadSignal<u64>, onerror: EventHandler<String>) -> Elem
                 crate::ui::FilePicker {
                     label: "Import a replay".to_string(),
                     onpick: move |(name, bytes): (String, Vec<u8>)| async move {
-                        if !crate::library::import_replay(&name, &bytes).await {
+                        if !crate::library::import_replay(&host().library, &name, &bytes).await {
                             onerror.call(format!("{name} isn't a replay this build can read."));
                         }
                     },
@@ -86,6 +87,7 @@ fn ExportCard(state: crate::export::State) -> Element {
 
 #[component]
 fn Row(entry: ReplayEntry, onerror: EventHandler<String>) -> Element {
+    let host: crate::host::Context = use_context();
     let (mine, theirs) = entry.sides.clone();
     let versus = match (mine.is_empty(), theirs.is_empty()) {
         (false, false) => format!("{mine} vs {theirs}"),
@@ -103,7 +105,7 @@ fn Row(entry: ReplayEntry, onerror: EventHandler<String>) -> Element {
                     move |_| {
                         let path = path.clone();
                         async move {
-                            if let Err(e) = crate::playback::open(path).await {
+                            if let Err(e) = crate::playback::open(&host(), path).await {
                                 onerror.call(e);
                             }
                         }
@@ -118,7 +120,7 @@ fn Row(entry: ReplayEntry, onerror: EventHandler<String>) -> Element {
                 onclick: {
                     let (path, name) = (path.clone(), entry.name.clone());
                     move |_| {
-                        if let Some(bytes) = crate::library::replay_bytes(&path) {
+                        if let Some(bytes) = crate::library::replay_bytes(&host().library, &path) {
                             crate::ui::download(&bytes, &format!("{name}.{}", tango_replay::EXTENSION));
                         }
                     }
@@ -130,7 +132,7 @@ fn Row(entry: ReplayEntry, onerror: EventHandler<String>) -> Element {
                 disabled: crate::export::is_running(),
                 onclick: {
                     let (path, name) = (path.clone(), entry.name.clone());
-                    move |_| crate::export::run(path.clone(), name.clone())
+                    move |_| crate::export::run(host().library, path.clone(), name.clone())
                 },
                 "Video"
             }

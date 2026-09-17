@@ -5,6 +5,7 @@ from collections import defaultdict
 from pathlib import Path
 import re
 import sys
+import subprocess
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,13 +70,64 @@ def check(root: Path) -> list[str]:
     return errors
 
 
+def check_boundaries(root: Path) -> list[str]:
+    errors = []
+    allowed = {
+        "tango-match": set(),
+        "tango-net-protocol": set(),
+        "tango-platform": set(),
+        "tango-replay": set(),
+        "tango-net": {"tango-platform", "tango-net-protocol"},
+        "tango-lobby": {"tango-net", "tango-platform", "tango-net-protocol"},
+        "tango-gamesupport": {"tango-match"},
+        "tango-gamesupport-common-dataview": {"tango-gamesupport"},
+    }
+    for crate, permitted in allowed.items():
+        manifest = tomllib.loads((root / crate / "Cargo.toml").read_text())
+        for section in [manifest, *manifest.get("target", {}).values()]:
+            for dependency, spec in section.get("dependencies", {}).items():
+                if isinstance(spec, dict) and "path" in spec and dependency not in permitted:
+                    errors.append(f"{crate}: forbidden layer dependency {dependency}")
+    for path in (root / "tango-session/src").rglob("*.rs"):
+        if "std::fs::" in path.read_text():
+            errors.append(f"{path.relative_to(root)}: session persistence must use a host adapter")
+    for name in ("library", "engine", "link"):
+        path = root / f"tango-lite-web/src/{name}.rs"
+        if "thread_local!" in path.read_text():
+            errors.append(f"{path.relative_to(root)}: state must be owned by an explicit host handle")
+    return errors
+
+
+def check_resolved_boundaries(root: Path) -> list[str]:
+    errors = []
+    checks = {
+        "tango-gamesupport-common-dataview": {"iced", "tango-ui"},
+        "tango-library": {"iced", "tango-ui", "tango-session", "tango-lobby", "tango-net"},
+        "tango-session": {"iced", "tango-net", "datachannel-wrapper", "tango-signaling"},
+        "tango-lobby": {"iced", "tango-library", "tango-session", "tango-match", "mgba", "melonds"},
+    }
+    for crate, forbidden in checks.items():
+        result = subprocess.run(["cargo", "tree", "--locked", "--offline", "--no-default-features", "-p", crate,
+                                 "--edges", "normal", "--prefix", "none", "--format", "{p}"],
+                                cwd=root, text=True, capture_output=True)
+        if result.returncode:
+            errors.append(f"{crate}: cannot inspect dependency graph: {result.stderr.strip()}")
+            continue
+        packages = {line.split()[0] for line in result.stdout.splitlines() if line.strip()}
+        for dependency in sorted(packages & forbidden):
+            errors.append(f"{crate}: headless dependency graph includes {dependency}")
+    return errors
+
+
 def main() -> int:
-    errors = check(ROOT)
+    errors = check(ROOT) + check_boundaries(ROOT)
+    if "--resolved" in sys.argv:
+        errors.extend(check_resolved_boundaries(ROOT))
     if errors:
         for error in errors:
             print(error, file=sys.stderr)
         return 1
-    print("Workspace dependencies, lints, and game features are consistent.")
+    print("Workspace dependencies, features, and architecture boundaries are consistent.")
     return 0
 
 

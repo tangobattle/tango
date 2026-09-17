@@ -32,11 +32,12 @@ and server requirements; see [its build instructions](tango-lite-web/README.md).
 | --- | --- | --- |
 | Desktop app | `tango` | Application state, tabs, native input/audio/video, updates |
 | Browser app | `tango-lite-web` | Browser UI, canvas, audio worklet, IndexedDB |
-| Library | `tango-library` | Game registry, ROM/save/patch/replay scanning, shared settings |
-| Sessions | `tango-session` | Single-player, netplay, training, replay drivers and transport |
+| Library | `tango-library` | Game registry, catalogs, shared loadout preparation and stats persistence |
+| Sessions | `tango-session` | Single-player, optional netplay, training, replay drivers |
 | Match engine | `tango-match` | Backend interfaces, rollback coordination, audio, telemetry |
 | Emulators | `tango-backend-mgba`, `tango-backend-melonds` | GBA and DS implementations |
 | Matchmaking | `tango-lobby`, `tango-net-protocol` | Lobby state and wire messages |
+| Transport / platform | `tango-net`, `tango-platform` | Connections, reconnect, portable tasks and timers |
 | Replays | `tango-replay`, `tango-replay-renderer` | Recording format and video export |
 | Game interface | `tango-gamesupport` | ROM identity, save/editor contracts, engine hooks |
 | Per-game support | `tango-gamesupport-<game>` | Registration and game-specific engine integration |

@@ -1,7 +1,5 @@
 //! Replay storage adapters and recording metadata.
 
-use std::path::Path;
-
 /// Where a match's recording goes.
 ///
 /// The session composes the name — it encodes the timestamp, the
@@ -13,13 +11,6 @@ use std::path::Path;
 pub trait ReplayStore: crate::platform::WasmNotSend + crate::platform::WasmNotSync {
     /// Open a recording. `name` carries no extension and no directory.
     fn create(&self, name: &str) -> std::io::Result<Recording>;
-
-    /// The directory recordings land in, if they land in one. `None`
-    /// for a host with no filesystem — which is also the host with no
-    /// match-stats sidecar to key against it.
-    fn root(&self) -> Option<&Path> {
-        None
-    }
 }
 
 /// An open recording: where the bytes go, and how to find it again.
@@ -33,33 +24,6 @@ pub struct Recording {
     /// filed it under. Surfaced as
     /// [`PvpSession::replay_path`](super::PvpSession::replay_path).
     pub key: std::path::PathBuf,
-}
-
-/// [`ReplayStore`] over a directory: the desktop's, and the behaviour
-/// the live match had built in before the trait existed.
-#[cfg(not(target_arch = "wasm32"))]
-pub struct DirReplayStore(pub std::path::PathBuf);
-
-#[cfg(not(target_arch = "wasm32"))]
-impl ReplayStore for DirReplayStore {
-    fn create(&self, name: &str) -> std::io::Result<Recording> {
-        std::fs::create_dir_all(&self.0)?;
-        let key = self.0.join(format!("{name}.{}", tango_replay::EXTENSION));
-        log::info!("pvp: opening replay file {}", key.display());
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&key)?;
-        Ok(Recording {
-            sink: Box::new(file),
-            key,
-        })
-    }
-
-    fn root(&self) -> Option<&Path> {
-        Some(&self.0)
-    }
 }
 
 /// Open the replay file + write its metadata frame, returning the writer
@@ -79,9 +43,9 @@ pub(super) fn build_replay_writer(
     local_sram: &[u8],
     remote_sram: &[u8],
 ) -> Result<(tango_replay::Writer, std::path::PathBuf), crate::Error> {
-    let link_code = &pre_match.link_code;
-    let local_settings = &pre_match.local_settings;
-    let remote_settings = &pre_match.remote_settings;
+    let link_code = &pre_match.terms.link_code;
+    let local_settings = &pre_match.terms.local_settings;
+    let remote_settings = &pre_match.terms.remote_settings;
     let local_gi = local_settings
         .game_info
         .as_ref()
@@ -162,14 +126,14 @@ pub(super) fn build_replay_writer(
             // re-primes pinned to `metadata.ts`, so recording the same
             // value is what makes playback reproduce the live match. Both
             // peers' replays of one match carry the identical ts.
-            ts: pre_match.match_ts,
+            ts: pre_match.terms.match_ts,
             link_code: link_code.clone(),
             p1_side,
             p2_side,
-            match_type: pre_match.match_type.0 as u32,
-            match_subtype: pre_match.match_type.1 as u32,
+            match_type: pre_match.terms.match_type.0 as u32,
+            match_subtype: pre_match.terms.match_type.1 as u32,
         },
-        pre_match.rng_seed,
+        pre_match.terms.rng_seed,
         [srams[0], srams[1]],
     )?;
     Ok((writer, key))

@@ -69,15 +69,8 @@ impl App {
         let scanners = self.scanners.clone();
         let config = self.config.clone();
         let audio_binder = self.audio_binder.clone();
-        let local_game = self.loadout.game;
-        let local_patch = self.loadout.patch.clone().zip(self.loadout.patch_version.clone());
         iced::Task::perform(
-            async move {
-                let Some(local_game) = local_game else {
-                    return Err(anyhow::anyhow!("no local game selected"));
-                };
-                session::spawn_pvp(scanners, config, audio_binder, local_game, local_patch, pre_match).await
-            },
+            async move { session::spawn_pvp(scanners, config, audio_binder, pre_match).await },
             move |result| Message::PvpSessionBuilt(attempt, std::sync::Arc::new(std::sync::Mutex::new(Some(result)))),
         )
     }
@@ -117,7 +110,7 @@ impl App {
             let roms = self.scanners.roms.read();
             let patches = self.scanners.patches.read();
             matches!(
-                netplay::compat::check(local, remote, &roms, &patches),
+                netplay::check_compatibility(local, remote, &roms, &patches),
                 netplay::compat::Verdict::Compatible
             )
         };
@@ -144,7 +137,7 @@ impl App {
         let verdict = {
             let roms = self.scanners.roms.read();
             let patches = self.scanners.patches.read();
-            netplay::compat::check(local, remote, &roms, &patches)
+            netplay::check_compatibility(local, remote, &roms, &patches)
         };
         let Some((name, version)) = verdict.fetchable() else {
             return iced::Task::none();

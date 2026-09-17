@@ -31,7 +31,6 @@ impl App {
                 let Some(key) = download_key else {
                     return iced::Task::none();
                 };
-                self.downloads.remove(&key);
                 return self.install_patch(key);
             }
             loadout::Effect::SelectionChanged => {
@@ -144,7 +143,7 @@ impl App {
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
-                let save_sram = loaded.editor.sram(loaded);
+                let save_sram = loaded.snapshot_sram();
                 match self.netplay.commit(save_sram) {
                     Some(netplay::Event::MatchReady) => self.start_pvp_handoff(),
                     None => iced::Task::none(),
@@ -162,34 +161,37 @@ impl App {
                 iced::Task::none()
             }
             E::StartSinglePlayer => {
-                let Some(loaded) = self.loaded.as_ref() else {
+                if self.loaded.is_none() {
                     return iced::Task::none();
-                };
-                match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, loaded) {
+                }
+                match session::spawn_singleplayer(
+                    &self.scanners,
+                    &self.config,
+                    &self.audio_binder,
+                    &self.loadout.selection(),
+                ) {
                     Ok(launch) => self.session.install(launch, &self.audio_binder, &self.config),
                     Err(e) => {
-                        // Log-only: the Play button is gated on a fully
-                        // parsed rom + save (`self.loaded`), so what's left
-                        // here is core construction failing — exceptional
-                        // enough that the log is the right home for it.
                         log::error!("singleplayer start failed: {e:#}");
                     }
                 }
                 iced::Task::none()
             }
             E::StartTraining => {
-                // Training runs the *staged* save, so it needs the
-                // editor's copy rather than the file on disk — which is
-                // why it stays on the loaded save.
+                // Snapshot staged edits at the UI boundary. Launch preparation
+                // uses the selected identity, independent of preview assets.
                 let Some(loaded) = self.loaded.as_ref() else {
                     return iced::Task::none();
                 };
-                match session::spawn_training(&self.scanners, &self.config, &self.audio_binder, loaded) {
+                match session::spawn_training(
+                    &self.scanners,
+                    &self.config,
+                    &self.audio_binder,
+                    &self.loadout.selection(),
+                    &loaded.snapshot_sram(),
+                ) {
                     Ok(launch) => self.session.install(launch, &self.audio_binder, &self.config),
                     Err(e) => {
-                        // Log-only, same rationale as StartSinglePlayer: the
-                        // button is gated on a fully parsed rom + save, so
-                        // what's left is core construction failing.
                         log::error!("training start failed: {e:#}");
                     }
                 }

@@ -1,6 +1,6 @@
 //! Netplay state + connection lifecycle: the connection choreography,
 //! settings exchange, ready handshake and match handoff, sitting atop
-//! [`tango_session::net`], which owns the wire protocols and channel
+//! [`tango_net`], which owns the wire protocols and channel
 //! mechanics.
 //!
 //! **The shape.** Bringing a connection up is one linear `async fn`
@@ -38,7 +38,7 @@ pub use connect::connect;
 #[cfg(not(target_arch = "wasm32"))]
 pub use connect::connect_direct;
 pub use connect::Connected;
-pub use tango_session::net::link::{DirectRole, LinkParts, ReconnectRecipe};
+pub use tango_net::link::{DirectRole, LinkParts, ReconnectRecipe};
 
 pub use handshake::ReadyView;
 use handshake::{Handshake, LocalReady, RemoteReady};
@@ -275,7 +275,7 @@ pub struct LobbyState {
     /// pane; its `median()` smooths the per-second jitter so the
     /// frame-delay "suggest" button recommends a stable value rather than
     /// chasing the latest spike.
-    pub latency_counter: tango_session::net::LatencyCounter,
+    pub latency_counter: tango_net::LatencyCounter,
     /// User-picked match type (mode + subtype). Defaults to (0, 0)
     /// = Single. Local-only UI state; gets folded into Settings
     /// on send.
@@ -314,7 +314,7 @@ impl Default for LobbyState {
             remote: None,
             // 5 marks at one Pong/second ≈ a 5 s median window, matching the
             // in-match `PvpSession` latency counter.
-            latency_counter: tango_session::net::LatencyCounter::new(5),
+            latency_counter: tango_net::LatencyCounter::new(5),
             match_type: (0, 0),
             blind_setup: false,
             default_mt_for_family: None,
@@ -345,18 +345,18 @@ impl Default for State {
 struct ConnectionHandles {
     /// Reliable, ordered control/lobby channel sender. Shared by the lobby
     /// pump and (parked, idle) the match.
-    sender: Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
+    sender: Arc<tokio::sync::Mutex<tango_net::Sender>>,
     /// Unreliable, unordered in-match channel sender — idle during the lobby,
     /// handed to the PvP session to carry the live `data::wire` datagrams.
-    in_match_sender: tango_session::net::data::Sender,
+    in_match_sender: tango_net::data::Sender,
     /// Unreliable in-match channel's receive half, parked here the moment the
     /// connection lands (nothing flows on it during the lobby, so — unlike
     /// the reliable receiver — it isn't owned by the pump).
-    in_match_receiver: tango_session::net::data::Receiver,
+    in_match_receiver: tango_net::data::Receiver,
     /// The reliable receiver, sent by the pump on cancel-exit. One oneshot
     /// per session, so a dying pump from a previous session can't deposit a
     /// stale receiver into the next one.
-    post_lobby_rx: tokio::sync::oneshot::Receiver<tango_session::net::Receiver>,
+    post_lobby_rx: tokio::sync::oneshot::Receiver<tango_net::Receiver>,
     /// The peer connection, kept alive for the duration of the session.
     /// Both transports bring one up.
     peer_conn: datachannel_wrapper::PeerConnection,
@@ -596,7 +596,7 @@ impl State {
         };
         let cancel = self.cancel.clone();
         let receiver = connected.receiver;
-        tango_session::platform::spawn(async move {
+        tango_platform::spawn(async move {
             let receiver = lobby::run_pump(receiver, sender, cmd_rx, progress, cancel).await;
             let _ = post_lobby_tx.send(receiver);
         });
@@ -885,7 +885,7 @@ impl State {
                 .take()
                 .map(|mm| ReconnectRecipe::Matchmaking {
                     endpoint: mm.endpoint,
-                    session_id: tango_session::net::link::derive_reconnect_session_id(
+                    session_id: tango_net::link::derive_reconnect_session_id(
                         &rng_seed,
                         &handles.local_dtls_fingerprint,
                         &handles.peer_dtls_fingerprint,
@@ -903,15 +903,17 @@ impl State {
                 recipe,
                 rng_seed,
             },
-            is_offerer: handles.is_offerer,
-            rng_seed,
-            match_ts,
-            local_save_data: local_commit.state.save_data,
-            remote_save_data: peer_state.save_data,
-            local_settings,
-            remote_settings,
-            link_code,
-            match_type: self.lobby.match_type,
+            terms: tango_net::handoff::MatchTerms {
+                is_offerer: handles.is_offerer,
+                rng_seed,
+                match_ts,
+                local_save_data: local_commit.state.save_data,
+                remote_save_data: peer_state.save_data,
+                local_settings,
+                remote_settings,
+                link_code,
+                match_type: self.lobby.match_type,
+            },
         };
         Some(pre_match)
     }
@@ -952,9 +954,9 @@ impl State {
     }
 }
 
-// The matchmaking→session handoff bundle lives beside its consumer in
-// the session crate; re-exported so netplay callers keep their path.
-pub use tango_session::pvp::PreMatchData;
+// The transport owns the handoff contract shared by lobby and session.
+// Re-exported so hosts can consume a completed lobby directly.
+pub use tango_net::handoff::PreMatchData;
 
 /// Does this settings change warrant auto-unready? `true` for
 /// game-info or match-type changes (the user's effectively

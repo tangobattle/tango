@@ -13,6 +13,9 @@ publish = false
 # std implementations are behind the default `native` feature. Builds
 # for native AND wasm32.
 [dependencies]
+tango-match = { path = "../tango-match" }
+tango-net-protocol = { path = "../tango-net-protocol" }
+tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 log.workspace = true
 mailparse.workspace = true
 semver.workspace = true
@@ -51,6 +54,7 @@ walkdir = { workspace = true, optional = true }
 zip = { workspace = true, features = ["aes-crypto", "bzip2", "deflate64", "deflate", "lzma", "time", "zstd", "xz"], optional = true }
 
 [dev-dependencies]
+num-rational.workspace = true
 # The library never writes a package; the patch tests build one to scan,
 # and stand up a real HTTP server to fetch it from.
 tango-patch = { workspace = true, features = ["package", "index", "bundle"] }

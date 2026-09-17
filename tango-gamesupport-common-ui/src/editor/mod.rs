@@ -29,8 +29,8 @@ pub type Assets = dyn crate::dataview::rom::Assets + Send + Sync;
 
 /// Build-legality state used only by the loaded editor. Any tab in
 /// [`error_tabs`](Self::error_tabs) blocks committing until its errors are
-/// resolved. Prepared-save validation is handled by
-/// [`GameSaveEditor::validate_save`] before editor state is constructed.
+/// resolved. Headless validation runs before editor construction;
+/// [`GameSaveEditor::build_warnings`] formats its findings.
 #[derive(Default)]
 pub struct BuildReport {
     pub error_tabs: std::collections::HashSet<Tab>,
@@ -49,11 +49,15 @@ impl BuildReport {
 }
 
 pub trait GameSaveEditor: Send + Sync {
-    /// Validate a prepared save without involving loaded editor state. Games
-    /// with additional rule sets override this; the shared BN rules are the
-    /// default.
-    fn validate_save(&self, save: &Save, assets: &Assets) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
-        crate::build::warnings(save, assets)
+    /// Format structured findings without loading editor state. Games with
+    /// additional findings supply their own warning providers here.
+    fn build_warnings(
+        &self,
+        _save: &Save,
+        assets: &Assets,
+        validation: &crate::dataview::build::Validation,
+    ) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
+        crate::build::warnings_from_validation(&validation.common, assets)
     }
 
     /// The section tabs this game's save editor offers, in display order.

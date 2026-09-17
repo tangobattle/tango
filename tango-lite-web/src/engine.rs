@@ -33,10 +33,9 @@
 //! display will never show, and at 285 combined calls a second that
 //! upload was most of the main thread.
 //!
-//! The session lives in a thread-local rather than a Dioxus signal.
-//! Nothing in it is `Clone`, it is touched 60 times a second, and the UI
-//! wants a handful of numbers off it at ~10Hz — so the UI polls
-//! [`status`] instead of the engine pushing.
+//! A host-owned [`Handle`] retains the session, audio, and scheduler.
+//! Emulation advances at 60Hz; the UI samples [`status`] at about 10Hz
+//! without storing the emulator itself in reactive signals.
 
 use num_traits::ToPrimitive;
 use std::cell::{Cell, RefCell};
@@ -157,23 +156,57 @@ const GOODBYE_GRACE: std::time::Duration = std::time::Duration::from_millis(1500
 /// headroom than any of the pacing paths ask for.
 const MAX_TICKS_PER_PUMP: u32 = 8;
 
-thread_local! {
-    static ENGINE: RefCell<Option<Engine>> = const { RefCell::new(None) };
-    static RAF: RefCell<Option<Closure<dyn FnMut(f64)>>> = const { RefCell::new(None) };
-    /// Whether an animation frame is already scheduled, so the other
-    /// tick sources' pump calls don't queue a second one.
-    static RAF_PENDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// When the last animation frame ran. The fallback sources read it
-    /// to decide whether rAF still owns the clock (see
-    /// [`FALLBACK_AFTER_MS`]).
-    static LAST_FRAME_MS: std::cell::Cell<f64> = const { std::cell::Cell::new(f64::NEG_INFINITY) };
-    /// The hidden-tab heartbeat. Built once and told to start and stop,
-    /// rather than spawned per session: a worker costs a thread to start
-    /// up, and sessions come and go.
-    static TICKER: RefCell<Option<Ticker>> = const { RefCell::new(None) };
-    /// A session that ended by itself, waiting to be collected by the
-    /// UI. See [`take_ended`].
-    static ENDED: Cell<Option<Kind>> = const { Cell::new(None) };
+/// Session ownership and scheduling for one browser host.
+#[derive(Clone)]
+pub struct Handle(Rc<HostState>);
+struct HostState {
+    engine: RefCell<Option<Engine>>,
+    raf: RefCell<Option<Closure<dyn FnMut(f64)>>>,
+    raf_pending: Cell<bool>,
+    raf_id: Cell<Option<i32>>,
+    last_frame_ms: Cell<f64>,
+    ticker: RefCell<Option<Ticker>>,
+    ended: Cell<Option<Kind>>,
+    library: crate::library::Handle,
+    pub audio: crate::audio::Handle,
+}
+impl Handle {
+    pub fn new(library: crate::library::Handle) -> Self {
+        Self(Rc::new(HostState {
+            engine: RefCell::new(None),
+            raf: RefCell::new(None),
+            raf_pending: Cell::new(false),
+            raf_id: Cell::new(None),
+            last_frame_ms: Cell::new(f64::NEG_INFINITY),
+            ticker: RefCell::new(None),
+            ended: Cell::new(None),
+            library,
+            audio: crate::audio::Handle::default(),
+        }))
+    }
+    pub async fn audio_sink(&self) -> Option<Rc<RefCell<crate::audio::Sink>>> {
+        let weak = Rc::downgrade(&self.0);
+        crate::audio::sink(&self.0.audio, move || {
+            if let Some(state) = weak.upgrade() {
+                pump_now(&Handle(state));
+            }
+        })
+        .await
+    }
+}
+impl Drop for Handle {
+    fn drop(&mut self) {
+        if Rc::strong_count(&self.0) == 1 {
+            stop(self);
+        }
+    }
+}
+impl Drop for HostState {
+    fn drop(&mut self) {
+        if let (Some(window), Some(id)) = (web_sys::window(), self.raf_id.get()) {
+            let _ = window.cancel_animation_frame(id);
+        }
+    }
 }
 
 /// The worker whose messages keep a backgrounded session ticking.
@@ -183,7 +216,7 @@ struct Ticker {
 }
 
 impl Ticker {
-    fn new() -> Option<Self> {
+    fn new(handle: &Handle) -> Option<Self> {
         let source = js_sys::Array::of1(&JsValue::from_str(include_str!("../assets/tick-worker.js")));
         let options = web_sys::BlobPropertyBag::new();
         options.set_type("text/javascript");
@@ -195,7 +228,12 @@ impl Ticker {
         let worker = web_sys::Worker::new(&url);
         let _ = web_sys::Url::revoke_object_url(&url);
         let worker = worker.ok()?;
-        let onmessage = Closure::<dyn FnMut(_)>::new(move |_: web_sys::MessageEvent| pump_now());
+        let weak = Rc::downgrade(&handle.0);
+        let onmessage = Closure::<dyn FnMut(_)>::new(move |_: web_sys::MessageEvent| {
+            if let Some(state) = weak.upgrade() {
+                pump_now(&Handle(state));
+            }
+        });
         worker.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
         Some(Self {
             worker,
@@ -211,19 +249,17 @@ impl Ticker {
 }
 
 /// Start or stop the heartbeat, building the worker on first use.
-fn set_ticking(running: bool) {
-    TICKER.with(|t| {
-        let mut slot = t.borrow_mut();
-        if slot.is_none() {
-            if !running {
-                return;
-            }
-            *slot = Ticker::new();
+fn set_ticking(handle: &Handle, running: bool) {
+    let mut slot = handle.0.ticker.borrow_mut();
+    if slot.is_none() {
+        if !running {
+            return;
         }
-        if let Some(ticker) = slot.as_ref() {
-            ticker.set_running(running);
-        }
-    });
+        *slot = Ticker::new(handle);
+    }
+    if let Some(ticker) = slot.as_ref() {
+        ticker.set_running(running);
+    }
 }
 
 /// The concrete driver, kept typed rather than boxed as `dyn Drive`:
@@ -349,6 +385,7 @@ pub struct Status {
 }
 
 struct Engine {
+    library: crate::library::Handle,
     session: Box<dyn Session>,
     /// How this session's screens land on the canvas, fixed at boot —
     /// a session's layout is a property of its mode.
@@ -390,6 +427,7 @@ const SAVE_INTERVAL_MS: f64 = 10_000.0;
 
 /// Install a booted single-player session and start pumping.
 pub fn start_single_player(
+    handle: &Handle,
     session: SinglePlayerSession,
     driver: tango_session::singleplayer::Driver,
     stream: tango_session::audio::Stream,
@@ -397,6 +435,7 @@ pub fn start_single_player(
     save_path: Option<std::path::PathBuf>,
 ) {
     install(
+        handle,
         Box::new(session),
         Driver::SinglePlayer(driver),
         stream,
@@ -408,12 +447,14 @@ pub fn start_single_player(
 
 /// Install a booted, primed live match and start pumping.
 pub fn start_pvp(
+    handle: &Handle,
     session: PvpSession,
     driver: PvpBoot,
     stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
 ) {
     install(
+        handle,
         Box::new(session),
         Driver::Pvp(Some(driver)),
         stream,
@@ -424,6 +465,7 @@ pub fn start_pvp(
 }
 
 fn install(
+    handle: &Handle,
     session: Box<dyn Session>,
     driver: Driver,
     stream: tango_session::audio::Stream,
@@ -431,7 +473,7 @@ fn install(
     kind: Kind,
     save_path: Option<std::path::PathBuf>,
 ) {
-    stop();
+    stop(handle);
     // Whatever the last session left held — a button, the stylus —
     // must not arrive as the new one's first input.
     crate::input::touch_clear();
@@ -447,33 +489,32 @@ fn install(
     // simulation — which the peer experiences as a dead link.
     crate::wakelock::hold();
     let now = now_ms();
-    ENGINE.with(|e| {
-        *e.borrow_mut() = Some(Engine {
-            presented: Presentation::of(session.as_ref()),
-            session,
-            driver,
-            stream: Some(stream),
-            sink,
-            kind,
-            last_ms: now,
-            debt: 0.0,
-            surface: None,
-            fresh: false,
-            prefetch_cost_ms: PREFETCH_COST_GUESS_MS,
-            ctx: None,
-            save_path,
-            last_save_ms: now,
-        })
+    *handle.0.engine.borrow_mut() = Some(Engine {
+        library: handle.0.library.clone(),
+        presented: Presentation::of(session.as_ref()),
+        session,
+        driver,
+        stream: Some(stream),
+        sink,
+        kind,
+        last_ms: now,
+        debt: 0.0,
+        surface: None,
+        fresh: false,
+        prefetch_cost_ms: PREFETCH_COST_GUESS_MS,
+        ctx: None,
+        save_path,
+        last_save_ms: now,
     });
-    schedule_frame();
-    set_ticking(true);
+    schedule_frame(handle);
+    set_ticking(handle, true);
 }
 
 /// Tear the running session down. Idempotent.
-pub fn stop() {
-    set_ticking(false);
+pub fn stop(handle: &Handle) {
+    set_ticking(handle, false);
     crate::wakelock::release();
-    let engine = ENGINE.with(|e| e.borrow_mut().take());
+    let engine = handle.0.engine.borrow_mut().take();
     let Some(mut engine) = engine else { return };
     flush_save(&mut engine);
     // For a match this is the quit announcement: it cancels the token
@@ -497,33 +538,31 @@ pub fn stop() {
     });
 }
 
-pub fn is_running() -> bool {
-    ENGINE.with(|e| e.borrow().is_some())
+pub fn is_running(handle: &Handle) -> bool {
+    handle.0.engine.borrow().is_some()
 }
 
 /// The UI's read-out. `None` when nothing is running.
-pub fn status() -> Option<Status> {
-    ENGINE.with(|e| {
-        let engine = e.borrow();
-        let engine = engine.as_ref()?;
-        let pvp = engine.session.downcast_ref::<PvpSession>();
-        let replay = engine.session.downcast_ref::<ReplaySession>();
-        Some(Status {
-            keys_mask: engine.session.local_game().pvp.keys_mask(),
-            fps: engine.session.local_game().pvp.tps().to_f32().unwrap(),
-            playhead: replay.map(|r| (r.current_tick(), r.total_ticks())),
-            prefetched: replay.map(|r| r.prefetch_progress()).unwrap_or(0),
-            paused: replay.is_some_and(|r| r.is_paused()),
-            kind: engine.kind,
-            ended: engine.session.is_ended(),
-            latency_ms: pvp.and_then(|p| p.latency()).map(|d| d.as_millis() as u32),
-            frame_delay: pvp.map(|p| p.frame_delay()).unwrap_or(0),
-            tps: pvp.map(|p| p.tps().round() as u32).unwrap_or(0),
-            reconnecting: pvp.map(|p| p.is_reconnecting()).unwrap_or(false),
-            priming: priming_of(pvp, replay),
-            local_player_index: pvp.map(|p| p.local_player_index()).unwrap_or(0),
-            opponent: pvp.map(|p| p.remote_nickname.clone()).unwrap_or_default(),
-        })
+pub fn status(handle: &Handle) -> Option<Status> {
+    let engine = handle.0.engine.borrow();
+    let engine = engine.as_ref()?;
+    let pvp = engine.session.downcast_ref::<PvpSession>();
+    let replay = engine.session.downcast_ref::<ReplaySession>();
+    Some(Status {
+        keys_mask: engine.session.local_game().pvp.keys_mask(),
+        fps: engine.session.local_game().pvp.tps().to_f32().unwrap(),
+        playhead: replay.map(|r| (r.current_tick(), r.total_ticks())),
+        prefetched: replay.map(|r| r.prefetch_progress()).unwrap_or(0),
+        paused: replay.is_some_and(|r| r.is_paused()),
+        kind: engine.kind,
+        ended: engine.session.is_ended(),
+        latency_ms: pvp.and_then(|p| p.latency()).map(|d| d.as_millis() as u32),
+        frame_delay: pvp.map(|p| p.frame_delay()).unwrap_or(0),
+        tps: pvp.map(|p| p.tps().round() as u32).unwrap_or(0),
+        reconnecting: pvp.map(|p| p.is_reconnecting()).unwrap_or(false),
+        priming: priming_of(pvp, replay),
+        local_player_index: pvp.map(|p| p.local_player_index()).unwrap_or(0),
+        opponent: pvp.map(|p| p.remote_nickname.clone()).unwrap_or_default(),
     })
 }
 
@@ -548,12 +587,14 @@ fn priming_of(pvp: Option<&PvpSession>, replay: Option<&ReplaySession>) -> Optio
 
 /// Install a replay and start playing it back.
 pub fn start_replay(
+    handle: &Handle,
     session: ReplaySession,
     driver: tango_session::replay::Driver,
     stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
 ) {
     install(
+        handle,
         Box::new(session),
         Driver::Replay(driver),
         stream,
@@ -564,40 +605,36 @@ pub fn start_replay(
 }
 
 /// Replay transport: pause, resume, and jump.
-pub fn set_paused(paused: bool) {
-    with_replay(|replay| replay.set_paused(paused));
+pub fn set_paused(handle: &Handle, paused: bool) {
+    with_replay(handle, |replay| replay.set_paused(paused));
 }
 
-pub fn seek_to(tick: u32) {
+pub fn seek_to(handle: &Handle, tick: u32) {
     // `resume_after` follows what the transport was doing, so scrubbing
     // a paused replay leaves it paused and scrubbing a playing one
     // picks straight back up.
-    with_replay(|replay| {
+    with_replay(handle, |replay| {
         let resume = !replay.is_paused();
         replay.seek_to(tick, resume);
     });
 }
 
-fn with_replay(f: impl FnOnce(&ReplaySession)) {
-    ENGINE.with(|e| {
-        if let Some(engine) = e.borrow().as_ref() {
-            if let Some(replay) = engine.session.downcast_ref::<ReplaySession>() {
-                f(replay);
-            }
+fn with_replay(handle: &Handle, f: impl FnOnce(&ReplaySession)) {
+    if let Some(engine) = handle.0.engine.borrow().as_ref() {
+        if let Some(replay) = engine.session.downcast_ref::<ReplaySession>() {
+            f(replay);
         }
-    });
+    }
 }
 
 /// Live-set the local frame delay from the in-match slider. Purely
 /// local — the peer is neither told nor asked.
-pub fn set_frame_delay(frame_delay: u32) {
-    ENGINE.with(|e| {
-        if let Some(engine) = e.borrow().as_ref() {
-            if let Some(pvp) = engine.session.downcast_ref::<PvpSession>() {
-                pvp.set_frame_delay(frame_delay);
-            }
+pub fn set_frame_delay(handle: &Handle, frame_delay: u32) {
+    if let Some(engine) = handle.0.engine.borrow().as_ref() {
+        if let Some(pvp) = engine.session.downcast_ref::<PvpSession>() {
+            pvp.set_frame_delay(frame_delay);
         }
-    });
+    }
 }
 
 /// Advance the session from one of the fallback tick sources — the
@@ -607,8 +644,8 @@ pub fn set_frame_delay(frame_delay: u32) {
 /// better clock than either of these (it is *the* clock the picture is
 /// sampled on), and having several of them drive the same loop is what
 /// makes motion jitter, so they only take over once it has gone quiet.
-pub fn pump_now() {
-    if now_ms() - LAST_FRAME_MS.with(|t| t.get()) < FALLBACK_AFTER_MS {
+pub fn pump_now(handle: &Handle) {
+    if now_ms() - handle.0.last_frame_ms.get() < FALLBACK_AFTER_MS {
         return;
     }
     // If rAF has stopped but the page is still on screen, this is the
@@ -616,7 +653,7 @@ pub fn pump_now() {
     // running simulation is worse than the cost of painting. A hidden
     // page gets no paint at all, which is the usual case here and the
     // whole reason painting isn't done on every tick.
-    pump(page_visible());
+    pump(handle, page_visible());
 }
 
 fn page_visible() -> bool {
@@ -629,27 +666,27 @@ fn page_visible() -> bool {
 /// Advance the session by however much wall clock has passed, top the
 /// audio ring up, and — on the frame path, and only if a tick actually
 /// produced one — put the new picture up.
-fn pump(on_frame: bool) {
+fn pump(handle: &Handle, on_frame: bool) {
     let now = now_ms();
-    let over = ENGINE.with(|e| {
-        let mut slot = e.borrow_mut();
+    let over = {
+        let mut slot = handle.0.engine.borrow_mut();
         let Some(engine) = slot.as_mut() else {
-            return false;
+            return;
         };
         // Take it out from under the borrow if it's over: teardown drops
         // the session, and with it the cancellation token the network
         // tasks watch, so it wants the cell free.
         !engine.step(now, on_frame)
-    });
+    };
     if over {
         // Record what ended *before* tearing it down, so the UI can
-        // find out afterwards. Watching `status().ended` instead does
+        // find out afterwards. Watching `status(handle).ended` instead does
         // not work: the moment a session is over the pump stops it, and
-        // `status()` is `None` from that instant — a poll fast enough
+        // `status(handle)` is `None` from that instant — a poll fast enough
         // to catch the flag in between is not something to rely on.
-        let kind = ENGINE.with(|e| e.borrow().as_ref().map(|engine| engine.kind));
-        ENDED.with(|c| c.set(kind));
-        stop();
+        let kind = handle.0.engine.borrow().as_ref().map(|engine| engine.kind);
+        handle.0.ended.set(kind);
+        stop(handle);
     }
 }
 
@@ -659,8 +696,8 @@ fn pump(on_frame: bool) {
 /// Only set when a session ends *itself* — a match finishing, a peer
 /// leaving, a dead link. A user quitting already knows where they are
 /// going and clears this on the way out.
-pub fn take_ended() -> Option<Kind> {
-    ENDED.with(|c| c.take())
+pub fn take_ended(handle: &Handle) -> Option<Kind> {
+    handle.0.ended.take()
 }
 
 impl Engine {
@@ -802,7 +839,7 @@ fn flush_save(engine: &mut Engine) {
         log::debug!("not persisting {}: the cart hasn't written a save yet", path.display());
         return;
     }
-    crate::library::write_save(&path, &bytes);
+    crate::library::write_save(&engine.library, &path, &bytes);
 }
 
 /// Re-slice the session's canonical side-by-side composition into the
@@ -850,32 +887,36 @@ fn canvas_context(width: u32, height: u32) -> Option<web_sys::CanvasRenderingCon
 /// `(y offset, width, height)` in canvas pixels — the play screen's
 /// stylus handler maps pointer positions through this. `None` when
 /// nothing is running or the console has no touch screen.
-pub fn touch_rect() -> Option<(u32, u32, u32)> {
-    ENGINE.with(|e| e.borrow().as_ref().and_then(|engine| engine.presented.touch_rect()))
+pub fn touch_rect(handle: &Handle) -> Option<(u32, u32, u32)> {
+    handle
+        .0
+        .engine
+        .borrow()
+        .as_ref()
+        .and_then(|engine| engine.presented.touch_rect())
 }
 
 /// The running session's canvas size, for mapping pointer positions
 /// out of CSS space.
-pub fn canvas_size() -> Option<(u32, u32)> {
-    ENGINE.with(|e| {
-        e.borrow()
-            .as_ref()
-            .map(|engine| (engine.presented.width, engine.presented.height))
-    })
+pub fn canvas_size(handle: &Handle) -> Option<(u32, u32)> {
+    handle
+        .0
+        .engine
+        .borrow()
+        .as_ref()
+        .map(|engine| (engine.presented.width, engine.presented.height))
 }
 
 /// Drop the cached canvas handle. Called when the screen the canvas
 /// lives on is torn down and rebuilt, so the next paint re-resolves
 /// instead of drawing into a detached element.
-pub fn invalidate_canvas() {
-    ENGINE.with(|e| {
-        if let Some(engine) = e.borrow_mut().as_mut() {
-            engine.ctx = None;
-            // The ImageData belongs to the context it was drawn
-            // through; a new canvas gets a new one.
-            engine.surface = None;
-        }
-    });
+pub fn invalidate_canvas(handle: &Handle) {
+    if let Some(engine) = handle.0.engine.borrow_mut().as_mut() {
+        engine.ctx = None;
+        // The ImageData belongs to the context it was drawn
+        // through; a new canvas gets a new one.
+        engine.surface = None;
+    }
 }
 
 fn now_ms() -> f64 {
@@ -887,32 +928,38 @@ fn now_ms() -> f64 {
 
 /// Ask for the next animation frame, installing the callback on first
 /// use. The chain stops when the session does, and `install` restarts it.
-fn schedule_frame() {
-    if RAF_PENDING.with(|p| p.get()) {
+fn schedule_frame(handle: &Handle) {
+    if handle.0.raf_pending.get() {
         return;
     }
-    RAF.with(|r| {
-        let mut slot = r.borrow_mut();
-        if slot.is_none() {
-            *slot = Some(Closure::new(move |_: f64| {
-                RAF_PENDING.with(|p| p.set(false));
-                // Stamped before the pump, not after: this is what the
-                // fallback sources measure against, and it should say
-                // "a frame is happening", not "a frame finished".
-                LAST_FRAME_MS.with(|t| t.set(now_ms()));
-                pump(true);
-                if is_running() {
-                    schedule_frame();
-                }
-            }));
-        }
-        if let (Some(window), Some(callback)) = (web_sys::window(), slot.as_ref()) {
-            if window
-                .request_animation_frame(callback.as_ref().unchecked_ref())
-                .is_ok()
-            {
-                RAF_PENDING.with(|p| p.set(true));
+    let mut slot = handle.0.raf.borrow_mut();
+    if slot.is_none() {
+        let weak = Rc::downgrade(&handle.0);
+        *slot = Some(Closure::new(move |_: f64| {
+            let Some(state) = weak.upgrade() else { return };
+            let owned = Handle(state);
+            let handle = &owned;
+            handle.0.raf_pending.set(false);
+            handle.0.raf_id.set(None);
+            // Fallback pumps measure when a frame starts, not when it finishes.
+            handle.0.last_frame_ms.set(now_ms());
+            pump(handle, true);
+            if is_running(handle) {
+                schedule_frame(handle);
             }
+        }));
+    }
+    if let (Some(window), Some(callback)) = (web_sys::window(), slot.as_ref()) {
+        if let Ok(id) = window.request_animation_frame(callback.as_ref().unchecked_ref()) {
+            handle.0.raf_id.set(Some(id));
+            handle.0.raf_pending.set(true);
         }
-    });
+    }
+}
+
+impl Drop for Ticker {
+    fn drop(&mut self) {
+        self.worker.set_onmessage(None);
+        self.worker.terminate();
+    }
 }

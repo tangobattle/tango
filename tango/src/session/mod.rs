@@ -8,6 +8,7 @@
 //! [`State::install`], which also resets the presentation for the new session.
 
 mod launch;
+mod recording;
 mod runtime;
 pub use launch::{build_playback, spawn_pvp, spawn_singleplayer, spawn_training, Launch};
 

@@ -15,15 +15,15 @@ use super::{DirectRole, Error, Inbound, MatchmakingParams, Progress, Status, PRO
 /// An open, negotiated connection: everything the lobby needs to talk to
 /// the peer, and everything the eventual match needs to take it over.
 pub struct Connected {
-    pub(crate) sender: Arc<tokio::sync::Mutex<tango_session::net::Sender>>,
-    pub(crate) receiver: tango_session::net::Receiver,
+    pub(crate) sender: Arc<tokio::sync::Mutex<tango_net::Sender>>,
+    pub(crate) receiver: tango_net::Receiver,
     /// Unreliable in-match channel's send half. Idle until the match starts,
     /// when it becomes the `Link`'s `InMatchTx` sink.
-    pub(crate) in_match_sender: tango_session::net::data::Sender,
+    pub(crate) in_match_sender: tango_net::data::Sender,
     /// Unreliable in-match channel's receive half. Parked for the PvP handoff
     /// the moment negotiate completes — nothing flows on it during the lobby,
     /// so unlike the reliable receiver it isn't owned by the lobby pump.
-    pub(crate) in_match_receiver: tango_session::net::data::Receiver,
+    pub(crate) in_match_receiver: tango_net::data::Receiver,
     /// The peer connection. Set by both transports; kept alive for the
     /// duration of the session.
     pub(crate) peer_conn: datachannel_wrapper::PeerConnection,
@@ -74,8 +74,8 @@ pub async fn connect(params: MatchmakingParams, cancel: CancellationToken, progr
             // Every channel the session needs, created together up front (same
             // specs the direct path uses — see `net::channel`).
             vec![
-                tango_session::net::channel::control_channel(),
-                tango_session::net::channel::in_match_channel(),
+                tango_net::channel::control_channel(),
+                tango_net::channel::in_match_channel(),
             ],
         )
         .await
@@ -88,8 +88,8 @@ pub async fn connect(params: MatchmakingParams, cancel: CancellationToken, progr
         let connected = connecting.await.map_err(signaling_error)?;
         // Same split + pairing a mid-match reconnect uses, so both bundle a
         // matchmaking connection identically (see [`Channels::from_signaling`]).
-        let channels = tango_session::net::channel::Channels::from_signaling(connected)
-            .map_err(|e| Error::Other(e.to_string()))?;
+        let channels =
+            tango_net::channel::Channels::from_signaling(connected).map_err(|e| Error::Other(e.to_string()))?;
         progress.status(Status::Negotiating);
         negotiate(channels, None).await
     };
@@ -100,7 +100,7 @@ pub async fn connect(params: MatchmakingParams, cancel: CancellationToken, progr
 /// whose SDP both sides fabricate from fixed ICE creds (host listens on a
 /// pinned UDP port; connect dials it), then run the same negotiate
 /// handshake the matchmaking path uses. See
-/// [`tango_session::net::direct_rtc`].
+/// [`tango_net::direct_rtc`].
 ///
 /// Native-only — a browser has no UDP socket of its own to pin.
 #[cfg(not(target_arch = "wasm32"))]
@@ -112,10 +112,10 @@ pub async fn connect_direct(role: DirectRole, cancel: CancellationToken, progres
     let reconnect = Some(role.clone());
     let work = async {
         let channels = match role {
-            DirectRole::Host { port } => tango_session::net::direct_rtc::host(port)
+            DirectRole::Host { port } => tango_net::direct_rtc::host(port)
                 .await
                 .map_err(|e| Error::Other(format!("direct host: {e}")))?,
-            DirectRole::Connect { addr } => tango_session::net::direct_rtc::connect(&addr)
+            DirectRole::Connect { addr } => tango_net::direct_rtc::connect(&addr)
                 .await
                 .map_err(|e| Error::Other(format!("direct connect: {e}")))?,
         };
@@ -129,11 +129,8 @@ pub async fn connect_direct(role: DirectRole, cancel: CancellationToken, progres
 /// the result. `is_offerer` comes from the SDP on the matchmaking path;
 /// on the direct path the role decides it (host = true), which is what
 /// keeps `pick_local_player_index`'s symmetry break asymmetric.
-async fn negotiate(
-    channels: tango_session::net::channel::Channels,
-    reconnect: Option<DirectRole>,
-) -> Result<Connected, Error> {
-    let tango_session::net::channel::Channels {
+async fn negotiate(channels: tango_net::channel::Channels, reconnect: Option<DirectRole>) -> Result<Connected, Error> {
+    let tango_net::channel::Channels {
         control: (mut sender, mut receiver),
         in_match: (in_match_sender, in_match_receiver),
         peer_conn,
@@ -143,7 +140,7 @@ async fn negotiate(
     // The channels were paired when the connection was bundled; the
     // handshake runs on the reliable one. The unreliable in-match channel
     // shares the association and is open by the time the match starts.
-    tango_session::net::negotiate(&mut sender, &mut receiver)
+    tango_net::negotiate(&mut sender, &mut receiver)
         .await
         .map_err(negotiation_error)?;
     let is_offerer = match &reconnect {
@@ -220,8 +217,8 @@ fn signaling_error(e: tango_signaling::Error) -> Error {
 /// routes to a localized template. The three named variants get dedicated
 /// variants; the `Other` catch-all keeps the raw error text so a
 /// transport-level failure is still surfaced (just unlocalized).
-fn negotiation_error(e: tango_session::net::NegotiationError) -> Error {
-    use tango_session::net::NegotiationError as N;
+fn negotiation_error(e: tango_net::NegotiationError) -> Error {
+    use tango_net::NegotiationError as N;
     match e {
         N::ExpectedHello => Error::NegotiateExpectedHello,
         N::RemoteProtocolVersionTooOld => Error::NegotiateVersionTooOld,

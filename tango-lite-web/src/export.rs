@@ -79,34 +79,39 @@ pub fn clear() {
     }
 }
 
-fn set(state: Option<State>) {
+fn set(library: &crate::library::Handle, state: Option<State>) {
     STATE.with(|s| *s.borrow_mut() = state);
-    crate::library::touch();
+    crate::library::touch(library);
 }
 
 /// Render the recording at `path` and hand the result to a download.
-pub async fn run(path: std::path::PathBuf, name: String) {
+pub async fn run(library: crate::library::Handle, path: std::path::PathBuf, name: String) {
     if is_running() {
         return;
     }
-    set(Some(State::Rendering { done: 0, total: 1 }));
+    set(&library, Some(State::Rendering { done: 0, total: 1 }));
     let canceller = Canceller::new();
     CANCELLER.with(|c| *c.borrow_mut() = Some(canceller.clone()));
 
-    match render(&path, &name, &canceller).await {
-        Ok(()) => set(None),
-        Err(_) if canceller.is_cancelled() => set(None),
+    match render(&library, &path, &name, &canceller).await {
+        Ok(()) => set(&library, None),
+        Err(_) if canceller.is_cancelled() => set(&library, None),
         Err(e) => {
             log::warn!("export {}: {e}", path.display());
-            set(Some(State::Failed(e)));
+            set(&library, Some(State::Failed(e)));
         }
     }
     CANCELLER.with(|c| *c.borrow_mut() = None);
 }
 
-async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Result<(), String> {
-    let replay = crate::library::read_replay(path)?;
-    let (games, roms) = crate::playback::resolve(&replay)?;
+async fn render(
+    library: &crate::library::Handle,
+    path: &std::path::Path,
+    name: &str,
+    canceller: &Canceller,
+) -> Result<(), String> {
+    let replay = crate::library::read_replay(library, path)?;
+    let (games, roms) = crate::playback::resolve(library, &replay)?;
     let local_player = replay.local_player_index as usize;
 
     // The replay's input stream is already absolute pair order — just
@@ -180,8 +185,8 @@ async fn render(path: &std::path::Path, name: &str, canceller: &Canceller) -> Re
 
     loop {
         match render.pump(SLICE_TICKS).map_err(|e| e.to_string())? {
-            Progress::Rendering { done, total } => set(Some(State::Rendering { done, total })),
-            Progress::Flushing => set(Some(State::Flushing)),
+            Progress::Rendering { done, total } => set(&library, Some(State::Rendering { done, total })),
+            Progress::Flushing => set(&library, Some(State::Flushing)),
             Progress::Done(writer) => {
                 let extension = match tango_replay_renderer::container(SCALE.is_none()) {
                     encoder_facade::Container::Mp4 => "mp4",

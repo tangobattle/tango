@@ -23,17 +23,13 @@
 //! When it would, the missing package is a [`Verdict::MissingPatch`] the
 //! app resolves by fetching it, rather than a dead end.
 
-use tango_library::patch::Catalog;
 use tango_net_protocol::control as protocol;
 
-/// Resolve the netplay tag of a `protocol::GameInfo` (what we receive
-/// from the peer) against the catalog. `None` when the patch is one the
-/// catalog has never heard of — neither installed nor indexed — which
-/// reads as "can't vouch for this".
-pub fn tag_from_game_info(g: &protocol::GameInfo, catalog: &Catalog) -> Option<tango_patch::Tag> {
-    let game =
-        tango_library::game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1)?;
-    catalog.tag(game, g.patch.as_ref().map(|p| (p.name.as_str(), &p.version)))
+/// Resolved local availability. The host obtains these facts from its catalog.
+pub struct Facts {
+    pub remote_rom_available: bool,
+    pub matching_tags: bool,
+    pub missing_patch: Option<(String, semver::Version)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,36 +64,16 @@ pub enum Verdict {
     DifferentMatchTypes,
 }
 
-/// Are these two peers ready to play together? `roms` is the local ROM
-/// scanner's map, for the possession check (see the module docs).
-pub fn check(
-    local: &protocol::Settings,
-    remote: &protocol::Settings,
-    roms: &std::collections::HashMap<tango_library::rom::GameRef, Vec<u8>>,
-    catalog: &Catalog,
-) -> Verdict {
+/// Are these peers ready to play together, given the host's availability facts?
+pub fn check(local: &protocol::Settings, remote: &protocol::Settings, facts: Facts) -> Verdict {
     let (Some(local_gi), Some(remote_gi)) = (local.game_info.as_ref(), remote.game_info.as_ref()) else {
         return Verdict::MissingGame;
     };
 
-    // The match runs the peer's game locally (their patch is applied to
-    // our copy of their rom at spawn), so their rom must be scanned. An
-    // unknown family/variant reads as "not installed" too.
-    let Some(remote_game) = tango_library::game::find_by_family_and_variant(
-        remote_gi.family_and_variant.0.as_str(),
-        remote_gi.family_and_variant.1,
-    ) else {
-        return Verdict::MissingRom;
-    };
-    if !roms.contains_key(&remote_game) {
+    if !facts.remote_rom_available {
         return Verdict::MissingRom;
     }
-
-    // Identity before possession-of-patch: there's no point fetching a
-    // package for a matchup that wouldn't be playable anyway.
-    let local_tag = tag_from_game_info(local_gi, catalog);
-    let remote_tag = tag_from_game_info(remote_gi, catalog);
-    if local_tag.is_none() || remote_tag.is_none() || local_tag != remote_tag {
+    if !facts.matching_tags {
         return Verdict::DifferentVersions;
     }
 
@@ -112,8 +88,8 @@ pub fn check(
         std::cmp::Ordering::Equal => {}
     }
 
-    if let Some(missing) = missing_patch(local, remote, catalog) {
-        return missing;
+    if let Some((name, version)) = facts.missing_patch {
+        return Verdict::MissingPatch { name, version };
     }
 
     if local.match_type != remote.match_type {
@@ -123,20 +99,6 @@ pub fn check(
     Verdict::Compatible
 }
 
-/// The first patch either side needs that isn't installed here. Both
-/// sides matter: we apply our own patch to run our game, and the peer's
-/// to run theirs in the shadow core.
-fn missing_patch(local: &protocol::Settings, remote: &protocol::Settings, catalog: &Catalog) -> Option<Verdict> {
-    [local, remote]
-        .iter()
-        .filter_map(|s| s.game_info.as_ref()?.patch.as_ref())
-        .find(|p| !catalog.is_installed(&p.name, &p.version))
-        .map(|p| Verdict::MissingPatch {
-            name: p.name.clone(),
-            version: p.version.clone(),
-        })
-}
-
 impl Verdict {
     /// Is this a state the app can clear on its own by downloading?
     pub fn fetchable(&self) -> Option<(&str, &semver::Version)> {
@@ -144,5 +106,79 @@ impl Verdict {
             Verdict::MissingPatch { name, version } => Some((name.as_str(), version)),
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn settings() -> protocol::Settings {
+        protocol::Settings {
+            nickname: String::new(),
+            match_type: (0, 0),
+            blind_setup: false,
+            game_info: Some(protocol::GameInfo {
+                family_and_variant: ("example".into(), 0),
+                patch: None,
+                sim_version: 3,
+            }),
+        }
+    }
+    fn facts() -> Facts {
+        Facts {
+            remote_rom_available: true,
+            matching_tags: true,
+            missing_patch: None,
+        }
+    }
+    #[test]
+    fn compatibility_uses_resolved_facts_without_a_registry_or_roms() {
+        let local = settings();
+        let mut remote = settings();
+        assert_eq!(check(&local, &remote, facts()), Verdict::Compatible);
+        assert_eq!(
+            check(
+                &local,
+                &remote,
+                Facts {
+                    remote_rom_available: false,
+                    ..facts()
+                }
+            ),
+            Verdict::MissingRom
+        );
+        let missing = Some(("patch".into(), semver::Version::new(1, 0, 0)));
+        assert_eq!(
+            check(
+                &local,
+                &remote,
+                Facts {
+                    matching_tags: false,
+                    missing_patch: missing.clone(),
+                    ..facts()
+                }
+            ),
+            Verdict::DifferentVersions
+        );
+        assert!(matches!(
+            check(
+                &local,
+                &remote,
+                Facts {
+                    missing_patch: missing,
+                    ..facts()
+                }
+            ),
+            Verdict::MissingPatch { .. }
+        ));
+        remote.game_info.as_mut().unwrap().sim_version = 2;
+        assert_eq!(check(&local, &remote, facts()), Verdict::SimVersionTooOld);
+        remote.game_info.as_mut().unwrap().sim_version = 4;
+        assert_eq!(check(&local, &remote, facts()), Verdict::SimVersionTooNew);
+        remote.game_info.as_mut().unwrap().sim_version = 3;
+        remote.match_type = (1, 0);
+        assert_eq!(check(&local, &remote, facts()), Verdict::DifferentMatchTypes);
+        remote.game_info = None;
+        assert_eq!(check(&local, &remote, facts()), Verdict::MissingGame);
     }
 }

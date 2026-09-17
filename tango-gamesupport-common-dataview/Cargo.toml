@@ -10,6 +10,7 @@ license = "GPL-3.0-or-later"
 # below this crate.
 
 [dependencies]
+tango-patch = { workspace = true, features = ["package", "index"] }
 tango-gamesupport = { path = "../tango-gamesupport" }
 bytemuck = { workspace = true, features = ["derive", "const_zeroed"] }
 byteorder.workspace = true

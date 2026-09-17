@@ -388,11 +388,17 @@ pub fn warnings(
     save: &crate::editor::Save,
     assets: &crate::editor::Assets,
 ) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
-    let violations = crate::dataview::build::violations(save, assets);
+    warnings_from_validation(&crate::dataview::build::validate(save, assets).common, assets)
+}
+
+pub fn warnings_from_validation(
+    violations: &[RawBuildViolation],
+    assets: &crate::editor::Assets,
+) -> Vec<tango_gamesupport::OpaqueBuildWarnings> {
     if violations.is_empty() {
         vec![]
     } else {
-        vec![std::sync::Arc::new(Warnings::new(violations, assets)) as tango_gamesupport::OpaqueBuildWarnings]
+        vec![std::sync::Arc::new(Warnings::new(violations.to_vec(), assets)) as tango_gamesupport::OpaqueBuildWarnings]
     }
 }
 

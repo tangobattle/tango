@@ -40,6 +40,7 @@ pub fn Link(
 
 #[component]
 fn Dial(snapshot: Snapshot, loadout: ReadSignal<Loadout>, nickname: Signal<String>, code: Signal<String>) -> Element {
+    let host: crate::host::Context = use_context();
     let ready_to_dial = loadout().is_playable() && !code().trim().is_empty();
 
     rsx! {
@@ -104,10 +105,10 @@ fn Dial(snapshot: Snapshot, loadout: ReadSignal<Loadout>, nickname: Signal<Strin
                 // audio graph, so the context is unsuspended and the
                 // worklet module is loaded well before the match starts.
                 spawn(async move {
-                    let _ = crate::audio::sink().await;
+                    let _ = host().engine.audio_sink().await;
                 });
-                crate::link::set_loadout(loadout());
-                crate::link::connect(code().trim().to_string(), nickname());
+                crate::link::set_loadout(&host().link, loadout());
+                crate::link::connect(&host().link, code().trim().to_string(), nickname());
             },
             "Connect"
         }
@@ -116,6 +117,7 @@ fn Dial(snapshot: Snapshot, loadout: ReadSignal<Loadout>, nickname: Signal<Strin
 
 #[component]
 fn Waiting(snapshot: Snapshot, waiting_for_opponent: bool) -> Element {
+    let host: crate::host::Context = use_context();
     let message = if waiting_for_opponent {
         "Waiting for your opponent to join…"
     } else {
@@ -129,7 +131,7 @@ fn Waiting(snapshot: Snapshot, waiting_for_opponent: bool) -> Element {
         }
         button {
             class: "btn wide danger",
-            onclick: move |_| crate::link::disconnect(),
+            onclick: move |_| crate::link::disconnect(&host().link),
             "Cancel"
         }
     }
@@ -137,6 +139,7 @@ fn Waiting(snapshot: Snapshot, waiting_for_opponent: bool) -> Element {
 
 #[component]
 fn Lobby(snapshot: Snapshot, loadout: ReadSignal<Loadout>) -> Element {
+    let host: crate::host::Context = use_context();
     let compatible = snapshot.verdict == Some(Verdict::Compatible);
     let mine = loadout();
     let my_game = mine
@@ -213,14 +216,14 @@ fn Lobby(snapshot: Snapshot, loadout: ReadSignal<Loadout>) -> Element {
             button {
                 class: if snapshot.local_ready { "btn wide" } else { "btn primary wide" },
                 disabled: !compatible && !snapshot.local_ready,
-                onclick: move |_| crate::link::set_ready(!snapshot.local_ready),
+                onclick: move |_| crate::link::set_ready(&host().link, !snapshot.local_ready),
                 if snapshot.local_ready { "Cancel ready" } else { "Ready" }
             }
         }
 
         button {
             class: "btn wide danger",
-            onclick: move |_| crate::link::disconnect(),
+            onclick: move |_| crate::link::disconnect(&host().link),
             "Leave"
         }
     }
@@ -260,6 +263,7 @@ fn VerdictLine(verdict: Verdict) -> Element {
 /// loadout.
 #[component]
 fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
+    let host: crate::host::Context = use_context();
     let Some(game) = loadout().game else {
         return rsx! {};
     };
@@ -284,7 +288,7 @@ fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
                         key: "{mode}-{subtype}",
                         class: "item",
                         "aria-selected": "{selected == (mode, subtype)}",
-                        onclick: move |_| crate::link::set_match_type((mode, subtype)),
+                        onclick: move |_| crate::link::set_match_type(&host().link, (mode, subtype)),
                         span { class: "grow title", "{crate::lang::match_type_name(game, mode, subtype)}" }
                     }
                 }

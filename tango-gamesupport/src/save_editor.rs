@@ -10,6 +10,7 @@
 //! over its per-game interface). The library registry pairs enabled games
 //! with these editors; the core Game and Family types stay UI-independent.
 
+use crate::{AppliedPatch, PreparedSave};
 use unic_langid::LanguageIdentifier;
 
 /// A complete opponent-facing warning report. Implementations retain their
@@ -21,16 +22,6 @@ pub trait BuildWarnings: std::fmt::Debug + Send + Sync {
 
 /// Type-erased warning report retained by the game-agnostic host.
 pub type OpaqueBuildWarnings = std::sync::Arc<dyn BuildWarnings>;
-
-/// A patch applied on top of a ROM, as the save UI needs to know it:
-/// its identity plus the exact ROM's object from `[rom_overrides]`
-/// (charset, display-name, and chip-legality overrides).
-#[derive(Clone)]
-pub struct AppliedPatch {
-    pub name: String,
-    pub version: semver::Version,
-    pub rom_overrides: tango_patch::Overrides,
-}
 
 /// One chip as [`LoadedSave::chips`] carries it: display name and
 /// pre-baked icon, each `None` when the game has none for that id.
@@ -59,16 +50,8 @@ pub trait SaveEditorState: std::any::Any + Send + Sync {}
 /// The private UI layer's loaded bundle (model + baked art), as held
 /// behind [`LoadedSave::payload`]. Opaque by design; only that layer
 /// implements and reads it.
-pub trait LoadedSavePayload: std::any::Any + Send + Sync {}
-
-/// A parsed save plus the effective assets derived from its ROM and patch,
-/// prepared before either validation or presentation is involved.
-pub struct PreparedSave {
-    pub game: crate::GameRef,
-    pub save_path: std::path::PathBuf,
-    pub patch: Option<AppliedPatch>,
-    pub save: crate::BoxedSave,
-    pub assets: crate::BoxedAssets,
+pub trait LoadedSavePayload: std::any::Any + Send + Sync {
+    fn snapshot_sram(&self) -> Vec<u8>;
 }
 
 /// A loaded save, ready to render: the game-agnostic facts the app
@@ -129,9 +112,12 @@ pub enum SaveEditorEvent {
 /// Validates and loads prepared saves, then renders and updates the resulting
 /// editor data; every concrete model and presentation shape stays private.
 pub trait SaveEditor: Send + Sync {
-    /// Validate an already-prepared save without constructing editor state or
-    /// presentation assets.
-    fn validate_save(&self, prepared: &PreparedSave) -> Option<crate::OpaqueBuildWarnings>;
+    /// Format headless validation findings without constructing editor state or art.
+    fn build_warnings(
+        &self,
+        prepared: &PreparedSave,
+        validation: &dyn crate::Validation,
+    ) -> Option<crate::OpaqueBuildWarnings>;
 
     /// Decorate an already-prepared save model with renderable state and art.
     fn load(&'static self, prepared: PreparedSave) -> LoadedSave;
@@ -165,10 +151,6 @@ pub trait SaveEditor: Send + Sync {
         Option<SaveEditorEvent>,
     );
 
-    /// Serialize the current in-memory save (staged edits included) —
-    /// what a netplay commitment or session launch runs on.
-    fn sram(&self, data: &LoadedSave) -> Vec<u8>;
-
     /// Carry where the view was looking — the open tab, the sort
     /// preferences — from a state built for this same save onto a
     /// freshly built one.
@@ -184,4 +166,11 @@ pub trait SaveEditor: Send + Sync {
     /// first loaded. Hosts call this when an already-loaded save becomes the
     /// active view again (for example, switching replay participants).
     fn restart_view_entrance(&self, _state: &mut dyn SaveEditorState) {}
+}
+
+impl LoadedSave {
+    /// A checksum-correct snapshot, including staged edits, without committing them.
+    pub fn snapshot_sram(&self) -> Vec<u8> {
+        self.payload.snapshot_sram()
+    }
 }

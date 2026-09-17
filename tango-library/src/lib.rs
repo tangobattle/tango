@@ -22,12 +22,14 @@ pub mod config;
 pub mod game;
 pub mod http;
 pub mod lang;
+pub mod loadout;
 pub mod marker;
 pub mod patch;
 pub mod replays;
 pub mod rom;
 pub mod save;
 pub mod scanner;
+pub mod stats;
 pub mod storage;
 
 // Steam discovery: no meaning in a browser, and it pulls in steamlocate.
@@ -35,3 +37,6 @@ pub mod storage;
 pub mod bnlc;
 
 pub use storage::Storage;
+
+#[cfg(test)]
+mod test_support;

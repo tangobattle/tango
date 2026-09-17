@@ -40,10 +40,9 @@ pub(super) struct DriveContext {
     pub(super) in_match: crate::net::InMatchTx,
     pub(super) replay_writer: Option<tango_replay::Writer>,
     pub(super) stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
-    /// Where this match's stats sidecar goes. Native-only: the cache is
-    /// a file next to the replay, and a browser has no such place.
-    #[cfg(not(target_arch = "wasm32"))]
-    pub(super) stats_path: Option<std::path::PathBuf>,
+    /// Recording identity and the host's optional statistics destination.
+    pub(super) stats_key: Option<std::path::PathBuf>,
+    pub(super) stats_sink: Option<Arc<dyn crate::stats::StatsSink>>,
     pub(super) tps_counter: Arc<Mutex<TpsCounter>>,
     pub(super) screen: Arc<crate::Framebuffer>,
     pub(super) wake: Arc<tokio::sync::Notify>,
@@ -502,10 +501,9 @@ impl PvpDriver {
             // absent), and writing the sidecar here is what spares the
             // Replays tab a full re-simulation of an aborted match — the
             // telemetry it would recover was already collected live.
-            #[cfg(not(target_arch = "wasm32"))]
-            if let Some(stats_path) = self.ctx.stats_path.as_ref() {
+            if let (Some(sink), Some(key)) = (self.ctx.stats_sink.as_ref(), self.ctx.stats_key.as_ref()) {
                 let snapshot = self.ctx.stats.lock().unwrap().snapshot();
-                if let Err(e) = crate::stats::write_match_stats(stats_path, &snapshot) {
+                if let Err(e) = sink.record(key, &snapshot) {
                     log::warn!("failed to write replay stats cache entry: {e}");
                 }
             }

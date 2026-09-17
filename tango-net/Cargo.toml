@@ -1,0 +1,27 @@
+[package]
+name = "tango-net"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+[dependencies]
+async-trait.workspace = true
+datachannel-wrapper.workspace = true
+futures.workspace = true
+log.workspace = true
+rennet.workspace = true
+tango-platform = { path = "../tango-platform" }
+tango-net-protocol = { path = "../tango-net-protocol" }
+tango-signaling.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync", "macros"] }
+tokio-util.workspace = true
+web-time.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "time"] }
+tokio-util = { workspace = true, features = ["rt"] }
+
+[lints]
+workspace = true

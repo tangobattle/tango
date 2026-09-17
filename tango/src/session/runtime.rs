@@ -233,9 +233,6 @@ pub(super) fn run_prefetch_pass(worker: replay::PrefetchWorker) {
     }
     let Some(stats) = worker.finished() else { return };
     if let Some(job) = worker.stats_job() {
-        if let Err(e) = tango_session::stats::write_match_stats(&job.stats_file, &stats) {
-            log::warn!("prefetch stats cache write failed: {e:?}");
-        }
         *job.done.lock().unwrap() = Some(stats);
     }
 }

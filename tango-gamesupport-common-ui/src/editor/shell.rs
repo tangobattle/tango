@@ -19,21 +19,13 @@ use unic_langid::LanguageIdentifier;
 /// behind them, recovered by the upcast helpers below.
 pub struct SaveEditorShell<G>(pub G);
 
-/// Serialize a save for a session without mutating the editor's staged copy.
-///
-/// Edits are applied to that copy as they happen, while its checksum is only
-/// rebuilt when the user saves. A match can start before then, so session
-/// snapshots must repair a clone rather than serializing the checksum-stale
-/// editor value (or implicitly committing it to disk).
-fn session_sram(save: &(dyn crate::dataview::save::Save + Send + Sync)) -> Vec<u8> {
-    let mut snapshot = save.clone_box();
-    snapshot.rebuild_checksum();
-    snapshot.to_sram_dump()
-}
-
 impl tango_gamesupport::SaveEditorMessage for Action {}
 impl tango_gamesupport::SaveEditorState for State {}
-impl tango_gamesupport::LoadedSavePayload for OpenSave {}
+impl tango_gamesupport::LoadedSavePayload for OpenSave {
+    fn snapshot_sram(&self) -> Vec<u8> {
+        crate::model::session_sram(self.save.as_ref())
+    }
+}
 
 fn view_state(state: &dyn tango_gamesupport::SaveEditorState) -> &State {
     (state as &dyn std::any::Any)
@@ -61,13 +53,17 @@ impl tango_gamesupport::BuildWarnings for Warnings {
 }
 
 impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorShell<G> {
-    fn validate_save(
+    fn build_warnings(
         &self,
         prepared: &tango_gamesupport::PreparedSave,
+        validation: &dyn tango_gamesupport::Validation,
     ) -> Option<tango_gamesupport::OpaqueBuildWarnings> {
         let save = crate::dataview::save_ref(prepared.save.as_ref());
         let assets = crate::dataview::assets_ref(prepared.assets.as_ref());
-        let warnings = self.0.validate_save(save, assets);
+        let validation = (validation as &dyn std::any::Any)
+            .downcast_ref::<crate::dataview::build::Validation>()
+            .expect("validation must belong to the dataview model");
+        let warnings = self.0.build_warnings(save, assets, validation);
         (!warnings.is_empty())
             .then(|| std::sync::Arc::new(Warnings(warnings)) as tango_gamesupport::OpaqueBuildWarnings)
     }
@@ -175,55 +171,5 @@ impl<G: GameSaveEditor + 'static> tango_gamesupport::SaveEditor for SaveEditorSh
 
     fn restart_view_entrance(&self, state: &mut dyn tango_gamesupport::SaveEditorState) {
         view_state_mut(state).restart_entrance();
-    }
-
-    /// What a session started from here runs on — netplay's committed
-    /// save and training's alike. The file's own bytes, whole: a file
-    /// holding several saves says which one is played in those bytes
-    /// (BN5DS stamps the picked file as the cartridge's most recently
-    /// saved one), never beside them. Rebuild the checksum on a clone:
-    /// staged edits deliberately leave the editor's checksum stale until
-    /// Save, but starting a match must still produce valid SRAM without
-    /// committing those edits to disk.
-    fn sram(&self, data: &LoadedSave) -> Vec<u8> {
-        session_sram(loaded::open(data).save.as_ref())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::session_sram;
-    use crate::dataview::save::Save as _;
-    use std::borrow::Cow;
-
-    #[derive(Clone)]
-    struct TestSave {
-        value: u8,
-        checksum: u8,
-    }
-
-    impl crate::dataview::save::Save for TestSave {
-        fn to_sram_dump(&self) -> Vec<u8> {
-            vec![self.value, self.checksum]
-        }
-
-        fn as_raw_wram(&self) -> Cow<'_, [u8]> {
-            Cow::Owned(self.to_sram_dump())
-        }
-
-        fn rebuild_checksum(&mut self) {
-            self.checksum = self.value;
-        }
-    }
-
-    #[test]
-    fn session_sram_repairs_a_clone_without_committing_the_editor_copy() {
-        let staged = TestSave {
-            value: 0x42,
-            checksum: 0x11,
-        };
-
-        assert_eq!(session_sram(&staged), vec![0x42, 0x42]);
-        assert_eq!(staged.to_sram_dump(), vec![0x42, 0x11]);
     }
 }

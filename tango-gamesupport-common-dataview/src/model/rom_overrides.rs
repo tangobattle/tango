@@ -12,7 +12,7 @@ use tango_patch::overrides::{ChipOverride, NavicustPartOverride, PatchCard56Over
 /// the two id's that record it in tens.
 fn render_effect_name(
     parts: &[tango_patch::overrides::TemplatePart],
-    effect: &crate::dataview::rom::PatchCard56Effect,
+    effect: &crate::rom::PatchCard56Effect,
 ) -> String {
     parts
         .iter()
@@ -33,23 +33,23 @@ fn render_effect_name(
 }
 
 pub struct OverridenAssets {
-    assets: Box<dyn crate::dataview::rom::Assets + Send + Sync>,
+    assets: Box<dyn crate::rom::Assets + Send + Sync>,
     overrides: tango_patch::Overrides,
 }
 
 impl OverridenAssets {
-    pub fn new(assets: Box<dyn crate::dataview::rom::Assets + Send + Sync>, overrides: tango_patch::Overrides) -> Self {
+    pub fn new(assets: Box<dyn crate::rom::Assets + Send + Sync>, overrides: tango_patch::Overrides) -> Self {
         Self { assets, overrides }
     }
 }
 
 pub struct OverridenChip<'a> {
-    chip: Box<dyn crate::dataview::rom::Chip + 'a>,
+    chip: Box<dyn crate::rom::Chip + 'a>,
     id: usize,
     overrides: Option<&'a Vec<ChipOverride>>,
 }
 
-impl<'a> crate::dataview::rom::Chip for OverridenChip<'a> {
+impl<'a> crate::rom::Chip for OverridenChip<'a> {
     fn name(&self) -> Option<String> {
         self.overrides
             .and_then(|v| v.get(self.id).and_then(|v| v.name.clone()))
@@ -72,7 +72,7 @@ impl<'a> crate::dataview::rom::Chip for OverridenChip<'a> {
     fn element(&self) -> usize {
         self.chip.element()
     }
-    fn class(&self) -> crate::dataview::rom::ChipClass {
+    fn class(&self) -> crate::rom::ChipClass {
         self.chip.class()
     }
     fn dark(&self) -> bool {
@@ -90,12 +90,12 @@ impl<'a> crate::dataview::rom::Chip for OverridenChip<'a> {
 }
 
 pub struct OverridenNavicustPart<'a> {
-    navicust_part: Box<dyn crate::dataview::rom::NavicustPart + 'a>,
+    navicust_part: Box<dyn crate::rom::NavicustPart + 'a>,
     id: usize,
     overrides: Option<&'a Vec<NavicustPartOverride>>,
 }
 
-impl<'a> crate::dataview::rom::NavicustPart for OverridenNavicustPart<'a> {
+impl<'a> crate::rom::NavicustPart for OverridenNavicustPart<'a> {
     fn name(&self) -> Option<String> {
         self.overrides
             .and_then(|v| v.get(self.id).and_then(|v| v.name.clone()))
@@ -106,28 +106,28 @@ impl<'a> crate::dataview::rom::NavicustPart for OverridenNavicustPart<'a> {
             .and_then(|v| v.get(self.id).and_then(|v| v.description.clone()))
             .or_else(|| self.navicust_part.description())
     }
-    fn color(&self) -> Option<crate::dataview::rom::NavicustPartColor> {
+    fn color(&self) -> Option<crate::rom::NavicustPartColor> {
         self.navicust_part.color()
     }
     fn is_solid(&self) -> bool {
         self.navicust_part.is_solid()
     }
-    fn compressed_bitmap(&self) -> Option<crate::dataview::rom::NavicustBitmap> {
+    fn compressed_bitmap(&self) -> Option<crate::rom::NavicustBitmap> {
         self.navicust_part.compressed_bitmap()
     }
-    fn uncompressed_bitmap(&self) -> crate::dataview::rom::NavicustBitmap {
+    fn uncompressed_bitmap(&self) -> crate::rom::NavicustBitmap {
         self.navicust_part.uncompressed_bitmap()
     }
 }
 
 pub struct OverridenPatchCard56<'a> {
-    patch_card56: Box<dyn crate::dataview::rom::PatchCard56 + 'a>,
+    patch_card56: Box<dyn crate::rom::PatchCard56 + 'a>,
     id: usize,
     overrides: Option<&'a Vec<PatchCard56Override>>,
     effect_overrides: Option<&'a Vec<tango_patch::overrides::PatchCard56EffectOverride>>,
 }
 
-impl<'a> crate::dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
+impl<'a> crate::rom::PatchCard56 for OverridenPatchCard56<'a> {
     fn name(&self) -> Option<String> {
         self.overrides
             .and_then(|v| v.get(self.id).and_then(|v| v.name.clone()))
@@ -136,11 +136,11 @@ impl<'a> crate::dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
     fn mb(&self) -> u8 {
         self.patch_card56.mb()
     }
-    fn effects(&self) -> Vec<crate::dataview::rom::PatchCard56Effect> {
+    fn effects(&self) -> Vec<crate::rom::PatchCard56Effect> {
         self.patch_card56
             .effects()
             .into_iter()
-            .map(|e| crate::dataview::rom::PatchCard56Effect {
+            .map(|e| crate::rom::PatchCard56Effect {
                 name: self
                     .effect_overrides
                     .and_then(|v| v.get(e.id).and_then(|v| v.name_template.as_ref()))
@@ -152,7 +152,7 @@ impl<'a> crate::dataview::rom::PatchCard56 for OverridenPatchCard56<'a> {
     }
 }
 
-impl crate::dataview::rom::Assets for OverridenAssets {
+impl crate::rom::Assets for OverridenAssets {
     fn chip_is_legal(&self, id: usize) -> bool {
         chip_is_legal_with_override(
             self.assets.chip_is_legal(id),
@@ -161,13 +161,13 @@ impl crate::dataview::rom::Assets for OverridenAssets {
         )
     }
 
-    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::dataview::rom::Chip + 'a>> {
+    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Chip + 'a>> {
         self.assets.chip(id).map(|chip| {
             Box::new(OverridenChip {
                 chip,
                 id,
                 overrides: self.overrides.chips.as_ref(),
-            }) as Box<dyn crate::dataview::rom::Chip + 'a>
+            }) as Box<dyn crate::rom::Chip + 'a>
         })
     }
     fn num_chips(&self) -> usize {
@@ -176,26 +176,26 @@ impl crate::dataview::rom::Assets for OverridenAssets {
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {
         self.assets.element_icon(id)
     }
-    fn patch_card56<'a>(&'a self, id: usize) -> Option<Box<dyn crate::dataview::rom::PatchCard56 + 'a>> {
+    fn patch_card56<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::PatchCard56 + 'a>> {
         self.assets.patch_card56(id).map(|patch_card56| {
             Box::new(OverridenPatchCard56 {
                 patch_card56,
                 id,
                 overrides: self.overrides.patch_card56s.as_ref(),
                 effect_overrides: self.overrides.patch_card56_effects.as_ref(),
-            }) as Box<dyn crate::dataview::rom::PatchCard56 + 'a>
+            }) as Box<dyn crate::rom::PatchCard56 + 'a>
         })
     }
     fn num_patch_card56s(&self) -> usize {
         self.assets.num_patch_card56s()
     }
-    fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn crate::dataview::rom::NavicustPart + 'a>> {
+    fn navicust_part<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::NavicustPart + 'a>> {
         self.assets.navicust_part(id).map(|navicust_part| {
             Box::new(OverridenNavicustPart {
                 navicust_part,
                 id,
                 overrides: self.overrides.navicust_parts.as_ref(),
-            }) as Box<dyn crate::dataview::rom::NavicustPart + 'a>
+            }) as Box<dyn crate::rom::NavicustPart + 'a>
         })
     }
     fn num_navicust_parts(&self) -> usize {
@@ -208,7 +208,7 @@ impl crate::dataview::rom::Assets for OverridenAssets {
             .and_then(|v| v.get(id).and_then(|v| v.name.clone()))
             .or_else(|| self.assets.style_name(id))
     }
-    fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn crate::dataview::rom::Navi + 'a>> {
+    fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn crate::rom::Navi + 'a>> {
         self.assets.navi(id)
     }
     fn num_navis(&self) -> usize {
@@ -217,7 +217,7 @@ impl crate::dataview::rom::Assets for OverridenAssets {
     fn navi_order(&self) -> &[&[usize]] {
         self.assets.navi_order()
     }
-    fn navicust_layout(&self) -> Option<crate::dataview::rom::NavicustLayout> {
+    fn navicust_layout(&self) -> Option<crate::rom::NavicustLayout> {
         self.assets.navicust_layout()
     }
     fn chips_have_mb(&self) -> bool {

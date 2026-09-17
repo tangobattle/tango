@@ -25,8 +25,11 @@ use tango_library::rom::GameRef;
 /// deliberately not consulted here. Shared with the exporter, which
 /// re-simulates the same match through a different pipeline and so
 /// needs the identical pair.
-pub fn resolve(replay: &tango_replay::Replay) -> Result<([GameRef; 2], [Arc<Vec<u8>>; 2]), String> {
-    let resolved = crate::library::with(|library| {
+pub fn resolve(
+    library: &crate::library::Handle,
+    replay: &tango_replay::Replay,
+) -> Result<([GameRef; 2], [Arc<Vec<u8>>; 2]), String> {
+    let resolved = crate::library::with(library, |library| {
         tango_library::replays::resolve_roms(
             &library.files,
             &library.roms,
@@ -40,11 +43,12 @@ pub fn resolve(replay: &tango_replay::Replay) -> Result<([GameRef; 2], [Arc<Vec<
 }
 
 /// Boot the recording at `path` and hand it to the pump.
-pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
-    let replay = Arc::new(crate::library::read_replay(&path)?);
-    let (games, roms) = resolve(&replay)?;
+pub async fn open(host: &crate::host::Host, path: std::path::PathBuf) -> Result<(), String> {
+    let library = &host.library;
+    let replay = Arc::new(crate::library::read_replay(library, &path)?);
+    let (games, roms) = resolve(library, &replay)?;
 
-    let sink = crate::audio::sink().await;
+    let sink = host.engine.audio_sink().await;
     let (session, workers, stream) = tango_session::replay::ReplaySession::new(
         games,
         roms,
@@ -69,6 +73,6 @@ pub async fn open(path: std::path::PathBuf) -> Result<(), String> {
     // Priming happens on the first ticks, so let the screen change
     // before the main thread goes away for a moment.
     tango_session::platform::sleep(std::time::Duration::from_millis(32)).await;
-    crate::engine::start_replay(session, workers.into_driver(), stream, sink);
+    crate::engine::start_replay(&host.engine, session, workers.into_driver(), stream, sink);
     Ok(())
 }

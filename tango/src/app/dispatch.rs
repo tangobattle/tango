@@ -113,6 +113,13 @@ impl App {
                 iced::Task::batch([task, self.resend_settings_if_lobby()])
             }
             Message::Patches(m) => self.update_patches(m),
+            Message::Download(event) => {
+                if self.downloads.apply(&event) {
+                    self.update_patches(event.message)
+                } else {
+                    iced::Task::none()
+                }
+            }
             Message::DiscordTick => {
                 self.handle_discord_tick();
                 iced::Task::none()

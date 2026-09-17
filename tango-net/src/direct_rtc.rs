@@ -290,12 +290,7 @@ mod skew_ab {
     }
 
     /// One peer's 60Hz tick loop over the raw in-match byte pipe.
-    async fn run_side(
-        mut tx: crate::net::data::Sender,
-        mut rx: crate::net::data::Receiver,
-        ticks: u32,
-        warmup: u32,
-    ) -> Vec<i32> {
+    async fn run_side(mut tx: crate::data::Sender, mut rx: crate::data::Receiver, ticks: u32, warmup: u32) -> Vec<i32> {
         let mut interval = tokio::time::interval(std::time::Duration::from_micros(16_667));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
         let mut tick: u32 = 0;
@@ -395,8 +390,8 @@ mod skew_ab {
             let mut conn_ch = conn_res.expect("connect setup");
             let handshake = async {
                 tokio::try_join!(
-                    crate::net::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
-                    crate::net::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
+                    crate::negotiate(&mut host_ch.control.0, &mut host_ch.control.1),
+                    crate::negotiate(&mut conn_ch.control.0, &mut conn_ch.control.1),
                 )
             };
             crate::platform::timeout(std::time::Duration::from_secs(20), handshake)

@@ -17,12 +17,12 @@ thiserror.workspace = true
 # headless consumers (engine hosts), which then link no
 # UI toolkit.
 iced = { workspace = true, optional = true }
-semver = { workspace = true, optional = true }
-tango-patch = { workspace = true, features = ["package", "index"], optional = true }
+semver.workspace = true
+tango-patch = { workspace = true, features = ["package", "index"] }
 unic-langid = { workspace = true, optional = true }
 
 [features]
-ui = ["dep:iced", "dep:semver", "dep:tango-patch", "dep:unic-langid"]
+ui = ["dep:iced", "dep:unic-langid"]
 
 [lints]
 workspace = true

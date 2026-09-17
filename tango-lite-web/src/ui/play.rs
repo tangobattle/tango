@@ -22,10 +22,11 @@ use crate::ui::touch::TouchControls;
 
 #[component]
 pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Element {
+    let host: crate::host::Context = use_context();
     // The canvas element is new every time this screen mounts, so the
     // pump's cached 2D context has to be dropped or the next paint goes
     // into a detached node.
-    use_effect(move || crate::engine::invalidate_canvas());
+    use_effect(move || crate::engine::invalidate_canvas(&host().engine));
 
     let status = status();
     let pvp = status.as_ref().filter(|s| s.kind == Kind::Pvp);
@@ -40,7 +41,7 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
     // canvas opts the session out of the phone's rotate-to-landscape
     // treatment (see `.session.tall` in the stylesheet) — it already
     // fits an upright phone.
-    let (sw, sh) = crate::engine::canvas_size().unwrap_or((240, 160));
+    let (sw, sh) = crate::engine::canvas_size(&host().engine).unwrap_or((240, 160));
     let session_class = if sh > sw { "session tall" } else { "session" };
 
     rsx! {
@@ -55,10 +56,10 @@ pub fn Play(status: ReadSignal<Option<Status>>, onexit: EventHandler<()>) -> Ele
                     // lifting (or leaving) lifts it. On a console
                     // without one `stylus_from` is `None` and these
                     // write nothing.
-                    onpointerdown: move |event| crate::input::stylus_set(stylus_from(&event)),
+                    onpointerdown: move |event| crate::input::stylus_set(stylus_from(host, &event)),
                     onpointermove: move |event| {
                         if !event.data().held_buttons().is_empty() {
-                            crate::input::stylus_set(stylus_from(&event));
+                            crate::input::stylus_set(stylus_from(host, &event));
                         }
                     },
                     onpointerup: move |_| crate::input::stylus_set(None),
@@ -190,6 +191,7 @@ fn Priming(priming: crate::engine::Priming) -> Element {
 /// one past it has to re-simulate its way there and takes a moment.
 #[component]
 fn Transport(playhead: u32, total: u32, prefetched: u32, paused: bool) -> Element {
+    let host: crate::host::Context = use_context();
     let fraction = |ticks: u32| {
         if total == 0 {
             0.0
@@ -212,7 +214,7 @@ fn Transport(playhead: u32, total: u32, prefetched: u32, paused: bool) -> Elemen
         div { class: "transport",
             button {
                 class: "chip",
-                onpointerdown: move |_| crate::engine::set_paused(!paused),
+                onpointerdown: move |_| crate::engine::set_paused(&host().engine, !paused),
                 if paused { "▶" } else { "❚❚" }
             }
             div {
@@ -229,12 +231,12 @@ fn Transport(playhead: u32, total: u32, prefetched: u32, paused: bool) -> Elemen
                     // where you are going as you drag.
                     oninput: move |event| {
                         if let Ok(tick) = event.value().parse::<u32>() {
-                            crate::engine::seek_to(tick.min(seekable));
+                            crate::engine::seek_to(&host().engine, tick.min(seekable));
                         }
                     },
                 }
             }
-            span { class: "chip", "{seconds(playhead)} / {seconds(total)}" }
+            span { class: "chip", "{seconds(host, playhead)} / {seconds(host, total)}" }
         }
     }
 }
@@ -246,9 +248,9 @@ fn Transport(playhead: u32, total: u32, prefetched: u32, paused: bool) -> Elemen
 /// keeps this correct under the phone's rotation — so one scale factor
 /// (CSS box → canvas pixels) and the touch screen's row offset in the
 /// stacked arrangement are the whole mapping.
-fn stylus_from(event: &Event<PointerData>) -> Option<(u16, u16)> {
-    let (y0, tw, th) = crate::engine::touch_rect()?;
-    let (cw, _) = crate::engine::canvas_size()?;
+fn stylus_from(host: crate::host::Context, event: &Event<PointerData>) -> Option<(u16, u16)> {
+    let (y0, tw, th) = crate::engine::touch_rect(&host().engine)?;
+    let (cw, _) = crate::engine::canvas_size(&host().engine)?;
     let canvas = web_sys::window()?
         .document()?
         .get_element_by_id("tango-screen")?
@@ -268,8 +270,8 @@ fn stylus_from(event: &Event<PointerData>) -> Option<(u16, u16)> {
 /// Ticks as mm:ss, on the running console's own frame clock — the GBA
 /// and DS both run close to 60, but neither is a round 60 nor each
 /// other's.
-fn seconds(ticks: u32) -> String {
-    let fps = crate::engine::status()
+fn seconds(host: crate::host::Context, ticks: u32) -> String {
+    let fps = crate::engine::status(&host().engine)
         .map(|s| s.fps)
         .filter(|fps| *fps > 1.0)
         .unwrap_or(16777216.0 / 280896.0);
@@ -279,6 +281,7 @@ fn seconds(ticks: u32) -> String {
 
 #[component]
 fn MatchHud(status: Status) -> Element {
+    let host: crate::host::Context = use_context();
     let mut frame_delay = use_signal(|| status.frame_delay);
     let ping = status
         .latency_ms
@@ -302,7 +305,7 @@ fn MatchHud(status: Status) -> Element {
                 oninput: move |event| {
                     if let Ok(value) = event.value().parse::<u32>() {
                         frame_delay.set(value);
-                        crate::engine::set_frame_delay(value);
+                        crate::engine::set_frame_delay(&host().engine, value);
                     }
                 },
             }

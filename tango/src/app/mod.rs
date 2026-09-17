@@ -5,7 +5,7 @@
 //! feature modules own their actions and effects; [`view`] renders the shell.
 //! The host wires these methods into `iced::application` in `main.rs`.
 
-use crate::library::{autoupdate, game, patch, Scanners};
+use crate::library::{autoupdate, game, Scanners};
 use crate::platform::audio;
 use crate::ui::anim;
 use crate::{config, discord, i18n, loadout, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
@@ -15,12 +15,14 @@ use tabs::replays::ReplaysState;
 
 mod desktop;
 mod dispatch;
+mod downloads;
 mod library;
 mod lobby;
 mod message;
 mod patches;
 mod play;
 mod replay;
+mod replay_controller;
 mod sessions;
 mod settings;
 mod view;
@@ -55,15 +57,7 @@ pub struct App {
     loadout: loadout::Loadout,
     play: tabs::play::State,
     replays: ReplaysState,
-    /// In-flight replay-analysis workers ([`tabs::replays::Effect::AnalyzeReplay`]),
-    /// keyed by replay path: the flag stops the blocking simulation,
-    /// the handle aborts its progress stream. Removed when the worker
-    /// completes naturally, or cancelled by `replay_stats_takeover`
-    /// when a playback session's prefetcher takes the same work over.
-    replay_analysis_jobs: std::collections::HashMap<
-        std::path::PathBuf,
-        (std::sync::Arc<std::sync::atomic::AtomicBool>, iced::task::Handle),
-    >,
+    replay_controller: replay_controller::Controller,
     patches: PatchesState,
     settings: tabs::settings::State,
     welcome: tabs::welcome::State,
@@ -85,29 +79,7 @@ pub struct App {
     /// (a conditional GET of metadata, not the packages) and refreshes
     /// the patches scanner in place.
     patch_autoupdater: autoupdate::Autoupdater,
-    /// A replay whose playback is waiting on a patch download. Set by
-    /// `watch_replay`, resumed once the install rescan lands.
-    pending_watch: Option<std::path::PathBuf>,
-    /// Playback speed to apply to the next queued replay as it installs,
-    /// carried off the session it replaces. Set only on a queue handoff —
-    /// watching a replay from the tab still starts at realtime — and
-    /// consumed by `watch_replay`, so it survives the deferred install when
-    /// the next replay has to fetch a patch first.
-    queue_carry_speed: Option<f32>,
-    /// Whether the active replay was running (rather than paused) the last
-    /// time the frame handler looked. The queue advances on the edge into
-    /// end-of-stream, and only when playback ran into it: scrubbing pauses
-    /// first, so dragging the playhead onto the final tick reads as parking
-    /// there rather than as the replay having run out.
-    replay_was_playing: bool,
-    /// In-flight and failed patch downloads. App-level because the
-    /// patches tab, the lobby, replay playback and the play tab's picker
-    /// all start them, and every one of those surfaces renders them.
-    downloads: patch::Downloads,
-    /// Cancel handles for the in-flight ones, keyed the same way. The
-    /// download loop checks its token once per chunk and tidies up its
-    /// own partial file, so cancelling leaves nothing behind.
-    download_cancels: std::collections::HashMap<patch::VersionKey, tokio_util::sync::CancellationToken>,
+    downloads: downloads::Coordinator,
     /// Self-updater. Polls GitHub every 30 min, streams the
     /// platform installer into the cache dir, and on the
     /// `finish_update` call (or next launch) hands off to the
@@ -286,18 +258,14 @@ impl App {
             loadout: restored,
             play,
             replays: ReplaysState::default(),
-            replay_analysis_jobs: Default::default(),
-            queue_carry_speed: None,
-            replay_was_playing: false,
             patches: PatchesState::default(),
             session: session::State::new(),
             netplay: netplay::State::new(),
             discord: discord::Client::new(),
             session_started_at: None,
             patch_autoupdater,
-            pending_watch: None,
-            downloads: patch::Downloads::new(),
-            download_cancels: Default::default(),
+            downloads: downloads::Coordinator::default(),
+            replay_controller: replay_controller::Controller::default(),
             updater,
             rescans_in_flight: 0,
             library_scanned: false,

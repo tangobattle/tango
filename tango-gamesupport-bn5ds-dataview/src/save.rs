@@ -1223,6 +1223,15 @@ impl Save {
 }
 
 impl tango_gamesupport_common_dataview::save::Save for Save {
+    fn game_violations(
+        &self,
+        assets: &dyn tango_gamesupport_common_dataview::rom::Assets,
+    ) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+        let assets = assets.underlying_any().downcast_ref::<crate::rom::Assets>()?;
+        let findings = crate::build::partycust_violations(self, assets);
+        (!findings.is_empty()).then(|| Box::new(findings) as Box<dyn std::any::Any + Send + Sync>)
+    }
+
     fn view_chips(&self) -> Option<Box<dyn tango_gamesupport_common_dataview::save::ChipsView + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }

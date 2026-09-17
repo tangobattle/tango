@@ -181,7 +181,7 @@ impl App {
             }
             RescanFollowup::RetryPendingWatch => {
                 self.refresh_loaded();
-                match self.pending_watch.take() {
+                match self.replay_controller.take_pending() {
                     Some(path) => self.watch_replay(path),
                     None => iced::Task::none(),
                 }

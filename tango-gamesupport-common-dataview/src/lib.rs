@@ -14,6 +14,7 @@
 
 pub mod auto_battle_data;
 pub mod build;
+pub mod model;
 pub mod msg;
 pub mod navicust;
 pub mod nds;
@@ -27,6 +28,10 @@ compile_error!("Big endian architectures are not currently supported");
 pub struct SaveHandle(pub Box<dyn save::Save + Send + Sync>);
 
 impl tango_gamesupport::SaveData for SaveHandle {
+    fn validate(&self, assets: &dyn tango_gamesupport::AssetsData) -> Box<dyn tango_gamesupport::Validation> {
+        Box::new(build::validate(self.0.as_ref(), assets_ref(assets)))
+    }
+
     fn to_sram_dump(&self) -> Vec<u8> {
         self.0.to_sram_dump()
     }

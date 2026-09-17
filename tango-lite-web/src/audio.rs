@@ -63,29 +63,28 @@ const PRIME_FRAMES: usize = 2048;
 /// workaround below needs real, unmuted media to play.
 const SILENT_WAV: &str = "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
 
-thread_local! {
-    static SINK: RefCell<Option<Rc<RefCell<Sink>>>> = const { RefCell::new(None) };
-}
+#[derive(Clone, Default)]
+pub struct Handle(Rc<RefCell<Option<Rc<RefCell<Sink>>>>>);
 
 /// The rate sessions must resample to.
 pub fn sample_rate() -> u32 {
     SAMPLE_RATE
 }
 
-/// The page's sink, building it on first call.
+/// This host's sink, building it on first call.
 ///
 /// Call it from a user gesture: a context created outside one starts
 /// suspended on every mobile browser, and the worklet module load wants
 /// to have already happened by the time a match starts.
-pub async fn sink() -> Option<Rc<RefCell<Sink>>> {
-    if let Some(sink) = SINK.with(|s| s.borrow().clone()) {
+pub async fn sink(handle: &Handle, on_pump: impl Fn() + 'static) -> Option<Rc<RefCell<Sink>>> {
+    if let Some(sink) = handle.0.borrow().clone() {
         sink.borrow().resume_if_suspended();
         return Some(sink);
     }
-    match Sink::create().await {
+    match Sink::create(on_pump).await {
         Ok(sink) => {
             let sink = Rc::new(RefCell::new(sink));
-            SINK.with(|s| *s.borrow_mut() = Some(sink.clone()));
+            *handle.0.borrow_mut() = Some(sink.clone());
             Some(sink)
         }
         Err(e) => {
@@ -157,7 +156,7 @@ pub struct Sink {
 }
 
 impl Sink {
-    async fn create() -> Result<Sink, JsValue> {
+    async fn create(on_pump: impl Fn() + 'static) -> Result<Sink, JsValue> {
         // Before the context: the ringer switch must not mute the game.
         let silent_loop = if !claim_playback_audio_session() && is_ios() {
             start_silent_loop()
@@ -195,7 +194,7 @@ impl Sink {
                 }
                 // The hidden-tab tick source: rAF has stopped, but this
                 // hasn't, so the session keeps advancing.
-                crate::engine::pump_now();
+                on_pump();
             })
         };
         node.port()?.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
@@ -287,4 +286,18 @@ fn worklet_url() -> Result<String, JsValue> {
     options.set_type("text/javascript");
     let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &options)?;
     web_sys::Url::create_object_url_with_blob(&blob)
+}
+
+impl Drop for Sink {
+    fn drop(&mut self) {
+        if let Ok(port) = self.node.port() {
+            port.set_onmessage(None);
+            port.close();
+        }
+        let _ = self.node.disconnect();
+        let _ = self.ctx.close();
+        if let Some(audio) = &self.silent_loop {
+            let _ = audio.pause();
+        }
+    }
 }

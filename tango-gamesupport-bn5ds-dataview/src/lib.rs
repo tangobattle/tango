@@ -34,3 +34,5 @@ pub const NUM_PARTY_PROGRAMS: usize = 13;
 /// [`NUM_CHIPS`], so Double Team's own chips have no use count: the two
 /// arrays sit 0x2e0 apart in the save image, which is exactly 368 u16s.
 pub const NUM_AUTO_BATTLE_DATA_CHIPS: usize = 368;
+
+pub mod edit;

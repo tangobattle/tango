@@ -72,6 +72,14 @@ where
 
     fn rebuild_checksum(&mut self);
 
+    fn uses_common_rules(&self) -> bool {
+        true
+    }
+    /// Return typed findings only when there are violations.
+    fn game_violations(&self, _assets: &dyn crate::rom::Assets) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+        None
+    }
+
     fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {
         None
     }

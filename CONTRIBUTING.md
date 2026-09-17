@@ -7,7 +7,7 @@ workspace convention check. Use the checked-in `Cargo.lock`; avoid
 updating dependencies as part of unrelated changes.
 
 ```sh
-python3 tools/check_workspace.py
+python3 tools/check_workspace.py --resolved
 cargo fmt --all -- --check
 cargo check --locked --bin tango --all-features
 ```
@@ -18,6 +18,8 @@ The portable core can be tested without native library adapters or a ROM:
 cargo test --locked --no-default-features \
   -p tango-library -p tango-match -p tango-net-protocol \
   -p tango-replay -p tango-gamesupport-common-dataview
+cargo test --locked --no-default-features --lib -p tango-session
+cargo test --locked --lib -p tango-lobby -p tango-net
 ```
 
 Exercise the real filesystem/HTTP patch adapter, a registered game, the
@@ -66,7 +68,11 @@ feature forwarding enables editors only for games already selected.
 `tango-match` defines backend-independent simulation contracts.
 `tango-session` exposes drivers advanced by the host; desktop threads
 and browser event loops supply the pacing. Session code uses
-`tango-session::platform` for waits that must also work in a browser.
+`tango-platform` (also re-exported as `tango-session::platform`) for waits
+that must also work in a browser. Transport lives in `tango-net`; the lobby
+must not depend on library catalogs, sessions, or game backends. Offline
+sessions must build with `--no-default-features` without transport code.
+Hosts supply recording and stats sinks; session code must not write files.
 
 The engine interfaces report tick and audio sample rates as
 `num_rational::Ratio<u32>`. Keep those ratios exact through replay export;
@@ -90,6 +96,13 @@ Within the larger modules:
   save persistence, and worker teardown, including abandoned launches.
 - `tango-session/src/pvp/` separates the public session controls from
   setup, frame driving, network supervision, and recording.
+- `tango-library::loadout::Resolver` prepares and validates exact launch
+  inputs for both hosts. `tango-gamesupport-common-dataview::model` owns
+  save edits and snapshots; UI code formats its validation findings.
+- `tango/src/app/downloads.rs` owns download attempts and cancellation;
+  `replay_controller.rs` owns deferred playback and analysis jobs.
+- `tango-lite-web/src/host.rs` composes explicit state handles. Core
+  browser operations take a handle instead of using global state.
 - `tango-library::rom::load` prepares a clean or patched ROM;
   `tango-library::replays::resolve_roms` applies recorded versions and
   checks simulation compatibility for playback, analysis, and export
@@ -117,7 +130,8 @@ feature to the library and both frontends. Include it in each
 `gamesupport-all` list and add `tango-gamesupport-<game>?/ui` to the library's
 `ui` feature. Frontend game features forward only to the library; the
 desktop enables `tango-library/ui`. `tools/check_workspace.py` checks
-registration, feature forwarding, shared dependencies, and workspace lints.
+registration, feature forwarding, shared dependencies, workspace lints,
+and architectural dependency boundaries.
 
 Run `cargo fmt --all` after Rust edits. Keep comments about current
 behavior and constraints beside the code; keep setup and architecture

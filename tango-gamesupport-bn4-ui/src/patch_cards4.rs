@@ -19,7 +19,6 @@ use tango_gamesupport_common_ui::editor::view::{
 };
 use tango_gamesupport_common_ui::editor::BuildReport;
 use tango_gamesupport_common_ui::editor::OpaqueBuildWarnings;
-use tango_gamesupport_common_ui::model::edit::{GameEdit, Invalidation};
 use tango_gamesupport_common_ui::style::{self, TEXT_BODY, TEXT_CAPTION};
 use tango_gamesupport_common_ui::t;
 use tango_gamesupport_common_ui::widgets::{self, muted_text_style};
@@ -160,18 +159,24 @@ pub fn warnings(
     save: &tango_gamesupport_common_ui::editor::Save,
     assets: &tango_gamesupport_common_ui::editor::Assets,
 ) -> Vec<OpaqueBuildWarnings> {
-    let Some(save) = save.as_any().downcast_ref::<bn4_save::Save>() else {
+    let validation = tango_gamesupport_common_ui::dataview::build::validate(save, assets);
+    warnings_from_validation(assets, &validation)
+}
+
+pub fn warnings_from_validation(
+    assets: &tango_gamesupport_common_ui::editor::Assets,
+    validation: &tango_gamesupport_common_ui::dataview::build::Validation,
+) -> Vec<OpaqueBuildWarnings> {
+    let Some(violations) = validation.game::<Vec<tango_gamesupport_bn4_dataview::build::PatchCard4Violation>>() else {
         return vec![];
     };
-    let Some(assets) = assets.underlying_any().downcast_ref::<bn4_rom::Assets>() else {
-        return vec![];
-    };
-    let violations = tango_gamesupport_bn4_dataview::build::patch_card4_violations(save, assets);
-    if violations.is_empty() {
-        vec![]
-    } else {
-        vec![Arc::new(PatchCardWarnings::new(violations, assets)) as OpaqueBuildWarnings]
-    }
+    vec![std::sync::Arc::new(PatchCardWarnings::new(
+        violations.clone(),
+        assets
+            .underlying_any()
+            .downcast_ref::<bn4_rom::Assets>()
+            .expect("BN4 assets"),
+    )) as OpaqueBuildWarnings]
 }
 
 /// The read-only Mod Card list: a slot badge + the card's "name — effect"
@@ -429,77 +434,7 @@ pub fn as_text(loaded: &OpenSave) -> Option<String> {
 /// Ships through the shared plumbing as a [`GameEdit`]; `apply`
 /// downcasts back to BN4's concrete save and rebuilds the anti-cheat
 /// mirror, so commit only has to checksum + write.
-#[derive(Debug, Clone)]
-pub enum PatchCard4Edit {
-    /// Install card `id` into its own catalog slot, enabled.
-    AddCard { id: usize },
-    /// Empty catalog slot `slot`.
-    RemoveCard { slot: usize },
-    /// Toggle slot `slot`'s card between enabled and disabled.
-    ToggleCard { slot: usize },
-    /// Empty every slot.
-    ClearAll,
-}
-
-impl GameEdit for PatchCard4Edit {
-    fn apply(&self, save: &mut tango_gamesupport_common_ui::model::SaveModel) -> Invalidation {
-        use tango_gamesupport_common_dataview::save::PatchCard;
-
-        // The card's home slot resolves through the ROM catalog; read it
-        // before the save is borrowed mutably.
-        let add_slot = match self {
-            PatchCard4Edit::AddCard { id } => {
-                let Some(slot) = save
-                    .assets
-                    .underlying_any()
-                    .downcast_ref::<bn4_rom::Assets>()
-                    .and_then(|a| a.patch_card4(*id))
-                    .map(|c| c.slot as usize)
-                    .filter(|&s| s < PATCH_CARD4_SLOT_LABELS.len())
-                else {
-                    return Invalidation::default();
-                };
-                Some(slot)
-            }
-            _ => None,
-        };
-
-        let Some(bn4) = save.save.as_mut().as_any_mut().downcast_mut::<bn4_save::Save>() else {
-            return Invalidation::default();
-        };
-        let mut v = bn4.view_patch_card4s_mut();
-
-        match self {
-            PatchCard4Edit::AddCard { id } => {
-                v.set_patch_card(add_slot.unwrap(), Some(PatchCard { id: *id, enabled: true }));
-            }
-            PatchCard4Edit::RemoveCard { slot } => {
-                v.set_patch_card(*slot, None);
-            }
-            PatchCard4Edit::ToggleCard { slot } => {
-                let Some(c) = v.patch_card(*slot) else {
-                    return Invalidation::default();
-                };
-                v.set_patch_card(
-                    *slot,
-                    Some(PatchCard {
-                        id: c.id,
-                        enabled: !c.enabled,
-                    }),
-                );
-            }
-            PatchCard4Edit::ClearAll => {
-                for slot in 0..PATCH_CARD4_SLOT_LABELS.len() {
-                    v.set_patch_card(slot, None);
-                }
-            }
-        }
-
-        // Keep the anti-cheat mirror in sync with the edit.
-        v.rebuild_anticheat();
-        Invalidation::default()
-    }
-}
+pub use tango_gamesupport_bn4_dataview::edit::PatchCard4Edit;
 
 /// A choice in a slot's card dropdown: the card id (`None` clears the
 /// slot) plus a pre-resolved label. The label folds the card's effect into

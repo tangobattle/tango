@@ -17,37 +17,44 @@
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 use tango_session::pvp::{Recording, ReplayStore};
 
-pub struct BrowserReplayStore;
+pub struct BrowserReplayStore(pub crate::library::Handle);
 
 impl ReplayStore for BrowserReplayStore {
     fn create(&self, name: &str) -> std::io::Result<Recording> {
-        let key = crate::library::replays_path().join(format!("{name}.{}", tango_replay::EXTENSION));
+        let key = crate::library::replays_path(&self.0).join(format!("{name}.{}", tango_replay::EXTENSION));
         log::info!("pvp: recording to {}", key.display());
+        let (tx, rx) = futures::channel::oneshot::channel::<Vec<u8>>();
+        let library = self.0.clone();
+        let stored_key = key.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Ok(bytes) = rx.await {
+                crate::library::write_replay(&library, &stored_key, &bytes);
+            }
+        });
         Ok(Recording {
             sink: Box::new(Sink {
+                completion: Some(tx),
                 key: key.clone(),
-                buffer: Arc::new(Mutex::new(Vec::new())),
+                buffer: Vec::new(),
             }),
             key,
         })
     }
 }
 
-/// The in-memory recording. `Arc<Mutex<…>>` rather than a plain `Vec`
-/// only to satisfy the `Send` the writer's box demands — wasm is
-/// single-threaded and the lock is never contended.
+/// A Send writer that hands completed bytes to the host's local storage task.
 struct Sink {
+    completion: Option<futures::channel::oneshot::Sender<Vec<u8>>>,
     key: PathBuf,
-    buffer: Arc<Mutex<Vec<u8>>>,
+    buffer: Vec<u8>,
 }
 
 impl Write for Sink {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.buffer.lock().unwrap().extend_from_slice(buf);
+        self.buffer.extend_from_slice(buf);
         Ok(buf.len())
     }
 
@@ -58,13 +65,15 @@ impl Write for Sink {
 
 impl Drop for Sink {
     fn drop(&mut self) {
-        let bytes = std::mem::take(&mut *self.buffer.lock().unwrap());
+        let bytes = std::mem::take(&mut self.buffer);
         // A match that ended before the header was written has nothing
         // worth a row.
         if bytes.len() <= tango_replay::HEADER.len() {
             return;
         }
         log::info!("pvp: saved recording {} ({} bytes)", self.key.display(), bytes.len());
-        crate::library::write_replay(&self.key, &bytes);
+        if let Some(tx) = self.completion.take() {
+            let _ = tx.send(bytes);
+        }
     }
 }

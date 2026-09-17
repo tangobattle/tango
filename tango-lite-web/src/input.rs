@@ -199,9 +199,9 @@ fn key_mask(code: &str) -> Option<u32> {
 /// unconditionally makes every text field on the site unusable — you
 /// cannot type a link code or a nickname. Which is exactly what
 /// happened.
-fn is_for_the_game(event: &web_sys::KeyboardEvent) -> bool {
+fn is_for_the_game(engine: &crate::engine::Handle, event: &web_sys::KeyboardEvent) -> bool {
     // Nothing to play.
-    if !crate::engine::is_running() {
+    if !crate::engine::is_running(engine) {
         return false;
     }
     // A shortcut, not a button. (Shift isn't tested: alone it's no
@@ -220,11 +220,11 @@ fn is_for_the_game(event: &web_sys::KeyboardEvent) -> bool {
 /// Install the page-wide key listeners. Once, at startup: installing
 /// them per screen would lose a key held across a screen change, and
 /// they defer to the page unless [`is_for_the_game`] says otherwise.
-pub fn install_keyboard() {
-    let Some(window) = web_sys::window() else { return };
+pub fn install_keyboard(engine: crate::engine::Handle) -> Option<KeyboardListeners> {
+    let window = web_sys::window()?;
 
-    let down = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(|e: web_sys::KeyboardEvent| {
-        if !is_for_the_game(&e) {
+    let down = Closure::<dyn FnMut(web_sys::KeyboardEvent)>::new(move |e: web_sys::KeyboardEvent| {
+        if !is_for_the_game(&engine, &e) {
             return;
         }
         // A repeat isn't a new press, and the arrows and Space scroll
@@ -255,9 +255,22 @@ pub fn install_keyboard() {
     let _ = target.add_event_listener_with_callback("keydown", down.as_ref().unchecked_ref());
     let _ = target.add_event_listener_with_callback("keyup", up.as_ref().unchecked_ref());
     let _ = target.add_event_listener_with_callback("blur", blur.as_ref().unchecked_ref());
-    // Page-lifetime listeners: leaking the closures is the correct way
-    // to say "never unregistered".
-    down.forget();
-    up.forget();
-    blur.forget();
+    Some(KeyboardListeners { window, down, up, blur })
+}
+
+/// The host retains this guard and unregisters its listeners on teardown.
+pub struct KeyboardListeners {
+    window: web_sys::Window,
+    down: Closure<dyn FnMut(web_sys::KeyboardEvent)>,
+    up: Closure<dyn FnMut(web_sys::KeyboardEvent)>,
+    blur: Closure<dyn FnMut(web_sys::Event)>,
+}
+impl Drop for KeyboardListeners {
+    fn drop(&mut self) {
+        let target: &web_sys::EventTarget = self.window.as_ref();
+        let _ = target.remove_event_listener_with_callback("keydown", self.down.as_ref().unchecked_ref());
+        let _ = target.remove_event_listener_with_callback("keyup", self.up.as_ref().unchecked_ref());
+        let _ = target.remove_event_listener_with_callback("blur", self.blur.as_ref().unchecked_ref());
+        KEYBOARD.with(|k| k.set(0));
+    }
 }

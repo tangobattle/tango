@@ -1188,8 +1188,7 @@ impl PrefetchWorker {
         self.stats_job.as_ref()
     }
 
-    /// Hand a finished pass's stats to that job. The cache write is the
-    /// host's on a desktop; a browser has nowhere to put it.
+    /// Hand a finished pass's stats to its host. Persistence is host-owned.
     fn deliver(&self, stats: Option<tango_match::analysis::MatchStats>) {
         let (Some(stats), Some(job)) = (stats, self.stats_job.as_ref()) else {
             return;
@@ -1270,7 +1269,6 @@ impl crate::Drive for Driver {
 pub struct PrefetchStatsJob {
     pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_match::analysis::MatchStats>,
     pub done: Arc<Mutex<Option<tango_match::analysis::MatchStats>>>,
-    pub stats_file: std::path::PathBuf,
 }
 
 #[cfg(test)]

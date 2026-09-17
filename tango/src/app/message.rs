@@ -32,6 +32,7 @@ impl Tab {
 /// per-tab `update_*` methods below.
 #[derive(Debug, Clone)]
 pub enum Message {
+    Download(super::downloads::Event),
     /// No-op message — used by overlay layers (e.g. the
     /// settings-modal panel itself) to swallow clicks without
     /// triggering any state change.

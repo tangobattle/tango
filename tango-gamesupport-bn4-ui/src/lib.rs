@@ -17,21 +17,23 @@ pub struct Ui;
 pub static SAVE_EDITOR: SaveEditorShell<Ui> = SaveEditorShell(Ui);
 
 fn warning_providers(
-    save: &tango_gamesupport_common_ui::editor::Save,
+    _save: &tango_gamesupport_common_ui::editor::Save,
     assets: &tango_gamesupport_common_ui::editor::Assets,
+    validation: &tango_gamesupport_common_ui::dataview::build::Validation,
 ) -> Vec<tango_gamesupport_common_ui::editor::OpaqueBuildWarnings> {
-    let mut warnings = tango_gamesupport_common_ui::build::warnings(save, assets);
-    warnings.extend(patch_cards4::warnings(save, assets));
+    let mut warnings = tango_gamesupport_common_ui::build::warnings_from_validation(&validation.common, assets);
+    warnings.extend(patch_cards4::warnings_from_validation(assets, validation));
     warnings
 }
 
 impl GameSaveEditor for Ui {
-    fn validate_save(
+    fn build_warnings(
         &self,
         save: &tango_gamesupport_common_ui::editor::Save,
         assets: &tango_gamesupport_common_ui::editor::Assets,
+        validation: &tango_gamesupport_common_ui::dataview::build::Validation,
     ) -> Vec<tango_gamesupport_common_ui::editor::OpaqueBuildWarnings> {
-        warning_providers(save, assets)
+        warning_providers(save, assets, validation)
     }
 
     fn tabs(&self, loaded: &OpenSave) -> Vec<Tab> {

@@ -31,6 +31,8 @@
 //! moved off its static and lose its identity.)
 
 use std::sync::LazyLock;
+pub mod save;
+pub use save::{AppliedPatch, PreparedSave, Validation};
 
 /// Region a ROM revision targets.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -94,6 +96,13 @@ pub trait SaveData: std::any::Any + Send + Sync {
     /// predates the clone.
     fn rebuild_checksum(&mut self);
     fn clone_box(&self) -> BoxedSave;
+    fn validate(&self, assets: &dyn AssetsData) -> Box<dyn Validation>;
+    /// Serialize a repaired clone, preserving the staged save and its checksum.
+    fn snapshot_sram(&self) -> Vec<u8> {
+        let mut snapshot = self.clone_box();
+        snapshot.rebuild_checksum();
+        snapshot.to_sram_dump()
+    }
 }
 
 /// Parsed ROM assets, as [`Game::load_rom_assets`] hands them out.
@@ -122,8 +131,8 @@ pub type BoxedAssets = Box<dyn AssetsData>;
 pub mod save_editor;
 #[cfg(feature = "ui")]
 pub use save_editor::{
-    AppliedPatch, BuildWarnings, ChipDisplay, LoadedSave, LoadedSavePayload, OpaqueBuildWarnings, PreparedSave,
-    SaveEditor, SaveEditorEvent, SaveEditorMessage, SaveEditorState,
+    BuildWarnings, ChipDisplay, LoadedSave, LoadedSavePayload, OpaqueBuildWarnings, SaveEditor, SaveEditorEvent,
+    SaveEditorMessage, SaveEditorState,
 };
 
 /// One ROM revision Tango supports, with all of its per-game info.

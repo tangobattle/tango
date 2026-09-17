@@ -19,8 +19,9 @@ use crate::ui::{game_label, save_label, FilePicker};
 /// is memoized and simply not re-rendered, however stale what it drew is.
 #[component]
 pub fn Library(loadout: Signal<Loadout>, revision: ReadSignal<u64>, onplay: EventHandler<()>) -> Element {
+    let host: crate::host::Context = use_context();
     let revision = revision();
-    let owned = crate::library::owned_games();
+    let owned = crate::library::owned_games(&host().library);
     let picked = loadout().game;
 
     rsx! {
@@ -40,7 +41,7 @@ pub fn Library(loadout: Signal<Loadout>, revision: ReadSignal<u64>, onplay: Even
                                 selected: picked == Some(game),
                                 onpick: move |_| {
                                     let mut next = Loadout { game: Some(game), ..Default::default() };
-                                    next.reconcile();
+                                    crate::loadout::reconcile(&mut next, &host().library);
                                     loadout.set(next);
                                 },
                             }
@@ -50,10 +51,10 @@ pub fn Library(loadout: Signal<Loadout>, revision: ReadSignal<u64>, onplay: Even
                 FilePicker {
                     label: "Add ROM".to_string(),
                     onpick: move |(name, bytes): (String, Vec<u8>)| async move {
-                        match crate::library::import_rom(&name, &bytes).await {
+                        match crate::library::import_rom(&host().library, &name, &bytes).await {
                             Some(game) => {
                                 let mut next = Loadout { game: Some(game), ..Default::default() };
-                                next.reconcile();
+                                crate::loadout::reconcile(&mut next, &host().library);
                                 loadout.set(next);
                             }
                             // Either an unsupported game or a bad dump —
@@ -85,8 +86,9 @@ pub fn Library(loadout: Signal<Loadout>, revision: ReadSignal<u64>, onplay: Even
 /// whole origin rather than negotiate.
 #[component]
 fn StorageCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
+    let host: crate::host::Context = use_context();
     let mut confirming = use_signal(|| false);
-    let megabytes = crate::library::bytes_used() as f64 / (1024.0 * 1024.0);
+    let megabytes = crate::library::bytes_used(&host().library) as f64 / (1024.0 * 1024.0);
 
     rsx! {
         div { class: "card",
@@ -98,7 +100,7 @@ fn StorageCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Elemen
                     button {
                         class: "btn danger grow",
                         onclick: move |_| async move {
-                            crate::library::delete_game(game).await;
+                            crate::library::delete_game(&host().library, game).await;
                             loadout.set(Loadout::default());
                         },
                         "Delete"
@@ -141,7 +143,8 @@ fn GameRow(game: GameRef, selected: bool, onpick: EventHandler<()>) -> Element {
 
 #[component]
 fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
-    let saves = crate::library::with(|library| {
+    let host: crate::host::Context = use_context();
+    let saves = crate::library::with(&host().library, |library| {
         library
             .saves
             .read()
@@ -186,8 +189,8 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
                                     move |_| {
                                         let path = path.clone();
                                         async move {
-                                            crate::library::delete_file(path).await;
-                                            loadout.write().reconcile();
+                                            crate::library::delete_file(&host().library, path).await;
+                                            crate::loadout::reconcile(&mut loadout.write(), &host().library);
                                         }
                                     }
                                 },
@@ -201,8 +204,8 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
                 FilePicker {
                     label: "Add save".to_string(),
                     onpick: move |(name, bytes): (String, Vec<u8>)| async move {
-                        if crate::library::import_save(&name, &bytes).await {
-                            loadout.write().reconcile();
+                        if crate::library::import_save(&host().library, &name, &bytes).await {
+                            crate::loadout::reconcile(&mut loadout.write(), &host().library);
                         } else {
                             log::warn!("{name}: no game recognises this save");
                         }
@@ -229,8 +232,8 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
                                 move |_| {
                                     let template = template.clone();
                                     async move {
-                                        if crate::library::create_starter_save(game, &template).await {
-                                            loadout.write().reconcile();
+                                        if crate::library::create_starter_save(&host().library, game, &template).await {
+                                            crate::loadout::reconcile(&mut loadout.write(), &host().library);
                                         }
                                         choosing.set(false);
                                     }
@@ -247,9 +250,10 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
 
 #[component]
 fn PatchCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
-    let available = crate::library::patches_for(game);
+    let host: crate::host::Context = use_context();
+    let available = crate::library::patches_for(&host().library, game);
     let picked = loadout().patch;
-    let download = crate::library::download_progress();
+    let download = crate::library::download_progress(&host().library);
 
     rsx! {
         div { class: "card",
@@ -288,7 +292,7 @@ fn PatchCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element 
             button {
                 class: "btn small",
                 onclick: move |_| async move {
-                    if let Err(e) = crate::library::fetch_index().await {
+                    if let Err(e) = crate::library::fetch_index(&host().library).await {
                         log::warn!("patch index refresh failed: {e}");
                     }
                 },
@@ -313,9 +317,12 @@ fn PatchRow(
     selected: bool,
     loadout: Signal<Loadout>,
 ) -> Element {
-    let title = crate::library::with(|library| library.patches.read().title(&name).map(str::to_string))
-        .flatten()
-        .unwrap_or_else(|| name.clone());
+    let host: crate::host::Context = use_context();
+    let title = crate::library::with(&host().library, |library| {
+        library.patches.read().title(&name).map(str::to_string)
+    })
+    .flatten()
+    .unwrap_or_else(|| name.clone());
 
     rsx! {
         div { class: "item", "aria-selected": "{selected}",
@@ -330,7 +337,7 @@ fn PatchRow(
                         let (name, version) = (name.clone(), version.clone());
                         async move {
                             if !installed {
-                                if let Err(e) = crate::library::install_patch(name.clone(), version.clone()).await {
+                                if let Err(e) = crate::library::install_patch(&host().library, name.clone(), version.clone()).await {
                                     log::warn!("install {name} {version}: {e}");
                                     return;
                                 }
@@ -350,11 +357,11 @@ fn PatchRow(
                         move |_| {
                             let (name, version) = (name.clone(), version.clone());
                             async move {
-                                crate::library::uninstall_patch(name, version).await;
+                                crate::library::uninstall_patch(&host().library, name, version).await;
                                 // The pick may have been this package;
                                 // reconcile drops it rather than leaving
                                 // a play button that fails on press.
-                                loadout.write().reconcile();
+                                crate::loadout::reconcile(&mut loadout.write(), &host().library);
                             }
                         }
                     },

@@ -7554,7 +7554,7 @@ dependencies = [
  "serde_json",
  "sweeten",
  "tango-gamesupport",
- "tango-gamesupport-common-ui",
+ "tango-gamesupport-common-dataview",
  "tango-library",
  "tango-lobby",
  "tango-match",
@@ -7871,7 +7871,6 @@ dependencies = [
  "image",
  "sweeten",
  "tango-gamesupport-bn5ds-dataview",
- "tango-gamesupport-common-dataview",
  "tango-gamesupport-common-ui",
  "unic-langid",
 ]
@@ -7935,6 +7934,7 @@ dependencies = [
  "num-traits",
  "patricia_tree",
  "tango-gamesupport",
+ "tango-patch",
  "thiserror 1.0.69",
 ]
 
@@ -7953,7 +7953,6 @@ dependencies = [
  "sweeten",
  "tango-gamesupport",
  "tango-gamesupport-common-dataview",
- "tango-patch",
  "tango-ui",
  "tiny-skia",
  "unic-langid",
@@ -8037,6 +8036,7 @@ dependencies = [
  "futures",
  "log",
  "mailparse",
+ "num-rational",
  "reqwest 0.11.27",
  "semver",
  "serde",
@@ -8051,8 +8051,11 @@ dependencies = [
  "tango-gamesupport-bn5",
  "tango-gamesupport-bn5ds",
  "tango-gamesupport-bn6",
+ "tango-gamesupport-common-dataview",
  "tango-gamesupport-exe45",
  "tango-gamesupport-exeoss",
+ "tango-match",
+ "tango-net-protocol",
  "tango-patch",
  "tango-replay",
  "thiserror 1.0.69",
@@ -8102,10 +8105,9 @@ dependencies = [
  "rand 0.8.5",
  "semver",
  "subtle",
- "tango-library",
+ "tango-net",
  "tango-net-protocol",
- "tango-patch",
- "tango-session",
+ "tango-platform",
  "tango-signaling",
  "tokio",
  "tokio-util",
@@ -8125,6 +8127,24 @@ dependencies = [
  "serde",
  "serde_repr",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "tango-net"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "datachannel-wrapper",
+ "futures",
+ "log",
+ "rennet",
+ "tango-net-protocol",
+ "tango-platform",
+ "tango-signaling",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "web-time",
 ]
 
 [[package]]
@@ -8156,6 +8176,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tango-platform"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "gloo-timers",
+ "thiserror 1.0.69",
+ "tokio",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "tango-replay"
 version = "0.1.0"
 dependencies = [
@@ -8181,25 +8212,21 @@ dependencies = [
 name = "tango-session"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "bytemuck",
  "chrono",
- "datachannel-wrapper",
  "futures",
- "gloo-timers",
  "log",
  "rand 0.8.5",
  "rand_pcg 0.3.1",
- "rennet",
  "tango-gamesupport",
  "tango-match",
+ "tango-net",
  "tango-net-protocol",
+ "tango-platform",
  "tango-replay",
- "tango-signaling",
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
- "wasm-bindgen-futures",
  "web-time",
 ]
 

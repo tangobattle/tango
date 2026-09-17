@@ -7,33 +7,6 @@ use crate::tabs;
 
 impl App {
     pub(super) fn update_patches(&mut self, msg: tabs::patches::Message) -> iced::Task<Message> {
-        // Bookkeeping before delegating: the map is App-level (see
-        // `patch::Downloads`) because the tab isn't the only thing that
-        // starts downloads or the only thing that renders them.
-        match &msg {
-            tabs::patches::Message::InstallProgress(key, downloaded, total) => {
-                self.downloads.insert(
-                    key.clone(),
-                    patch::Download::Running(patch::Progress {
-                        downloaded: *downloaded,
-                        total: *total,
-                    }),
-                );
-            }
-            tabs::patches::Message::InstallCancelled(key) => {
-                self.download_cancels.remove(key);
-                self.downloads.remove(key);
-            }
-            tabs::patches::Message::InstallFinished(key, Ok(())) => {
-                self.download_cancels.remove(key);
-                self.downloads.remove(key);
-            }
-            tabs::patches::Message::InstallFinished(key, Err(_)) => {
-                self.download_cancels.remove(key);
-                self.downloads.insert(key.clone(), patch::Download::Failed);
-            }
-            _ => {}
-        }
         let Some(effect) = self.patches.update(msg, &self.scanners.patches.read()) else {
             return iced::Task::none();
         };
@@ -46,7 +19,7 @@ impl App {
                 // is unchanged by an install, so `refresh_loaded` would
                 // take its early-return and leave the Play tab showing
                 // the game unpatched.
-                let followup = if self.pending_watch.is_some() {
+                let followup = if self.replay_controller.has_pending() {
                     RescanFollowup::RetryPendingWatch
                 } else {
                     RescanFollowup::ForceRebuildLoaded
@@ -111,7 +84,7 @@ impl App {
             E::InstallFailed => {
                 // Don't leave a replay queued behind a download that
                 // isn't coming.
-                self.pending_watch = None;
+                self.replay_controller.cancel_pending();
                 iced::Task::none()
             }
             E::ToggleFavorite(name) => {
@@ -130,77 +103,19 @@ impl App {
     /// stream ends exactly when the download does — no polling and no
     /// separate completion signal to keep in sync.
     pub(super) fn install_patch(&mut self, key: patch::VersionKey) -> iced::Task<Message> {
-        // Already on its way — the user clicked twice, or two of the
-        // four triggers want the same package.
-        if self.downloads.get(&key).is_some_and(|d| d.is_running()) {
-            return iced::Task::none();
-        }
-        let (name, version) = key.clone();
-        let Some(entry) = self.scanners.patches.read().entry(&name, &version).cloned() else {
-            return iced::Task::done(Message::Patches(tabs::patches::Message::InstallFinished(
+        self.downloads
+            .start(
                 key,
-                Err("not offered by this patch repo".to_string()),
-            )));
-        };
-        let url = self.config.patch_repo_url();
-        let root = self.config.patches_path();
-        self.downloads.insert(
-            key.clone(),
-            patch::Download::Running(patch::Progress {
-                downloaded: 0,
-                total: 0,
-            }),
-        );
-
-        let token = tokio_util::sync::CancellationToken::new();
-        self.download_cancels.insert(key.clone(), token.clone());
-
-        let (tx, rx) = futures::channel::mpsc::unbounded::<tabs::patches::Message>();
-        let progress_tx = tx.clone();
-        let progress_key = key.clone();
-        tokio::task::spawn(async move {
-            let result = patch::download(
-                crate::library::http(),
-                crate::library::storage(),
-                &url,
-                &root,
-                &name,
-                &version,
-                &entry,
-                move |p| {
-                    let _ = progress_tx.unbounded_send(tabs::patches::Message::InstallProgress(
-                        progress_key.clone(),
-                        p.downloaded,
-                        p.total,
-                    ));
-                    !token.is_cancelled()
-                },
+                &self.scanners.patches.read(),
+                self.config.patch_repo_url(),
+                self.config.patches_path(),
             )
-            .await;
-            let msg = match result {
-                // The cancel already cleaned up; the UI just drops it.
-                Ok(patch::Outcome::Cancelled) => tabs::patches::Message::InstallCancelled(key),
-                Ok(patch::Outcome::Installed) => tabs::patches::Message::InstallFinished(key, Ok(())),
-                Err(e) => tabs::patches::Message::InstallFinished(key, Err(format!("{e:#}"))),
-            };
-            let _ = tx.unbounded_send(msg);
-        });
-        iced::Task::stream(rx).map(Message::Patches)
+            .map(Message::Download)
     }
 
-    /// Stop an in-flight download and forget it: the loop notices its
-    /// token once per chunk, removes the partial file and reports back
-    /// as cancelled. Dropping the row here rather than waiting for that
-    /// keeps the click feeling immediate.
     pub(super) fn cancel_download(&mut self, key: patch::VersionKey) -> iced::Task<Message> {
-        if let Some(token) = self.download_cancels.remove(&key) {
-            token.cancel();
-        }
-        self.downloads.remove(&key);
-        // Nothing is going to arrive for a replay queued behind it.
-        if self.pending_watch.is_some() {
-            self.pending_watch = None;
-        }
+        self.downloads.cancel(&key);
+        self.replay_controller.cancel_pending();
         iced::Task::none()
     }
 

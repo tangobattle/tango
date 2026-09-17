@@ -35,7 +35,7 @@ impl App {
     pub(super) fn watch_replay(&mut self, p: std::path::PathBuf) -> iced::Task<Message> {
         if let Some(key) = self.replay_missing_patch(&p) {
             log::info!("replay {} needs {} {}, fetching", p.display(), key.0, key.1);
-            self.pending_watch = Some(p);
+            self.replay_controller.defer(p);
             return self.install_patch(key);
         }
 
@@ -50,7 +50,7 @@ impl App {
         ) {
             Ok(launch) => {
                 self.session.install(launch, &self.audio_binder, &self.config);
-                if let Some(factor) = self.queue_carry_speed.take() {
+                if let Some(factor) = self.replay_controller.take_speed() {
                     if let Some(s) = self.session.active() {
                         s.set_speed(factor);
                     }
@@ -100,7 +100,7 @@ impl App {
         };
         let effect = self.replays.update(msg, &self.scanners, &self.config);
         if let Some(p) = finished {
-            self.replay_analysis_jobs.remove(&p);
+            self.replay_controller.finished(&p);
         }
         // Pure state mutations live in the tab module; only side
         // effects (clipboard, OS open, session host handoff,
@@ -227,7 +227,7 @@ impl App {
                         tabs::replays::Message::HpStatsLoaded(loaded_path, done.lock().unwrap().take())
                     }));
                 let (task, handle) = iced::Task::stream(stream).map(Message::Replays).abortable();
-                self.replay_analysis_jobs.insert(path, (cancel, handle));
+                self.replay_controller.track(path, cancel, handle);
                 task
             }
             E::SaveEditorTask(t) => t.map(Message::Replays),
@@ -538,13 +538,15 @@ impl App {
     /// stays parked on its final frame, as it always has.
     pub(super) fn advance_replay_queue(&mut self) -> iced::Task<Message> {
         let Some(s) = self.session.active_as::<session::replay::ReplaySession>() else {
-            self.replay_was_playing = false;
+            self.replay_controller.reset_playback();
             return iced::Task::none();
         };
-        let was_playing = std::mem::replace(&mut self.replay_was_playing, !s.is_paused());
-        // A pending seek means the playhead is on its way somewhere else —
-        // the tick it reads right now says nothing about the stream ending.
-        let ran_out = was_playing && s.pending_seek_target().is_none() && s.current_tick() >= s.total_ticks();
+        let ran_out = self.replay_controller.observe(
+            !s.is_paused(),
+            s.pending_seek_target().is_some(),
+            s.current_tick(),
+            s.total_ticks(),
+        );
         if !ran_out || self.replays.queue.is_empty() {
             return iced::Task::none();
         }
@@ -557,12 +559,12 @@ impl App {
             return iced::Task::none();
         }
         let next = self.replays.queue.remove(0);
-        self.queue_carry_speed = self
+        let speed = self
             .session
             .active_as::<session::replay::ReplaySession>()
             .map(|s| s.speed());
+        self.replay_controller.handoff(speed);
         self.session.close_session();
-        self.replay_was_playing = false;
         self.watch_replay(next)
     }
 
@@ -585,10 +587,7 @@ impl App {
                 task: iced::Task::none(),
             };
         }
-        if let Some((cancel, handle)) = self.replay_analysis_jobs.remove(path) {
-            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-            handle.abort();
-        }
+        self.replay_controller.takeover(path);
         // Marked pending so a tab focus during playback doesn't spawn a
         // duplicate worker; the prefetch stream's completion clears it.
         self.replays.hp_pending.insert(path.to_path_buf());
@@ -598,15 +597,21 @@ impl App {
         let job = session::replay::PrefetchStatsJob {
             partial_tx,
             done: done.clone(),
-            stats_file: replays::stats_path(&self.config.cache_path(), &self.config.replays_path(), path),
         };
         use futures::StreamExt;
         let progress_path = path.to_path_buf();
         let path = path.to_path_buf();
+        let stats_file = replays::stats_path(&self.config.cache_path(), &self.config.replays_path(), path.as_path());
         let stream = partial_rx
             .map(move |partial| tabs::replays::Message::HpStatsPartial(progress_path.clone(), partial))
             .chain(futures::stream::once(async move {
-                tabs::replays::Message::HpStatsLoaded(path, done.lock().unwrap().take())
+                let stats = done.lock().unwrap().take();
+                if let Some(stats) = &stats {
+                    if let Err(e) = replays::write_match_stats(&stats_file, stats) {
+                        log::warn!("stats cache write failed: {e}");
+                    }
+                }
+                tabs::replays::Message::HpStatsLoaded(path, stats)
             }));
         ReplayStatsDuty {
             job: Some(job),
