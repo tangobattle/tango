@@ -224,14 +224,20 @@ impl State {
         let bin = match state.serialize() {
             Ok(b) => b,
             Err(e) => {
-                self.fail(Error::Other(format!("serialize state: {e}")));
+                self.fail(Error::EncodeState {
+                    stage: "serialize state",
+                    message: e.to_string(),
+                });
                 return None;
             }
         };
         let compressed = match zstd::stream::encode_all(std::io::Cursor::new(&bin), 3) {
             Ok(c) => c,
             Err(e) => {
-                self.fail(Error::Other(format!("zstd encode: {e}")));
+                self.fail(Error::EncodeState {
+                    stage: "zstd encode",
+                    message: e.to_string(),
+                });
                 return None;
             }
         };
@@ -284,7 +290,7 @@ impl State {
         }
         let actual = make_commitment(chunks);
         if !bool::from(actual.ct_eq(commitment)) {
-            self.fail(Error::Other("peer commitment mismatch".to_string()));
+            self.fail(Error::CommitmentMismatch);
             return None;
         }
         // Decompress + decode the peer's NegotiatedState. We don't use it
@@ -294,12 +300,18 @@ impl State {
         let peer_state_bytes = match zstd::stream::decode_all(std::io::Cursor::new(chunks)) {
             Ok(b) => b,
             Err(e) => {
-                self.fail(Error::Other(format!("zstd decode: {e}")));
+                self.fail(Error::DecodePeerState {
+                    stage: "zstd decode",
+                    message: e.to_string(),
+                });
                 return None;
             }
         };
         if let Err(e) = tango_net_protocol::control::NegotiatedState::deserialize(&peer_state_bytes) {
-            self.fail(Error::Other(format!("decode peer state: {e}")));
+            self.fail(Error::DecodePeerState {
+                stage: "decode peer state",
+                message: e.to_string(),
+            });
             return None;
         }
         let LocalReady::ChunksSent(commit) = std::mem::take(&mut self.handshake.local) else {
@@ -333,12 +345,11 @@ mod tests {
     /// [`State::send`]), which is exactly what a test wants — the ladders
     /// are the subject.
     fn lobby() -> State {
-        State {
-            phase: Phase::Lobby {
-                ident: LinkIdent::Matchmaking("test".to_string()),
-            },
-            ..State::new()
-        }
+        let mut state = State::new();
+        state.phase = Phase::Lobby {
+            ident: LinkIdent::Matchmaking("test".to_string()),
+        };
+        state
     }
 
     /// A peer's reveal and the commitment that goes with it, built the

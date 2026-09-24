@@ -209,8 +209,11 @@ async fn send_one(cmd: Command, sender: &Arc<tokio::sync::Mutex<tango_net::Sende
     }
 }
 
-fn wire(what: &str, result: std::io::Result<()>) -> Result<(), Error> {
-    result.map_err(|e| Error::Other(format!("{what}: {e}")))
+fn wire(operation: &'static str, result: std::io::Result<()>) -> Result<(), Error> {
+    result.map_err(|e| Error::Transport {
+        operation,
+        message: e.to_string(),
+    })
 }
 
 /// Wall clock truncated to 16 bits of milliseconds — the ping timestamp

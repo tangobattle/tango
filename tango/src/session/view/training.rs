@@ -4,37 +4,8 @@
 
 use super::*;
 use crate::session::training::TrainingSession;
+use crate::session::update::training::Message;
 use crate::session::Message as SessionMessage;
-
-/// Training-view messages. Wrapped in [`SessionMessage::Training`] on the
-/// way out; inert unless a training session is active.
-#[derive(Debug, Clone)]
-pub enum Message {
-    /// Select how the opponent's screen is presented.
-    SetOpponentView(crate::config::OpponentView),
-    /// Swap which side (core) the player controls.
-    ToggleSwap,
-    /// Pin the floating bar while the opponent-view dropdown is open.
-    BarMenuToggled(bool),
-}
-
-/// Apply a training-view message.
-pub(crate) fn update(state: &mut State, msg: Message) -> iced::Task<Message> {
-    match msg {
-        Message::SetOpponentView(view) => {
-            if let Some(s) = state.active_as::<TrainingSession>() {
-                s.set_opponent_visible(view != crate::config::OpponentView::Off);
-            }
-        }
-        Message::ToggleSwap => {
-            if let Some(s) = state.active_as::<TrainingSession>() {
-                s.toggle_swap();
-            }
-        }
-        Message::BarMenuToggled(open) => state.bar_menu_open = open,
-    }
-    iced::Task::none()
-}
 
 /// Training: emulator + selected opponent layout + the view/swap control
 /// cluster + the shared corner commands.

@@ -324,12 +324,6 @@ impl Match {
         self.displayed_screens.store(screens, Ordering::Relaxed);
     }
 
-    /// The same knob as a handle, for a host that keeps one after the
-    /// match itself has moved onto the drive thread.
-    pub fn displayed_screens_handle(&self) -> Arc<AtomicU8> {
-        self.displayed_screens.clone()
-    }
-
     /// Draw every seat, not just the local one.
     pub fn render_seats(&mut self) {
         for seat in &*self.visible {

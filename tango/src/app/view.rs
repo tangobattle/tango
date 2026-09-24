@@ -67,10 +67,7 @@ impl App {
                 .map(|j| session::view::ClipJob {
                     completed: j.completed,
                     total: j.total,
-                    result: j.result.as_ref().map(|r| match r {
-                        Ok(_) => Ok(()),
-                        Err(e) => Err(e.as_str()),
-                    }),
+                    result: j.result.as_ref().map(|r| r.as_ref().map(|_| ())),
                     cancelling: j.canceller.is_cancelled() && j.result.is_none(),
                 });
             let session_view = session::view::view(
@@ -197,7 +194,7 @@ impl App {
                 // same messages as its on-screen controls; opponent view
                 // therefore also follows the App's normal persistence path.
                 if let (Some(speed), crate::platform::input_capture::Input::Keyboard(kb)) = (replay_speed, &input) {
-                    if let Some(shortcut) = session::view::replay::keyboard_shortcut(kb, speed) {
+                    if let Some(shortcut) = session::update::replay::keyboard_shortcut(kb, speed) {
                         return Some(Message::Session(session::Message::Replay(shortcut)));
                     }
                 }

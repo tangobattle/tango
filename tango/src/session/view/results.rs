@@ -31,9 +31,8 @@ pub enum Message {
     /// Dismiss the results screen (its Done button, or Esc while it's
     /// on screen) — back to the tabs. Handled by the session State.
     Dismiss,
-    /// Play back the replay recorded for the match. Handled by the App
-    /// wrapper (building a playback session needs the scanners +
-    /// config).
+    /// Play back the replay recorded for the match — an effect for the
+    /// App (building a playback session needs the scanners + config).
     WatchReplay,
 }
 

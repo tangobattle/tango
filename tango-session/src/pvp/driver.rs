@@ -35,9 +35,9 @@ pub(super) struct DriveContext {
     /// See the session's copy.
     pub(super) displayed_screens: Arc<std::sync::atomic::AtomicU8>,
     pub(super) end: EndState,
-    pub(super) event_rx: std::sync::mpsc::Receiver<crate::net::data::Input>,
-    pub(super) sender: crate::net::PvpSender,
-    pub(super) in_match: crate::net::InMatchTx,
+    pub(super) event_rx: std::sync::mpsc::Receiver<tango_net::data::Input>,
+    pub(super) sender: tango_net::PvpSender,
+    pub(super) in_match: tango_net::InMatchTx,
     pub(super) replay_writer: Option<tango_replay::Writer>,
     pub(super) stats: Arc<Mutex<tango_match::analysis::StatsBuilder>>,
     /// Recording identity and the host's optional statistics destination.
@@ -212,7 +212,7 @@ impl crate::Drive for PvpBoot {
 /// A received wire input in the seam's vocabulary. The wire's touch is
 /// a byte per axis — every touch screen a backend has fits one — so
 /// widening here is lossless.
-fn host_input_of_wire(input: &crate::net::data::Input) -> tango_match::HostInput {
+fn host_input_of_wire(input: &tango_net::data::Input) -> tango_match::HostInput {
     tango_match::HostInput {
         keys: input.joyflags as u32,
         touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
@@ -222,8 +222,8 @@ fn host_input_of_wire(input: &crate::net::data::Input) -> tango_match::HostInput
 /// A committed input as the wire ships it. The engine sanitized it
 /// through the backend's conversions, so the narrowing casts cannot
 /// truncate.
-fn wire_input_of(input: tango_match::HostInput, tick_advantage: i16) -> crate::net::data::Input {
-    crate::net::data::Input {
+fn wire_input_of(input: tango_match::HostInput, tick_advantage: i16) -> tango_net::data::Input {
+    tango_net::data::Input {
         joyflags: input.keys as u16,
         touch: input.touch.map(|(x, y)| (x.min(0xff) as u8, y.min(0xff) as u8)),
         tick_advantage,
@@ -325,7 +325,7 @@ impl PvpDriver {
         // link (nothing matchable) parks here.
         let queue_len = self.match_.local_queue_length() as u32;
         self.ctx.metrics.queue_len.store(queue_len, Ordering::Relaxed);
-        if queue_len as usize >= crate::net::data::RECONNECT_QUEUE_LENGTH && self.match_.matchable() == 0 {
+        if queue_len as usize >= tango_net::data::RECONNECT_QUEUE_LENGTH && self.match_.matchable() == 0 {
             // Block on the event queue rather than poll it: the only
             // thing that clears a stall is the peer's next input, and
             // it arrives exactly here. Ingest it and loop — the drain
@@ -443,7 +443,7 @@ impl PvpDriver {
                 // as inputs, so the peer sees it exactly once and only
                 // after every preceding input.
                 let in_match = self.ctx.in_match.clone();
-                crate::platform::spawn(async move {
+                tango_platform::spawn(async move {
                     if let Err(e) = in_match.send_end_of_match().await {
                         log::warn!("pvp: send EndOfMatch failed: {e}");
                     }
@@ -451,8 +451,8 @@ impl PvpDriver {
                 // Wall-clock fallback wake so `is_ended` is rechecked
                 // even if the peer never sends EndOfMatch.
                 let wake = self.ctx.wake.clone();
-                crate::platform::spawn(async move {
-                    crate::platform::sleep(PEER_END_GRACE).await;
+                tango_platform::spawn(async move {
+                    tango_platform::sleep(PEER_END_GRACE).await;
                     wake.notify_one();
                 });
             }

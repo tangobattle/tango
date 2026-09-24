@@ -25,12 +25,9 @@
 
 use tango_net_protocol::control as protocol;
 
-/// Resolved local availability. The host obtains these facts from its catalog.
-pub struct Facts {
-    pub remote_rom_available: bool,
-    pub matching_tags: bool,
-    pub missing_patch: Option<(String, semver::Version)>,
-}
+/// Resolved local availability. The host obtains these facts from its
+/// catalog (`tango_library::loadout::compatibility_facts`).
+pub use tango_net_protocol::compat::Facts;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {

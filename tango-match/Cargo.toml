@@ -13,6 +13,10 @@ serde.workspace = true
 serde_repr.workspace = true
 getgud.workspace = true
 
+# The predictor evaluation reads recorded input streams.
+[dev-dependencies]
+tango-replay = { path = "../tango-replay" }
+
 [lints]
 workspace = true
 

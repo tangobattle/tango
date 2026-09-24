@@ -26,6 +26,7 @@
 use crate::platform::{WasmNotSend, WasmNotSync};
 
 pub mod channel;
+pub mod connect;
 pub mod control;
 pub mod data;
 /// Signaling-free direct play, over a UDP socket this side owns. Native
@@ -35,6 +36,7 @@ pub mod data;
 pub mod direct_rtc;
 pub mod link;
 
+pub use connect::{open_channels, ConnectError};
 pub use control::{negotiate, NegotiationError, Receiver, Sender};
 pub use data::{InMatchTx, PvpReceiver, PvpSender};
 

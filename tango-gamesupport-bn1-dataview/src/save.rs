@@ -23,10 +23,7 @@ pub struct Save {
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
-        let buf: [u8; SAVE_SIZE] = buf
-            .get(..SAVE_SIZE)
-            .and_then(|buf| buf.try_into().ok())
-            .ok_or(save::Error::InvalidSize(buf.len()))?;
+        let buf: [u8; SAVE_SIZE] = save::read_image(buf, 0)?;
 
         let game_info = match &buf[GAME_NAME_OFFSET..][..20] {
             b"ROCKMAN EXE 20010120" => GameInfo { region: Region::JP },
@@ -38,24 +35,14 @@ impl Save {
 
         let save = Self { buf, game_info };
 
-        let computed_checksum = save.compute_checksum();
-        if save.checksum() != computed_checksum {
-            return Err(save::Error::ChecksumMismatch {
-                actual: save.checksum(),
-                expected: vec![computed_checksum],
-                shift: 0,
-            });
-        }
+        save::verify_checksum(save.checksum(), save.compute_checksum(), 0)?;
 
         Ok(save)
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
         Ok(Self {
-            buf: buf
-                .get(..SAVE_SIZE)
-                .and_then(|buf| buf.try_into().ok())
-                .ok_or(save::Error::InvalidSize(buf.len()))?,
+            buf: save::read_image(buf, 0)?,
             game_info,
         })
     }
@@ -65,7 +52,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
+        save::read_checksum_u32(&self.buf, CHECKSUM_OFFSET)
     }
 
     pub fn compute_checksum(&self) -> u32 {
@@ -96,14 +83,12 @@ impl save::Save for Save {
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {
-        let mut buf = vec![0; 65536];
-        buf[..SAVE_SIZE].copy_from_slice(&self.buf);
-        buf
+        save::sram_dump(&self.buf, 0, None)
     }
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&checksum));
+        save::write_checksum_u32(&mut self.buf, CHECKSUM_OFFSET, checksum);
     }
 }
 

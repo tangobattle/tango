@@ -17,8 +17,6 @@ path = "src/main.rs"
 embed-resource = "1"
 
 [dependencies]
-tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
-num-traits.workspace = true
 iced.workspace = true
 # Drop-in replacement widgets that extend iced 0.14's stock ones.
 # We use sweeten's `pick_list` for its `.disabled()` closure so the
@@ -44,6 +42,7 @@ open = "5"
 discord-ipc = { git = "https://github.com/tangobattle/discord-ipc" }
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-lobby = { path = "../tango-lobby" }
+tango-net = { path = "../tango-net" }
 # Reads packages and the index; the app never writes a package.
 tango-patch = { workspace = true, features = ["package", "index"] }
 tango-library = { path = "../tango-library", features = ["ui"] }
@@ -112,9 +111,8 @@ minidumper = "0.8"
 # handler. `libc::write` maps to the CRT `_write` on Windows too.
 libc = "0.2"
 # Stack-allocated string for formatting the crash summary in the handler
-# without heap allocation (see crash_log.rs).
+# without heap allocation (see platform/crash/client.rs).
 arrayvec = "0.7"
-indexmap.workspace = true
 clap.workspace = true
 
 [dev-dependencies]

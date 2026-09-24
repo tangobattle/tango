@@ -11,7 +11,6 @@
 //! into a booted session, which on a desktop means a blocking thread and
 //! here means a yield and a few seconds of the main thread.
 
-use num_traits::ToPrimitive;
 use std::cell::RefCell;
 
 use futures::StreamExt as _;
@@ -172,7 +171,15 @@ fn describe(error: &tango_lobby::Error) -> String {
         E::NegotiateVersionTooOld => "Their Tango is too old for this one.".into(),
         E::NegotiateVersionTooNew => "Their Tango is newer — update this one.".into(),
         E::Negotiate(inner) => format!("Handshake failed: {inner}"),
-        E::Other(inner) => inner.clone(),
+        e @ (E::Channels(_)
+        | E::Direct { .. }
+        | E::Transport { .. }
+        | E::EncodeState { .. }
+        | E::CommitmentMismatch
+        | E::DecodePeerState { .. }
+        | E::DuplicateChunkStart
+        | E::RevealOverrun { .. }
+        | E::SessionBuild(_)) => e.to_string(),
     }
 }
 
@@ -192,24 +199,20 @@ fn describe_game_info(info: &protocol::GameInfo) -> String {
 /// same ROM map and patch catalog. Doing it any other way is how a
 /// matchup that can't work reaches the ready button.
 fn verdict(handle: &Handle, link: &Link) -> Option<Verdict> {
-    if !matches!(link.net.phase, Phase::Lobby { .. }) {
-        return None;
-    }
-    let (local, remote) = (link.net.lobby.local.as_ref()?, link.net.lobby.remote.as_ref()?);
-    crate::library::with(&handle.library, |library| {
-        let roms = library.roms.read();
-        let catalog = library.patches.read();
-        match check_compatibility(local, remote, &roms, &catalog) {
-            compat::Verdict::Compatible => Verdict::Compatible,
-            compat::Verdict::MissingGame => Verdict::MissingGame,
-            compat::Verdict::MissingRom => Verdict::MissingRom,
-            // Fetchable, and we do fetch it — see `fetch_missing_patch`.
-            compat::Verdict::MissingPatch { name, .. } => Verdict::Fetching { name },
-            compat::Verdict::DifferentVersions => Verdict::DifferentVersions,
-            compat::Verdict::SimVersionTooOld => Verdict::SimVersionTooOld,
-            compat::Verdict::SimVersionTooNew => Verdict::SimVersionTooNew,
-            compat::Verdict::DifferentMatchTypes => Verdict::DifferentMatchTypes,
-        }
+    let verdict = crate::library::with(&handle.library, |library| {
+        link.net
+            .verdict(|local, remote| compatibility_facts(library, local, remote))
+    })??;
+    Some(match verdict {
+        compat::Verdict::Compatible => Verdict::Compatible,
+        compat::Verdict::MissingGame => Verdict::MissingGame,
+        compat::Verdict::MissingRom => Verdict::MissingRom,
+        // Fetchable, and we do fetch it — see `after_state_change`.
+        compat::Verdict::MissingPatch { name, .. } => Verdict::Fetching { name },
+        compat::Verdict::DifferentVersions => Verdict::DifferentVersions,
+        compat::Verdict::SimVersionTooOld => Verdict::SimVersionTooOld,
+        compat::Verdict::SimVersionTooNew => Verdict::SimVersionTooNew,
+        compat::Verdict::DifferentMatchTypes => Verdict::DifferentMatchTypes,
     })
 }
 
@@ -219,8 +222,9 @@ fn verdict(handle: &Handle, link: &Link) -> Option<Verdict> {
 /// Dial a link code. The bring-up reports its own progress, including
 /// its own failure, so there is nothing to route back here.
 pub fn connect(handle: &Handle, link_code: String, nickname: String) {
-    let Some(endpoint) = crate::library::with(&handle.library, |library| library.config.matchmaking_endpoint.clone())
-    else {
+    let Some(endpoint) = crate::library::with(&handle.library, |library| {
+        library.config.borrow().matchmaking_endpoint.clone()
+    }) else {
         return;
     };
     let params = MatchmakingParams {
@@ -277,63 +281,38 @@ pub fn set_loadout(handle: &Handle, loadout: Loadout) {
     }
 }
 
+/// The user picked a match type. Remembered per family in the config,
+/// so coming back to a family offers the mode it was last played in.
 pub fn set_match_type(handle: &Handle, match_type: (u8, u8)) {
-    handle.update(|link| link.net.set_match_type(match_type));
+    let family = handle.update(|link| {
+        let family = link.loadout.game().map(|g| g.family_and_variant().0);
+        link.net.pick_match_type(family, match_type);
+        family
+    });
+    if let Some(family) = family {
+        crate::library::remember_match_type(&handle.library, family, match_type);
+    }
     // The resend's material-difference check does the auto-unready, so
     // it deliberately isn't done here.
     after_state_change(handle);
 }
 
-/// Default the match type to Triple where the game has one — that is
-/// what people actually play, and both sides have to agree on it before
-/// either can ready up, so defaulting to the less-used mode costs every
-/// pair a negotiation.
-///
-/// Re-defaults when the family changes but leaves an explicit pick
-/// within the *same* family alone, which is what `default_mt_for_family`
-/// remembers. Also repairs a pick the current game doesn't have —
-/// match-type tables differ per family, so a pick carried over from
-/// another one can be out of range.
+/// The lobby's default match-type policy
+/// ([`State::apply_default_match_type`]) for the game we're bringing,
+/// with this family's remembered pick.
 fn apply_default_match_type(handle: &Handle) {
+    let Some(game) = handle.read(|link| link.loadout.game()) else {
+        return;
+    };
+    let family = game.family_and_variant().0;
+    let remembered = crate::library::with(&handle.library, |library| {
+        library.config.borrow().last_match_type_per_family.get(family).copied()
+    })
+    .flatten();
     handle.update(|link| {
-        let Some(game) = link.loadout.game else { return };
-        // Entry `i` is how many subtypes mode `i` has; mode 1 is Triple.
-        let table = game.family.match_types;
-        let family = game.family_and_variant().0;
-
-        let family_changed = link.net.lobby.default_mt_for_family.as_deref() != Some(family);
-        let (mode, subtype) = link.net.lobby.match_type;
-        let in_range = table
-            .get(mode as usize)
-            .is_some_and(|subtypes| (subtype as usize) < *subtypes);
-        if !family_changed && in_range {
-            return;
-        }
-        link.net.lobby.match_type = if table.get(1).copied().unwrap_or(0) > 0 {
-            (1, 0)
-        } else {
-            (0, 0)
-        };
-        link.net.lobby.default_mt_for_family = Some(family.to_string());
+        link.net
+            .apply_default_match_type(family, game.family.match_types, remembered)
     });
-}
-
-/// Push the current pick to the peer. A no-op outside the lobby, and
-/// deduped against the last value sent, so it is safe to call from any
-/// state change — which is exactly how it gets sent on lobby entry,
-/// where there is no user action to hang it off.
-fn push_settings(handle: &Handle) {
-    let settings = handle.read(|link| {
-        protocol::Settings {
-            nickname: link.nickname.clone(),
-            match_type: link.net.lobby.match_type,
-            game_info: link.loadout.game_info(),
-            // No blind-setup toggle: this build has no save viewer to
-            // blind, so there is nothing for the flag to hide.
-            blind_setup: false,
-        }
-    });
-    handle.update(|link| link.net.send_local_settings(settings));
 }
 
 /// Press or un-press Ready. Pressing commits to a hash of the save we're
@@ -358,33 +337,34 @@ pub fn set_ready(handle: &Handle, ready: bool) {
 }
 
 /// Everything that has to happen after anything moves — a report from
-/// the connection, a change of pick, a match-type tap. Two things, both
-/// idempotent, which is what lets this hang off every transition rather
-/// than being threaded through each one:
-///
-/// * make sure the peer has our current Settings (this is also how they
-///   get sent on lobby entry, where there is no user action to hang it
-///   off — and without it both sides sit on "Waiting…" forever);
-/// * if the matchup needs a patch we don't have, go and get it. The
-///   verdict resolves from the index, so we know the matchup would be
-///   playable before the package is anywhere near this device.
+/// the connection, a change of pick, a match-type tap. The lobby's own
+/// follow-up ([`State::reconcile`]) is idempotent, which is what lets
+/// this hang off every transition rather than being threaded through
+/// each one: it makes sure the peer has our current Settings (also how
+/// they get sent on lobby entry — without it both sides sit on
+/// "Waiting…" forever), unreadies us if the matchup stopped being
+/// compatible, and names the patch to go and get if that's all that's
+/// missing.
 fn after_state_change(handle: &Handle) {
     apply_default_match_type(handle);
-    push_settings(handle);
-
-    let missing = handle.read(|link| {
-        if !matches!(link.net.phase, Phase::Lobby { .. }) {
-            return None;
-        }
-        let (local, remote) = (link.net.lobby.local.as_ref()?, link.net.lobby.remote.as_ref()?);
-        crate::library::with(&handle.library, |library| {
-            let roms = library.roms.read();
-            let catalog = library.patches.read();
-            check_compatibility(local, remote, &roms, &catalog)
-                .fetchable()
-                .map(|(name, version)| (name.to_string(), version.clone()))
-        })?
-    });
+    let missing = crate::library::with(&handle.library, |library| {
+        handle.update(|link| {
+            let nickname = link.nickname.clone();
+            let game_info = link.loadout.game_info();
+            link.net.reconcile(
+                |lobby| protocol::Settings {
+                    nickname,
+                    match_type: lobby.match_type,
+                    game_info,
+                    // No blind-setup toggle: this build has no save viewer
+                    // to blind, so there is nothing for the flag to hide.
+                    blind_setup: false,
+                },
+                |local, remote| compatibility_facts(library, local, remote),
+            )
+        })
+    })
+    .flatten();
     let Some((name, version)) = missing else { return };
     let owned = handle.clone();
     wasm_bindgen_futures::spawn_local(async move {
@@ -419,7 +399,7 @@ async fn start_match(handle: &Handle) {
             Ok(()) => link.net.finish_handoff(),
             Err(e) => {
                 log::error!("netplay: building the match failed: {e}");
-                link.net.fail_session_build(tango_lobby::Error::Other(e));
+                link.net.fail_session_build(tango_lobby::Error::SessionBuild(e));
             }
         }
     });
@@ -427,31 +407,34 @@ async fn start_match(handle: &Handle) {
 
 async fn build(handle: &Handle, attempt: u64, pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
     let prepared = crate::library::with(&handle.library, |library| {
-        tango_library::loadout::Resolver {
-            storage: &library.files,
-            roms: &library.roms,
-            patches: &library.patches,
-            patches_path: &library.config.patches_path(),
-        }
-        .prepare_match(
-            &pre_match.terms.local_settings,
-            &pre_match.terms.remote_settings,
-            [&pre_match.terms.local_save_data, &pre_match.terms.remote_save_data],
-        )
+        library
+            .catalog
+            .resolver(&library.files, &library.config.borrow())
+            .prepare_match(
+                &pre_match.terms.local_settings,
+                &pre_match.terms.remote_settings,
+                [&pre_match.terms.local_save_data, &pre_match.terms.remote_save_data],
+            )
     })
     .ok_or_else(|| "library not open".to_owned())?
     .map_err(|e| e.to_string())?;
-    let local_game = prepared.local.prepared.game;
-    let remote_game = prepared.remote.prepared.game;
+    let local = tango_session::pvp::Seat {
+        game: prepared.local.prepared.game,
+        sram: prepared.local.match_sram(),
+        rom: prepared.local.rom,
+    };
+    let remote = tango_session::pvp::Seat {
+        game: prepared.remote.prepared.game,
+        sram: prepared.remote.match_sram(),
+        rom: prepared.remote.rom,
+    };
     let sink = handle.engine.audio_sink().await;
     if handle.read(|link| link.net.session_id()) != attempt {
         return Ok(());
     }
     let (session, driver, stream) = tango_session::pvp::PvpSession::new(tango_session::pvp::PvpSessionArgs {
-        local_game,
-        local_rom: prepared.local.rom,
-        remote_game,
-        remote_rom: prepared.remote.rom,
+        local,
+        remote,
         pre_match,
         frame_delay: frame_delay(handle),
         disable_bgm: false,
@@ -459,7 +442,6 @@ async fn build(handle: &Handle, attempt: u64, pre_match: tango_lobby::PreMatchDa
         // `crate::recording`. This host does not persist stats sidecars.
         replays: Some(&crate::recording::BrowserReplayStore(handle.library.clone())),
         stats_sink: None,
-        expected_fps: local_game.pvp.tps().to_f32().unwrap(),
         sample_rate: crate::audio::sample_rate(),
     })
     .await
@@ -484,13 +466,8 @@ fn frame_delay(handle: &Handle) -> u32 {
     // The median rather than the latest, so one spike doesn't set the
     // whole match's display lag. It reads `ZERO` when no Pong has come
     // back yet, which is the "we don't know" case, not a 0 ms link.
-    let suggested = handle.read(|link| {
-        let median = link.net.lobby.latency_counter.median();
-        (!median.is_zero()).then(|| tango_session::pvp::suggest_frame_delay(median))
-    });
-    suggested
-        .unwrap_or(2)
-        .clamp(tango_session::pvp::MIN_FRAME_DELAY, tango_session::pvp::MAX_FRAME_DELAY)
+    let median = handle.read(|link| link.net.lobby.latency_counter.median());
+    tango_session::pvp::initial_frame_delay(median, tango_library::config::DEFAULT_FRAME_DELAY)
 }
 
 /// A fresh random link code, in the user's language, for the "make me
@@ -499,20 +476,18 @@ pub fn random_code() -> String {
     tango_lobby::randomcode::generate(&tango_library::lang::FALLBACK_LANG)
 }
 
-pub fn check_compatibility(
-    local: &tango_net_protocol::control::Settings,
-    remote: &tango_net_protocol::control::Settings,
-    roms: &std::collections::HashMap<tango_library::rom::GameRef, Vec<u8>>,
-    catalog: &tango_library::patch::Catalog,
-) -> compat::Verdict {
-    let facts = tango_library::loadout::compatibility_facts(local, remote, roms, catalog);
-    compat::check(
+/// The library's side of the compatibility verdict, over the same ROM
+/// map and patch catalog the desktop resolves it from. Doing it any
+/// other way is how a matchup that can't work reaches the ready button.
+fn compatibility_facts(
+    library: &crate::library::Library,
+    local: &protocol::Settings,
+    remote: &protocol::Settings,
+) -> compat::Facts {
+    tango_library::loadout::compatibility_facts(
         local,
         remote,
-        compat::Facts {
-            remote_rom_available: facts.remote_rom_available,
-            matching_tags: facts.matching_tags,
-            missing_patch: facts.missing_patch,
-        },
+        &library.catalog.roms.read(),
+        &library.catalog.patches.read(),
     )
 }

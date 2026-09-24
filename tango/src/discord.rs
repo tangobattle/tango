@@ -1,8 +1,7 @@
 //! Discord rich-presence client wrapper. Owns a background
 //! tokio task that maintains the IPC connection (auto-reconnect
 //! on failure, every 15 s), and exposes setter / poller methods
-//! the UI calls from the main thread. Ported from
-//! `tango/src/discord.rs`.
+//! the UI calls from the main thread.
 
 use discord_ipc as rpc;
 

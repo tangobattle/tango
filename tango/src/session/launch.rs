@@ -1,11 +1,10 @@
 //! Prepare sessions from the desktop library and start their workers.
 
-use super::runtime::{run_prefetch_pass, Pacer, RunningSession};
-use super::{pvp, replay, singleplayer, training, PvpPanes, MAX_FRAME_DELAY, MIN_FRAME_DELAY};
-use crate::library::Scanners;
+use super::runtime::{run_prefetch_pass, Pacer, PrefetchStatsFeed, RunningSession};
+use super::{pvp, replay, singleplayer, training, PvpPanes};
+use crate::library::Catalog;
 use crate::platform::audio;
 use crate::{config, selection};
-use num_traits::ToPrimitive;
 
 /// A fully owned session waiting to be installed. Dropping an unused launch
 /// shuts down its workers; audio is connected only by `State::install`.
@@ -26,35 +25,27 @@ impl std::fmt::Debug for Launch {
 /// Decode a replay, resolve its exact ROMs and patches, and start a
 /// playback runtime ready for [`super::State::install`].
 pub fn build_playback(
-    scanners: &Scanners,
+    scanners: &Catalog,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
     path: &std::path::Path,
     // Have the prefetch pass double as the match-stats analysis — see
-    // [`replay::PrefetchStatsJob`] and `App::replay_stats_takeover`.
-    stats_job: Option<replay::PrefetchStatsJob>,
+    // [`PrefetchStatsFeed`] and `App::replay_stats_takeover`.
+    stats: Option<PrefetchStatsFeed>,
     // The recording's round boundaries when its analysis is already
     // cached, so the scrub bar draws them from the first frame.
     round_boundaries: Vec<u32>,
 ) -> anyhow::Result<Launch> {
     let f = std::fs::File::open(path)?;
     let replay = std::sync::Arc::new(tango_replay::Replay::decode(f)?);
-    let resolved = crate::library::replays::resolve_roms(
-        crate::library::storage(),
-        &scanners.roms,
-        &config.patches_path(),
-        &replay.metadata,
-    )?;
+    let resolved = scanners.resolve_replay_roms(crate::library::storage(), config, &replay.metadata)?;
     let (session, workers, audio) = replay::ReplaySession::new(
         resolved.games,
-        resolved.roms.map(std::sync::Arc::new),
+        resolved.roms,
         replay,
-        // Both seats always share one engine, so either seat's rate is
-        // the session's.
-        resolved.games[0].pvp.tps().to_f32().unwrap(),
         audio_binder.sample_rate(),
         config.opponent_view != config::OpponentView::Off,
-        stats_job,
+        stats.is_some(),
         round_boundaries,
     )?;
     session.set_custom_screen_speedup(config.replay_custom_screen_speedup);
@@ -103,7 +94,7 @@ pub fn build_playback(
     runtime.add_thread(
         std::thread::Builder::new()
             .name("tango-sio-replay-prefetch".to_owned())
-            .spawn(move || run_prefetch_pass(prefetch))?,
+            .spawn(move || run_prefetch_pass(prefetch, stats))?,
     );
     Ok(Launch {
         runtime,
@@ -119,49 +110,46 @@ pub fn build_playback(
 /// lobby loop's receiver handoff, and because remote-side rom
 /// resolution might apply a patch.
 pub async fn spawn_pvp(
-    scanners: Scanners,
+    scanners: Catalog,
     config: config::Config,
     audio_binder: audio::LateBinder,
     pre_match: crate::netplay::PreMatchData,
 ) -> anyhow::Result<Launch> {
-    let prepared = {
-        tango_library::loadout::Resolver {
-            storage: crate::library::storage(),
-            roms: &scanners.roms,
-            patches: &scanners.patches,
-            patches_path: &config.patches_path(),
-        }
-        .prepare_match(
-            &pre_match.terms.local_settings,
-            &pre_match.terms.remote_settings,
-            [&pre_match.terms.local_save_data, &pre_match.terms.remote_save_data],
-        )?
-    };
+    let prepared = scanners.resolver(crate::library::storage(), &config).prepare_match(
+        &pre_match.terms.local_settings,
+        &pre_match.terms.remote_settings,
+        [&pre_match.terms.local_save_data, &pre_match.terms.remote_save_data],
+    )?;
     let local_game = prepared.local.prepared.game;
     let remote_game = prepared.remote.prepared.game;
-    let local_rom = prepared.local.rom;
-    let remote_rom = prepared.remote.rom;
+    let local = pvp::Seat {
+        game: local_game,
+        rom: prepared.local.rom.clone(),
+        sram: prepared.local.match_sram(),
+    };
+    let remote = pvp::Seat {
+        game: remote_game,
+        rom: prepared.remote.rom.clone(),
+        sram: prepared.remote.match_sram(),
+    };
     let opponent_build_warnings =
         selection::editor(remote_game).build_warnings(&prepared.remote.prepared, prepared.remote.validation.as_ref());
     let opponent_loaded = (!pre_match.terms.remote_settings.blind_setup)
         .then(|| selection::editor(remote_game).load(prepared.remote.prepared));
     let local_loaded = selection::editor(local_game).load(prepared.local.prepared);
     let (session, boot, audio) = pvp::PvpSession::new(pvp::PvpSessionArgs {
-        local_game,
-        local_rom,
-        remote_game,
-        remote_rom,
+        local,
+        remote,
         pre_match,
-        // Presentation delay is purely local — read straight from config (clamped
-        // to the supported range), not negotiated with the peer.
-        frame_delay: config.frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
+        // Presentation delay is purely local — read straight from config
+        // (which clamps it on load), not negotiated with the peer.
+        frame_delay: config.frame_delay,
         disable_bgm: config.disable_bgm_in_pvp,
         replays: Some(&super::recording::DirReplayStore(config.replays_path())),
         stats_sink: Some(std::sync::Arc::new(super::recording::StatsCache {
             cache_path: config.cache_path(),
             replays_path: config.replays_path(),
         })),
-        expected_fps: local_game.pvp.tps().to_f32().unwrap(),
         sample_rate: audio_binder.sample_rate(),
     })
     .await?;
@@ -194,18 +182,14 @@ pub async fn spawn_pvp(
 
 /// Boot an exact selection from its saved file, independently of editor state.
 pub fn spawn_singleplayer(
-    scanners: &Scanners,
+    scanners: &Catalog,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    selection: &tango_library::loadout::LoadoutSelection,
+    selection: &tango_library::loadout::Selection,
 ) -> anyhow::Result<Launch> {
-    let resolved = tango_library::loadout::Resolver {
-        storage: crate::library::storage(),
-        roms: &scanners.roms,
-        patches: &scanners.patches,
-        patches_path: &config.patches_path(),
-    }
-    .resolve(selection, None)?;
+    let resolved = scanners
+        .resolver(crate::library::storage(), config)
+        .resolve(selection, None)?;
     let game = resolved.prepared.game;
     let save = resolved.sram;
     let (session, driver, audio) = singleplayer::SinglePlayerSession::new(
@@ -214,7 +198,6 @@ pub fn spawn_singleplayer(
         Some(save.clone()),
         // Leave the cart clock on the real one, as it has always been.
         None,
-        game.pvp.tps().to_f32().unwrap(),
         audio_binder.sample_rate(),
     )?;
     let mut runtime = RunningSession::new(session, audio);
@@ -228,23 +211,18 @@ pub fn spawn_singleplayer(
 }
 
 /// Boot the supplied selection in training mode — a local link battle
-/// (both cores run this selection) against a do-nothing dummy controller
-/// ([`training::NoopController`]). The caller supplies a checksum-correct
+/// (both cores run this selection) against a do-nothing dummy. The caller supplies a checksum-correct
 /// snapshot, which may include staged edits. Training never writes it back.
 pub fn spawn_training(
-    scanners: &Scanners,
+    scanners: &Catalog,
     config: &config::Config,
     audio_binder: &audio::LateBinder,
-    selection: &tango_library::loadout::LoadoutSelection,
+    selection: &tango_library::loadout::Selection,
     snapshot: &[u8],
 ) -> anyhow::Result<Launch> {
-    let resolved = tango_library::loadout::Resolver {
-        storage: crate::library::storage(),
-        roms: &scanners.roms,
-        patches: &scanners.patches,
-        patches_path: &config.patches_path(),
-    }
-    .resolve(selection, Some(snapshot))?;
+    let resolved = scanners
+        .resolver(crate::library::storage(), config)
+        .resolve(selection, Some(snapshot))?;
     let game = resolved.prepared.game;
     let save = resolved.sram;
     let (session, driver, audio) = training::TrainingSession::new(
@@ -253,9 +231,7 @@ pub fn spawn_training(
         save,
         std::time::SystemTime::now(),
         rand::random(),
-        game.pvp.tps().to_f32().unwrap(),
         audio_binder.sample_rate(),
-        Box::new(training::NoopController),
     )?;
     session.set_opponent_visible(config.opponent_view != config::OpponentView::Off);
     let mut runtime = RunningSession::new(session, audio);

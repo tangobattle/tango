@@ -7537,13 +7537,11 @@ dependencies = [
  "iced",
  "iced_graphics",
  "image",
- "indexmap",
  "itertools 0.13.0",
  "libc",
  "log",
  "lucide-icons",
  "minidumper",
- "num-traits",
  "open",
  "opener",
  "rand 0.8.5",
@@ -7554,10 +7552,10 @@ dependencies = [
  "serde_json",
  "sweeten",
  "tango-gamesupport",
- "tango-gamesupport-common-dataview",
  "tango-library",
  "tango-lobby",
  "tango-match",
+ "tango-net",
  "tango-net-protocol",
  "tango-patch",
  "tango-replay",
@@ -7587,14 +7585,12 @@ dependencies = [
 name = "tango-backend-mgba"
 version = "0.1.0"
 dependencies = [
- "getgud",
  "log",
  "mgba",
  "mgba-rollback",
  "num-rational",
  "tango-match",
  "tango-replay",
- "tango-session",
  "thiserror 1.0.69",
 ]
 
@@ -7677,9 +7673,7 @@ dependencies = [
 name = "tango-gamesupport-bn1-ui"
 version = "0.1.0"
 dependencies = [
- "iced",
  "tango-gamesupport-common-ui",
- "unic-langid",
 ]
 
 [[package]]
@@ -7713,9 +7707,7 @@ dependencies = [
 name = "tango-gamesupport-bn2-ui"
 version = "0.1.0"
 dependencies = [
- "iced",
  "tango-gamesupport-common-ui",
- "unic-langid",
 ]
 
 [[package]]
@@ -7752,7 +7744,6 @@ name = "tango-gamesupport-bn3-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
- "image",
  "tango-gamesupport-common-ui",
  "unic-langid",
 ]
@@ -7790,7 +7781,6 @@ name = "tango-gamesupport-bn4-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
- "image",
  "sweeten",
  "tango-gamesupport-bn4-dataview",
  "tango-gamesupport-common-dataview",
@@ -7830,10 +7820,7 @@ dependencies = [
 name = "tango-gamesupport-bn5-ui"
 version = "0.1.0"
 dependencies = [
- "iced",
- "image",
  "tango-gamesupport-common-ui",
- "unic-langid",
 ]
 
 [[package]]
@@ -7868,7 +7855,6 @@ name = "tango-gamesupport-bn5ds-ui"
 version = "0.1.0"
 dependencies = [
  "iced",
- "image",
  "sweeten",
  "tango-gamesupport-bn5ds-dataview",
  "tango-gamesupport-common-ui",
@@ -7907,10 +7893,7 @@ dependencies = [
 name = "tango-gamesupport-bn6-ui"
 version = "0.1.0"
 dependencies = [
- "iced",
- "image",
  "tango-gamesupport-common-ui",
- "unic-langid",
 ]
 
 [[package]]
@@ -7989,9 +7972,7 @@ dependencies = [
 name = "tango-gamesupport-exe45-ui"
 version = "0.1.0"
 dependencies = [
- "iced",
  "tango-gamesupport-common-ui",
- "unic-langid",
 ]
 
 [[package]]
@@ -8022,9 +8003,7 @@ dependencies = [
 name = "tango-gamesupport-exeoss-ui"
 version = "0.1.0"
 dependencies = [
- "iced",
  "tango-gamesupport-common-ui",
- "unic-langid",
 ]
 
 [[package]]
@@ -8062,6 +8041,7 @@ dependencies = [
  "tokio",
  "unic-langid",
  "walkdir",
+ "web-time",
  "zip",
 ]
 
@@ -8086,6 +8066,7 @@ dependencies = [
  "tango-lobby",
  "tango-match",
  "tango-net-protocol",
+ "tango-platform",
  "tango-replay",
  "tango-replay-renderer",
  "tango-session",
@@ -8109,6 +8090,7 @@ dependencies = [
  "tango-net-protocol",
  "tango-platform",
  "tango-signaling",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-util",
  "unic-langid",
@@ -8126,6 +8108,7 @@ dependencies = [
  "num-traits",
  "serde",
  "serde_repr",
+ "tango-replay",
  "thiserror 1.0.69",
 ]
 
@@ -8194,6 +8177,7 @@ dependencies = [
  "prost",
  "prost-build",
  "serde",
+ "thiserror 1.0.69",
  "zstd",
 ]
 
@@ -8214,8 +8198,8 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "chrono",
- "futures",
  "log",
+ "num-traits",
  "rand 0.8.5",
  "rand_pcg 0.3.1",
  "tango-gamesupport",

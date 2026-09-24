@@ -46,7 +46,7 @@ use wasm_bindgen::JsCast;
 
 use tango_session::pvp::{PvpBoot, PvpSession};
 use tango_session::replay::ReplaySession;
-use tango_session::singleplayer::SinglePlayerSession;
+use tango_session::singleplayer::{SaveWriteback, SinglePlayerSession};
 use tango_session::Session;
 
 /// The canvas the frame goes to. Looked up by id rather than through a
@@ -67,14 +67,18 @@ struct Presentation {
     height: u32,
 }
 
+/// The stacked arrangement a multi-screen console is presented in:
+/// canonical order, one screen under the next.
+const STACKED: tango_session::screens::Arrangement = tango_session::screens::Arrangement {
+    stacking: tango_session::screens::Stacking::Vertical,
+    touch_first: false,
+};
+
 impl Presentation {
     fn of(session: &dyn Session) -> Self {
         let layout = session.screen_layout();
         let (width, height) = if layout.screens.len() > 1 {
-            (
-                layout.screens.iter().map(|s| s.width).max().unwrap_or(0),
-                layout.screens.iter().map(|s| s.height).sum(),
-            )
+            STACKED.size(&layout)
         } else {
             tango_session::composite_size(&layout)
         };
@@ -89,10 +93,8 @@ impl Presentation {
     /// `(y offset, width, height)` — the stacked arrangement puts each
     /// screen at x 0. `None` for a session without one.
     pub fn touch_rect(&self) -> Option<(u32, u32, u32)> {
-        let touch = self.layout.touch?;
-        let y0 = self.layout.screens[..touch].iter().map(|s| s.height).sum();
-        let screen = &self.layout.screens[touch];
-        Some((y0, screen.width, screen.height))
+        let ((_, y0), screen) = STACKED.touch_screen_placement(&self.layout)?;
+        Some((y0 as u32, screen.width, screen.height))
     }
 }
 
@@ -329,20 +331,9 @@ pub enum Kind {
 }
 
 /// Where a session is in its priming walk, for the notice the play
-/// screen puts over the canvas. The desktop app draws the same three
-/// states over its own frame.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Priming {
-    /// This machine's pair is booting into the link battle.
-    Match,
-    /// Ours is there; the opponent's machine is still walking theirs.
-    Peer,
-    /// A replay's pair is booting into the recorded battle.
-    Playback,
-    /// The walk failed, with the engine's own reason. Terminal: the
-    /// session has nothing left to run, and Quit is the way out.
-    Failed(String),
-}
+/// screen puts over the canvas. The desktop app draws the same states
+/// over its own frame.
+pub use tango_session::Priming;
 
 /// The cheap read-out the UI polls. Everything expensive stays behind
 /// [`ENGINE`].
@@ -414,9 +405,9 @@ struct Engine {
     /// Resolved lazily: the pump can start before the canvas has been
     /// rendered, and the canvas is replaced whenever the screen changes.
     ctx: Option<web_sys::CanvasRenderingContext2d>,
-    /// Single-player only: where to write the cartridge save back, and
-    /// when we last did.
-    save_path: Option<std::path::PathBuf>,
+    /// Single-player only: where to write the cartridge save back, what
+    /// the write-back last left there, and when we last checked.
+    save: Option<(std::path::PathBuf, SaveWriteback)>,
     last_save_ms: f64,
 }
 
@@ -432,7 +423,8 @@ pub fn start_single_player(
     driver: tango_session::singleplayer::Driver,
     stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
-    save_path: Option<std::path::PathBuf>,
+    // The save file the session booted from, and its contents then.
+    save: Option<(std::path::PathBuf, Vec<u8>)>,
 ) {
     install(
         handle,
@@ -441,7 +433,7 @@ pub fn start_single_player(
         stream,
         sink,
         Kind::SinglePlayer,
-        save_path,
+        save.map(|(path, initial)| (path, SaveWriteback::new(initial))),
     );
 }
 
@@ -471,7 +463,7 @@ fn install(
     stream: tango_session::audio::Stream,
     sink: Option<Rc<RefCell<crate::audio::Sink>>>,
     kind: Kind,
-    save_path: Option<std::path::PathBuf>,
+    save: Option<(std::path::PathBuf, SaveWriteback)>,
 ) {
     stop(handle);
     // Whatever the last session left held — a button, the stylus —
@@ -503,7 +495,7 @@ fn install(
         fresh: false,
         prefetch_cost_ms: PREFETCH_COST_GUESS_MS,
         ctx: None,
-        save_path,
+        save,
         last_save_ms: now,
     });
     schedule_frame(handle);
@@ -533,7 +525,7 @@ pub fn stop(handle: &Handle) {
     // with it before the supervisor ever got scheduled, and the goodbye
     // would never reach the wire.
     wasm_bindgen_futures::spawn_local(async move {
-        tango_session::platform::sleep(GOODBYE_GRACE).await;
+        tango_platform::sleep(GOODBYE_GRACE).await;
         drop(engine);
     });
 }
@@ -560,29 +552,10 @@ pub fn status(handle: &Handle) -> Option<Status> {
         frame_delay: pvp.map(|p| p.frame_delay()).unwrap_or(0),
         tps: pvp.map(|p| p.tps().round() as u32).unwrap_or(0),
         reconnecting: pvp.map(|p| p.is_reconnecting()).unwrap_or(false),
-        priming: priming_of(pvp, replay),
+        priming: engine.session.priming(),
         local_player_index: pvp.map(|p| p.local_player_index()).unwrap_or(0),
         opponent: pvp.map(|p| p.remote_nickname.clone()).unwrap_or_default(),
     })
-}
-
-/// The priming state of whichever session kind is up — a failure
-/// first, since it outranks the wait it ended.
-fn priming_of(pvp: Option<&PvpSession>, replay: Option<&ReplaySession>) -> Option<Priming> {
-    if let Some(pvp) = pvp {
-        if let Some(error) = pvp.prime_error() {
-            return Some(Priming::Failed(error));
-        }
-        if pvp.is_booting() {
-            return Some(Priming::Match);
-        }
-        return pvp.waiting_for_peer().then_some(Priming::Peer);
-    }
-    let replay = replay?;
-    if let Some(error) = replay.prime_error() {
-        return Some(Priming::Failed(error));
-    }
-    replay.is_booting().then_some(Priming::Playback)
 }
 
 /// Install a replay and start playing it back.
@@ -793,7 +766,7 @@ impl Engine {
             return;
         }
         if self.presented.stacked() {
-            frame = stack_screens(&frame, &self.presented.layout);
+            frame = STACKED.rearrange(&frame, &self.presented.layout).2;
         }
 
         // One JS-side buffer for the session's life, with an ImageData
@@ -820,47 +793,22 @@ impl Engine {
 /// Write a single-player session's cartridge savedata back to the file
 /// it was loaded from. A match never does this: PvP runs entirely off
 /// the committed in-memory image, and writing it back would let a match
-/// edit your save.
-///
-/// The write is refused unless the bytes parse as a save for this game.
-/// That is not defensive tidiness — before the cartridge has written its
-/// SRAM even once, `export_save` hands back the flash image as it powers
-/// on, which is 32KB of `0xff`. Persisting that overwrites a real save
-/// with a blank one, and booting a game and backing out of it before the
-/// title screen is a completely ordinary thing to do.
+/// edit your save. [`SaveWriteback`] refuses the blank image a cart
+/// reports before it has written SRAM once.
 fn flush_save(engine: &mut Engine) {
-    let Some(path) = engine.save_path.clone() else { return };
     let game = engine.session.local_game();
     let Some(session) = engine.session.downcast_ref::<SinglePlayerSession>() else {
         return;
     };
-    let Some(bytes) = session.export_save() else { return };
-    if game.parse_save(&bytes).is_err() {
-        log::debug!("not persisting {}: the cart hasn't written a save yet", path.display());
+    let Some((path, writeback)) = engine.save.as_mut() else {
         return;
+    };
+    let Some(file) = writeback.next_write(game, session.export_save().as_deref()) else {
+        return;
+    };
+    if crate::library::write_save(&engine.library, path, &file) {
+        writeback.mark_written(file);
     }
-    crate::library::write_save(&engine.library, &path, &bytes);
-}
-
-/// Re-slice the session's canonical side-by-side composition into the
-/// stacked arrangement the canvas shows: each screen's rows gathered
-/// out of the wide raster and laid under the previous screen's. The
-/// same re-pack the desktop's vertical stacking does, minus its
-/// configurability.
-fn stack_screens(frame: &[u8], layout: &tango_match::ScreenLayout) -> Vec<u8> {
-    const BPP: usize = 4;
-    let src_stride: usize = layout.screens.iter().map(|s| s.width as usize).sum::<usize>() * BPP;
-    let mut out = Vec::with_capacity(frame.len());
-    let mut x0 = 0usize;
-    for screen in &layout.screens {
-        let (w, h) = (screen.width as usize, screen.height as usize);
-        for row in 0..h {
-            let at = row * src_stride + x0 * BPP;
-            out.extend_from_slice(&frame[at..at + w * BPP]);
-        }
-        x0 += w;
-    }
-    out
 }
 
 fn canvas_context(width: u32, height: u32) -> Option<web_sys::CanvasRenderingContext2d> {

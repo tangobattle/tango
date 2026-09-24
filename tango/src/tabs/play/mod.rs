@@ -6,18 +6,18 @@
 //! ([`lobby`]) once a connection attempt is in flight. The save view
 //! stays on screen through it all, so what you're bringing to the
 //! match is always visible (and switchable) even mid-lobby. The
-//! selection state itself is App-level ([`crate::loadout::Loadout`])
+//! selection state itself is App-level ([`Selection`])
 //! so the lobby settings-resend sees every change made here live.
 
+pub mod loadout_strip;
 mod lobby;
 mod save_manage;
 
-pub use save_manage::{create_new_save, creation_template, duplicate_save, rename_save, SaveAction};
+pub use save_manage::SaveAction;
 
 use crate::i18n::t;
-use crate::library::Scanners;
+use crate::library::Catalog;
 use crate::library::{game, rom};
-use crate::loadout::{self, Loadout};
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
 use crate::{config, selection};
@@ -25,6 +25,7 @@ use iced::widget::{button, container, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
 use sweeten::widget::{column, row, text_input};
+use tango_library::loadout::Selection;
 use unic_langid::LanguageIdentifier;
 
 // ---------- Messages ----------
@@ -32,8 +33,8 @@ use unic_langid::LanguageIdentifier;
 #[derive(Debug, Clone)]
 pub enum Message {
     /// Loadout strip interaction. Routed by the App to the shared
-    /// [`Loadout`] state — never reaches [`State::update`].
-    Loadout(loadout::Message),
+    /// [`Selection`] — never reaches [`State::update`].
+    Loadout(loadout_strip::Message),
     SaveEditor(std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
 
     LinkCodeChanged(String),
@@ -224,10 +225,10 @@ impl State {
     pub fn update(
         &mut self,
         msg: Message,
-        scanners: &Scanners,
+        scanners: &Catalog,
         config: &config::Config,
         loaded: Option<&mut selection::LoadedSave>,
-        loadout: &Loadout,
+        loadout: &Selection,
     ) -> Option<Effect> {
         let action_before = self.save_action.clone();
         let effect = self.update_inner(msg, scanners, config, loaded, loadout);
@@ -270,13 +271,13 @@ impl State {
     fn update_inner(
         &mut self,
         msg: Message,
-        scanners: &Scanners,
+        scanners: &Catalog,
         config: &config::Config,
         loaded: Option<&mut selection::LoadedSave>,
-        loadout: &Loadout,
+        loadout: &Selection,
     ) -> Option<Effect> {
         match msg {
-            // Routed to the shared Loadout at App level before this
+            // Routed to the shared Selection at App level before this
             // dispatch is reached.
             Message::Loadout(_) => None,
             Message::LinkCodeChanged(s) => {
@@ -415,8 +416,8 @@ impl State {
     pub fn view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-        loadout: &'a Loadout,
+        scanners: &'a Catalog,
+        loadout: &'a Selection,
         loaded: Option<&'a selection::LoadedSave>,
         streamer_mode: bool,
         config: &'a config::Config,
@@ -439,7 +440,7 @@ impl State {
         );
         // A family switch replaces the entire bottom of the tab, so
         // the whole pane glides in (the App starts `save_body_enter`
-        // when `loadout.family` flips); save switches within the
+        // when `loadout.family()` flips); save switches within the
         // family animate inside the save view instead.
         if let Some(p) = self.save_body_enter.progress(now) {
             save_body = crate::ui::anim::slide_in(save_body, p, iced::Vector::new(0.0, 20.0));
@@ -501,15 +502,15 @@ impl State {
             // Same builder the netplay loop uses to ship settings on
             // the wire, so the visible info during the handshake
             // exactly matches what gets sent.
-            let local_fallback = loadout.make_local_settings(config, band.lobby);
+            let local_fallback = loadout_strip::local_settings(loadout, config, band.lobby);
             lobby::Lobby {
                 lang,
                 state: band_lobby,
                 ready: band_ready,
                 phase: band_phase,
-                local_game: loadout.game,
+                local_game: loadout.game(),
                 scanners,
-                has_save: loadout.game.is_some() && loadout.save.is_some(),
+                has_save: loadout.is_playable(),
                 local_fallback,
                 streamer_mode,
                 handoff_pending: band.handoff_pending,
@@ -518,7 +519,7 @@ impl State {
             }
             .view()
         } else {
-            self.bottom_strip(lang, streamer_mode, loadout::patch_ready(loadout, scanners))
+            self.bottom_strip(lang, streamer_mode, loadout.patch_ready(scanners))
         };
         let mut group: Element<'a, Message> = column![widgets::hud_scanline_bottom(), bottom].width(Fill).into();
         if let Some(phase) = swap {
@@ -537,8 +538,8 @@ impl State {
     fn body<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-        loadout: &'a Loadout,
+        scanners: &'a Catalog,
+        loadout: &'a Selection,
         loaded: Option<&'a selection::LoadedSave>,
         streamer_mode: bool,
         config: &'a config::Config,
@@ -570,11 +571,11 @@ impl State {
             );
         }
         // Family selected but no save files anywhere in it.
-        if let Some(family) = loadout.family {
+        if let Some(family) = loadout.family() {
             let saves = scanners.saves.read();
             let has_saves =
                 game::games_in_family(family).any(|g| saves.get(&g).map(|v| !v.is_empty()).unwrap_or(false));
-            if !has_saves && loadout.save.is_none() {
+            if !has_saves && loadout.save().is_none() {
                 let saves_path = config.saves_path();
                 return empty_state_card(
                     t!(lang, "empty-no-saves-title"),
@@ -588,15 +589,15 @@ impl State {
             loaded,
             streamer_mode,
             netplay_phase,
-            loadout::patch_ready(loadout, scanners),
+            loadout.patch_ready(scanners),
         )
     }
 
     fn selector_strip<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-        loadout: &'a Loadout,
+        scanners: &'a Catalog,
+        loadout: &'a Selection,
         config: &'a config::Config,
         downloads: &'a crate::library::patch::Downloads,
         inert: bool,
@@ -605,10 +606,11 @@ impl State {
         // reroute to Noop so a mid-spawn selection change can't
         // contradict the committed state, without the strip changing
         // shape.
-        let gate = move |m: loadout::Message| if inert { Message::Noop } else { Message::Loadout(m) };
-        let game_row: Element<'a, Message> = loadout::game_row(loadout, lang, scanners, config, downloads).map(gate);
+        let gate = move |m: loadout_strip::Message| if inert { Message::Noop } else { Message::Loadout(m) };
+        let game_row: Element<'a, Message> =
+            loadout_strip::game_row(loadout, lang, scanners, config, downloads).map(gate);
         let save_picker: Element<'a, Message> =
-            Element::from(loadout::save_picker(loadout, lang, scanners, config).width(Length::Fill)).map(gate);
+            Element::from(loadout_strip::save_picker(loadout, lang, scanners, config).width(Length::Fill)).map(gate);
         let save_row = self.save_action_row(lang, scanners, loadout, save_picker);
 
         container(column![game_row, save_row].spacing(6))
@@ -896,7 +898,7 @@ fn resolve_link_ident(input: &str) -> Option<crate::netplay::LinkIdent> {
 /// Recognise the direct-TCP link-code commands the user can type
 /// in place of a matchmaking code:
 ///
-/// - `/host` — listen on [`crate::net::DEFAULT_LOCAL_PORT`]
+/// - `/host` — listen on [`tango_net::DEFAULT_LOCAL_PORT`]
 /// - `/host <port>` — listen on the given port
 /// - `/connect <addr>` — dial `<addr>`, appending the default port if
 ///   the user didn't specify one
@@ -913,7 +915,7 @@ fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
     match cmd {
         "/host" => {
             let port = if arg.is_empty() {
-                crate::net::DEFAULT_LOCAL_PORT
+                tango_net::DEFAULT_LOCAL_PORT
             } else {
                 arg.parse::<u16>().ok()?
             };
@@ -931,7 +933,7 @@ fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
             let addr = if arg.contains(':') && !arg.ends_with(']') {
                 arg.to_string()
             } else {
-                format!("{arg}:{}", crate::net::DEFAULT_LOCAL_PORT)
+                format!("{arg}:{}", tango_net::DEFAULT_LOCAL_PORT)
             };
             Some(crate::netplay::DirectRole::Connect { addr })
         }

@@ -143,6 +143,7 @@ tango-replay-renderer = { path = "../tango-replay-renderer" }
 encoder-facade.workspace = true
 tango-lobby = { path = "../tango-lobby" }
 tango-session = { path = "../tango-session" }
+tango-platform = { path = "../tango-platform" }
 
 [features]
 # One feature per game, with `gamesupport-all` for the shipped build.

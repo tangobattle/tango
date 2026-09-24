@@ -6,7 +6,7 @@ use crate::tabs;
 impl App {
     pub fn update(&mut self, message: Message) -> iced::Task<Message> {
         let screen_before = self.screen_key();
-        let family_before = self.loadout.family;
+        let family_before = self.loadout.family();
         // Candidate snapshot for the lobby's exit animation — taken
         // before dispatch (the handler about to run may reset the
         // phase/lobby), kept only if the lobby actually left.
@@ -60,7 +60,7 @@ impl App {
         // within the family only re-renders the save's content, and
         // that entrance rides in with the reloaded save itself: its
         // view state is minted by the load and starts its own rise.
-        if family_before != self.loadout.family {
+        if family_before != self.loadout.family() {
             self.play.animate_family_switch(now);
         }
         task
@@ -82,7 +82,7 @@ impl App {
                 // Clicking a scanner-backed tab re-runs the scan in the
                 // background — there are no Rescan buttons; this is how
                 // new files on disk get noticed. Cheap when nothing
-                // changed (stat-fingerprint gated, see Scanners::rescan).
+                // changed (stat-fingerprint gated, see Catalog::rescan).
                 // Deliberately not limited to *entering* the tab: pressing
                 // the tab you are already on is what a user reaches for
                 // when they have just dropped a file in, and it is the
@@ -136,7 +136,7 @@ impl App {
                 // what winit ends up enforcing is exactly
                 // `MAX_SURFACE_SIZE` physical pixels — which stays the
                 // right cap even if either scale changes later.
-                let (min_w, min_h) = crate::tabs::settings::MINIMUM_RESOLUTION;
+                let (min_w, min_h) = crate::window::MINIMUM_RESOLUTION;
                 let scale = (scale * self.config.ui_scale).max(0.01);
                 let cap = crate::MAX_SURFACE_SIZE / scale;
                 let max = iced::Size::new(cap.max(min_w as f32), cap.max(min_h as f32));
@@ -151,7 +151,7 @@ impl App {
                 iced::Task::none()
             }
             Message::Replays(m) => self.update_replays(m),
-            Message::Settings(m) => self.update_settings(m).map(Message::Settings),
+            Message::Settings(m) => self.update_settings(m),
             Message::Welcome(m) => self.update_welcome(m),
             Message::Session(m) => self.update_session(m),
             Message::Netplay(delivery) => self.update_netplay(delivery),

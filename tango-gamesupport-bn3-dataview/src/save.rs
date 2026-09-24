@@ -37,10 +37,7 @@ fn compute_raw_checksum(buf: &[u8]) -> u32 {
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, tango_gamesupport_common_dataview::save::Error> {
-        let buf: [u8; SAVE_SIZE] = buf
-            .get(..SAVE_SIZE)
-            .and_then(|buf| buf.try_into().ok())
-            .ok_or(tango_gamesupport_common_dataview::save::Error::InvalidSize(buf.len()))?;
+        let buf: [u8; SAVE_SIZE] = tango_gamesupport_common_dataview::save::read_image(buf, 0)?;
 
         let n = &buf[GAME_NAME_OFFSET..][..20];
         if n != b"ROCKMANEXE3 20021002" && n != b"BBN3 v0.5.0 20021002" {
@@ -49,7 +46,7 @@ impl Save {
             ));
         }
 
-        let save_checksum = bytemuck::pod_read_unaligned::<u32>(&buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()]);
+        let save_checksum = tango_gamesupport_common_dataview::save::read_checksum_u32(&buf, CHECKSUM_OFFSET);
         let raw_checksum = compute_raw_checksum(&buf);
         let game_info = {
             const WHITE: u32 = checksum_start_for_variant(Variant::White);
@@ -76,17 +73,14 @@ impl Save {
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, tango_gamesupport_common_dataview::save::Error> {
         Ok(Self {
-            buf: buf
-                .get(..SAVE_SIZE)
-                .and_then(|buf| buf.try_into().ok())
-                .ok_or(tango_gamesupport_common_dataview::save::Error::InvalidSize(buf.len()))?,
+            buf: tango_gamesupport_common_dataview::save::read_image(buf, 0)?,
             game_info,
         })
     }
 
     #[allow(dead_code)]
     pub fn checksum(&self) -> u32 {
-        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
+        tango_gamesupport_common_dataview::save::read_checksum_u32(&self.buf, CHECKSUM_OFFSET)
     }
 
     #[allow(dead_code)]
@@ -132,14 +126,12 @@ impl tango_gamesupport_common_dataview::save::Save for Save {
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {
-        let mut buf = vec![0; 65536];
-        buf[..SAVE_SIZE].copy_from_slice(&self.buf);
-        buf
+        tango_gamesupport_common_dataview::save::sram_dump(&self.buf, 0, None)
     }
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&checksum));
+        tango_gamesupport_common_dataview::save::write_checksum_u32(&mut self.buf, CHECKSUM_OFFSET, checksum);
     }
 }
 

@@ -1,7 +1,6 @@
 use crate::i18n::t;
 use crate::library::game;
 use crate::library::patch::{Catalog, Download, Downloads, VersionKey};
-use crate::library::Scanners;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
 use iced::widget::space::horizontal as horizontal_space;
@@ -266,7 +265,7 @@ impl PatchesState {
     pub fn view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
+        scanners: &'a crate::library::Catalog,
         config: &'a crate::config::Config,
         downloads: &'a Downloads,
         // The startup scan hasn't landed yet; until it does, an empty

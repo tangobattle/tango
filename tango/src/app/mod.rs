@@ -5,10 +5,10 @@
 //! feature modules own their actions and effects; [`view`] renders the shell.
 //! The host wires these methods into `iced::application` in `main.rs`.
 
-use crate::library::{autoupdate, game, Scanners};
+use crate::library::{autoupdate, Catalog};
 use crate::platform::audio;
 use crate::ui::anim;
-use crate::{config, discord, i18n, loadout, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
+use crate::{config, discord, i18n, netplay, selection, session, tabs, updater, INIT_LINK_CODE};
 use i18n::t;
 use tabs::patches::PatchesState;
 use tabs::replays::ReplaysState;
@@ -35,7 +35,7 @@ pub struct App {
     /// [`config::Writer`]. `persist_config` queues snapshots on it.
     config_writer: config::Writer,
     tab: Tab,
-    scanners: Scanners,
+    scanners: Catalog,
     /// Used to bind each installed session's audio stream
     /// without owning the audio backend. The CPAL Backend lives in
     /// `_audio_backend` so the underlying stream keeps playing.
@@ -54,7 +54,7 @@ pub struct App {
     /// The local loadout (family / game / save + patch overlay) —
     /// App-level so the lobby settings-resend sees every change the
     /// Play tab's selector makes.
-    loadout: loadout::Loadout,
+    loadout: tango_library::loadout::Selection,
     play: tabs::play::State,
     replays: ReplaysState,
     replay_controller: replay_controller::Controller,
@@ -177,27 +177,19 @@ enum ScreenKey {
 impl App {
     pub fn new() -> (Self, iced::Task<Message>) {
         let config = config::Config::load_or_create();
-        let _ = i18n::FALLBACK_LANG; // re-exported for use in config; suppress unused warning here
 
-        let scanners = Scanners::new();
+        let scanners = Catalog::new();
         // The scan itself runs off-thread from the task below: reading
         // and parsing the library is unbounded work (a big replay or ROM
         // collection, a slow disk), and running it here would hold the
         // window closed for its whole duration — iced doesn't open one
         // until this returns. The selection restore that needs the
         // results moves with it, into `RescanFollowup::Boot`.
-        let restored = loadout::Loadout {
-            // Restore the selected family (drives the picker even when no
-            // owned-ROM game resolves under it); falls back to the family of
-            // `last_game` for configs written before `last_family` existed.
-            // Static lookups, so this half needs no scan.
-            family: config
-                .last_family
-                .as_deref()
-                .and_then(game::family_static)
-                .or_else(|| config.last_game.as_ref().and_then(|(f, _)| game::family_static(f))),
-            ..Default::default()
-        };
+        // Only the family half is restorable before the scan (the
+        // catalog is still empty); `RescanFollowup::Boot` restores the
+        // rest once it lands.
+        let mut restored = tango_library::loadout::Selection::default();
+        restored.restore(&config, &scanners);
         let welcome = tabs::welcome::State::from_nickname(config.nickname.as_deref());
 
         // Spin up the CPAL audio backend once at startup with the

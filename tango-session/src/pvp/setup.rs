@@ -3,7 +3,7 @@
 use super::driver::{BootPieces, DriveContext};
 use super::recording::build_replay_writer;
 use super::supervisor::{spawn_primed_announcer, spawn_supervisor, SupervisorContext};
-use super::{EndState, Metrics, PvpBoot, PvpSession, PvpSessionArgs, TpsCounter};
+use super::{EndState, Metrics, PvpBoot, PvpSession, PvpSessionArgs, Seat, TpsCounter};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use tango_net_protocol::derive::pick_local_player_index;
@@ -13,7 +13,7 @@ use tango_net_protocol::derive::pick_local_player_index;
 /// rates differ from it by well under a percent, which loss recovery
 /// doesn't care about. Keeps the unacked redundancy window flowing
 /// while the local sim is throttled or stalled, so recovery isn't
-/// coupled to the frame rate (see [`crate::net::InMatchTx`]).
+/// coupled to the frame rate (see [`tango_net::InMatchTx`]).
 const IN_MATCH_HEARTBEAT: std::time::Duration = std::time::Duration::from_nanos((1_000_000_000.0 / 60.0) as u64);
 
 impl PvpSession {
@@ -32,18 +32,26 @@ impl PvpSession {
     /// fps target, silent until the boot lands.
     pub async fn new(args: PvpSessionArgs<'_>) -> Result<(Self, PvpBoot, crate::audio::Stream), crate::Error> {
         let PvpSessionArgs {
-            local_game,
-            local_rom,
-            remote_game,
-            remote_rom,
+            local,
+            remote,
             pre_match,
             frame_delay,
             disable_bgm,
             replays,
             stats_sink,
-            expected_fps,
             sample_rate,
         } = args;
+        let Seat {
+            game: local_game,
+            rom: local_rom,
+            sram: local_sram,
+        } = local;
+        let Seat {
+            game: remote_game,
+            rom: remote_rom,
+            sram: remote_sram,
+        } = remote;
+        let expected_fps = crate::local::native_fps(local_game);
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         // The engine gets a head start on the pair the boot will run —
@@ -51,28 +59,6 @@ impl PvpSession {
         // browser's worker threads get the event-loop turns their
         // startup needs.
         local_game.pvp.prepare(2);
-
-        // Parse both sides' committed SRAM dumps. PvP runs entirely off
-        // these in-memory images — writes don't persist back to anyone's
-        // .sav file.
-        // A netplay-only game models no save, so there is nothing to
-        // parse — the engine still gets the raw SRAM either way.
-        let remote_save =
-            remote_game
-                .parse_save(&pre_match.terms.remote_save_data)
-                .map_err(|e| crate::Error::ParseSave {
-                    side: "remote",
-                    source: e,
-                })?;
-        // A netplay-only game models no save, so there is nothing to
-        // parse — the engine still gets the raw SRAM either way.
-        let local_save =
-            local_game
-                .parse_save(&pre_match.terms.local_save_data)
-                .map_err(|e| crate::Error::ParseSave {
-                    side: "local",
-                    source: e,
-                })?;
 
         // Player index off the shared RNG seed, same negotiation as ever:
         // both peers derive the same assignment, mirrored.
@@ -86,11 +72,6 @@ impl PvpSession {
 
         // Replay writer. Failing to open it shouldn't kill the
         // match — log and continue without recording.
-        // The engine takes SRAM images. A netplay-only game's save
-        // round-trips its bytes unchanged here.
-        let local_sram = local_save.to_sram_dump();
-        let remote_sram = remote_save.to_sram_dump();
-
         let (replay_writer, replay_path) = match replays {
             None => (None, None),
             Some(store) => {
@@ -117,7 +98,7 @@ impl PvpSession {
         // take_pre_match flipped the cancel) and starts the in-match
         // retransmit heartbeat.
         let link = Arc::new(
-            crate::net::link::Link::bring_up(pre_match.link_parts, IN_MATCH_HEARTBEAT, cancellation_token.clone())
+            tango_net::link::Link::bring_up(pre_match.link_parts, IN_MATCH_HEARTBEAT, cancellation_token.clone())
                 .await?,
         );
         let in_match = link.in_match().clone();
@@ -157,11 +138,11 @@ impl PvpSession {
         // Remote input events flow receive-task → drive thread over this
         // queue; the rennet reassembly in PvpReceiver already ordered and
         // deduplicated them (one Input per remote tick, in tick order).
-        let (event_tx, event_rx) = std::sync::mpsc::channel::<crate::net::data::Input>();
+        let (event_tx, event_rx) = std::sync::mpsc::channel::<tango_net::data::Input>();
 
         // The sender pump: the drive thread pushes one Input per advance;
         // the pump ships each as a rennet frame over the unreliable channel.
-        let sender = crate::net::PvpSender::new(in_match.clone());
+        let sender = tango_net::PvpSender::new(in_match.clone());
 
         // Pair-order arrays: core 0 always runs player 0's game, on both
         // peers, so priming and simulation are bit-identical across the pair.

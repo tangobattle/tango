@@ -5,21 +5,12 @@ use super::{App, Message};
 use crate::library::{patch, replays};
 use crate::{session, tabs};
 
-/// Bundle of decoded-replay state the export task needs.
-/// Pulled together synchronously in `start_replay_render` so the
-/// spawned future doesn't have to touch `&self`.
-struct ExportPrep {
-    games: [crate::library::rom::GameRef; 2],
-    roms: [Vec<u8>; 2],
-    replay: tango_replay::Replay,
-}
-
 /// What [`App::replay_stats_takeover`] settled for a playback session:
 /// whether its prefetcher owes anyone an analysis, what it can be told
 /// up front about where the rounds are, and the task wiring its progress
 /// back into the replays tab.
 struct ReplayStatsDuty {
-    job: Option<session::replay::PrefetchStatsJob>,
+    job: Option<session::PrefetchStatsFeed>,
     round_boundaries: Vec<u32>,
     task: iced::Task<Message>,
 }
@@ -98,7 +89,7 @@ impl App {
             tabs::replays::Message::HpStatsLoaded(p, _) => Some(p.clone()),
             _ => None,
         };
-        let effect = self.replays.update(msg, &self.scanners, &self.config);
+        let effect = self.replays.update(msg, &self.config);
         if let Some(p) = finished {
             self.replay_controller.finished(&p);
         }
@@ -148,6 +139,7 @@ impl App {
                 has_setup,
                 clip,
                 swap_sides,
+                canceller,
             } => self
                 .spawn_replay_render(
                     replay,
@@ -158,8 +150,27 @@ impl App {
                     has_setup,
                     clip,
                     swap_sides,
+                    canceller,
                 )
                 .map(Message::Replays),
+            E::LoadPreview { replay, builds } => {
+                let scanners = self.scanners.clone();
+                let config = self.config.clone();
+                let path = replay.clone();
+                iced::Task::perform(
+                    async move {
+                        tokio::task::spawn_blocking(move || load_replay_preview(&scanners, &config, &path, builds))
+                            .await
+                            .ok()
+                    },
+                    move |preview| {
+                        Message::Replays(tabs::replays::Message::PreviewLoaded(
+                            replay,
+                            std::sync::Arc::new(std::sync::Mutex::new(preview)),
+                        ))
+                    },
+                )
+            }
             E::AnalyzeReplay(path) => {
                 // Full re-simulation of the replay — seconds of CPU on a
                 // blocking worker, with per-tick progress streamed back for
@@ -283,10 +294,11 @@ impl App {
         .map(Message::Replays)
     }
 
-    /// Spawn the crate::replay_render task with a progress
-    /// callback that forwards into the replays-tab message
-    /// stream. The user-picked output path + form snapshot come
-    /// from the tab module's `ExportStart` effect.
+    /// Prepare a render of `replay_path` and stream its progress back into
+    /// the replays tab. The user-picked output path, form snapshot, and
+    /// the job's canceller come from the tab module's `StartExport`
+    /// effect; a request that can't start reports as a finished job.
+    #[allow(clippy::too_many_arguments)]
     fn spawn_replay_render(
         &mut self,
         replay_path: std::path::PathBuf,
@@ -305,40 +317,38 @@ impl App {
         // Render the opposite seat's perspective — the viewer's swap
         // toggle when the clip export started.
         swap_sides: bool,
+        canceller: crate::replay_render::Canceller,
     ) -> iced::Task<tabs::replays::Message> {
+        use tabs::replays::{ExportError, ExportMessage, Message as M};
+        let failed = |replay: std::path::PathBuf, error| {
+            iced::Task::done(M::Export(ExportMessage::Finished {
+                replay,
+                result: Err(error),
+            }))
+        };
+
         // Decode just enough of the replay to get both sides' game
         // registrations + raw ROM bytes. Failures show up as a
-        // Done(Err) status — same as runtime errors below.
-        let prep = (|| -> anyhow::Result<ExportPrep> {
+        // finished job with an error — same as runtime errors.
+        let prep = (|| -> anyhow::Result<session::replay::EngineReplay> {
             let f = std::fs::File::open(&replay_path)?;
             let replay = tango_replay::Replay::decode(f)?;
-            let resolved = replays::resolve_roms(
-                crate::library::storage(),
-                &self.scanners.roms,
-                &self.config.patches_path(),
-                &replay.metadata,
-            )?;
-            Ok(ExportPrep {
-                games: resolved.games,
-                roms: resolved.roms,
-                replay,
-            })
+            let resolved =
+                self.scanners
+                    .resolve_replay_roms(crate::library::storage(), &self.config, &replay.metadata)?;
+            Ok(session::replay::EngineReplay::new(
+                resolved.games,
+                resolved.roms,
+                &replay,
+            )?)
         })();
-        let prep = match prep {
+        let mut engine = match prep {
             Ok(p) => p,
-            Err(e) => {
-                let mut job = tabs::replays::ExportJob::new(output_path.clone());
-                job.result = Some(Err(format!("{e}")));
-                self.replays.per.entry(replay_path).or_default().job = Some(job);
-                return iced::Task::none();
-            }
+            Err(e) => return failed(replay_path, ExportError::Prepare(std::sync::Arc::new(e))),
         };
 
         if clip.is_none() && !rounds_mask.iter().any(|b| *b) {
-            let mut job = tabs::replays::ExportJob::new(output_path.clone());
-            job.result = Some(Err("no rounds selected for export".to_string()));
-            self.replays.per.entry(replay_path).or_default().job = Some(job);
-            return iced::Task::none();
+            return failed(replay_path, ExportError::NoRoundsSelected);
         }
 
         // Chapter titles for the output container, one per section in
@@ -361,171 +371,61 @@ impl App {
             })
             .collect();
 
-        let (progress_tx, progress_rx) = futures::channel::mpsc::unbounded::<(usize, usize)>();
-        let done_arc: std::sync::Arc<std::sync::Mutex<Option<Result<std::path::PathBuf, String>>>> =
-            std::sync::Arc::new(std::sync::Mutex::new(None));
-        let done_arc_thread = done_arc.clone();
-        let output_for_thread = output_path.clone();
-        // The ExportJob the tab module created in `ExportStart` already
-        // owns the canceller. Clone it for the thread; the tab's
-        // Cancel button calls `kill()` on its copy.
-        let canceller_thread = self
-            .replays
-            .per
-            .get(&replay_path)
-            .and_then(|e| e.job.as_ref())
-            .map(|j| j.canceller.clone())
-            .unwrap_or_default();
-        // Run the export on a dedicated OS thread. The export is fully
-        // synchronous (std::process ffmpeg subprocesses, no async), so
-        // it lives entirely outside the iced/tokio worker pool — no
-        // shared-runtime starvation regardless of how tight the
-        // export inner loop runs.
-        std::thread::Builder::new()
-            .name("replay-export".to_string())
-            .spawn(move || {
-                let ExportPrep { games, roms, replay } = prep;
-                // scale == 0 is the slider's raw-output stop (RGB24
-                // + PCM, no upscale); 1..=10 is a lossy render at that
-                // nearest-neighbor upscale. The exporter picks the
-                // codecs and container to match.
-                let scale_arg = if user_settings.scale == 0 {
-                    None
-                } else {
-                    Some(user_settings.scale as usize)
-                };
-                // Clone the sender into the callback. The original
-                // `progress_tx` stays alive on the thread scope until
-                // *after* `done_arc_thread` is set; otherwise the
-                // futures channel closes the moment `cb` (and thus the
-                // moved sender) is dropped, the iced stream wakes up,
-                // sees `None`, races to read `done_arc` while it's
-                // still unset, and reports "export task ended without
-                // result".
-                let cb_tx = progress_tx.clone();
-                let cb = move |current: usize, total: usize| {
-                    let _ = cb_tx.unbounded_send((current, total));
-                };
-                let local_player = replay.local_player_index as usize;
-                // The replay's input stream is already absolute pair
-                // order — just widen into the seam's vocabulary.
-                let inputs: Vec<[tango_match::HostInput; 2]> = replay
-                    .inputs
-                    .iter()
-                    .map(|&row| {
-                        row.map(|input| tango_match::HostInput {
-                            keys: input.keys as u32,
-                            touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
-                        })
-                    })
-                    .collect();
-                let total_ticks = inputs.len() as u32;
-                // The same boot the player uses, through the local
-                // seat's own engine door — which engine that is stays
-                // the game's business.
-                let backend = games[local_player].pvp;
-                let config = tango_match::ReplayConfig {
-                    roms,
-                    saves: replay.srams.clone(),
-                    inputs: std::sync::Arc::new(inputs),
-                    rng_seed: replay.rng_seed,
-                    rtc: replay.rtc_time(),
-                    match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
-                    local_player,
-                    peer_rom: tango_match::PeerRom {
-                        code: *games[1 - local_player].rom_code,
-                        revision: games[1 - local_player].revision,
-                    },
-                    want_stats: false,
-                    disable_bgm: user_settings.disable_bgm,
-                };
-                // A whole-replay export is the degenerate clip covering
-                // the full stream, cut at the analysis's round marks;
-                // the player's clip brings the live session's boundaries
-                // and a mask selecting every round — its gate is the
-                // span. A snapshot restore would erase the priming-time
-                // BGM-disable poke, so muted renders re-sim from boot.
-                let (mut clip, rounds_mask) = match clip {
-                    Some(c) => {
-                        let all_rounds = vec![true; c.round_marks.len() + 1];
-                        (c, all_rounds)
-                    }
-                    None => (
-                        crate::replay_render::Clip {
-                            start: 0,
-                            end: total_ticks,
-                            snapshot: None,
-                            round_marks,
-                        },
-                        rounds_mask,
-                    ),
-                };
-                if user_settings.disable_bgm {
-                    clip.snapshot = None;
-                }
-                let request = crate::replay_render::Request {
-                    backend,
-                    config,
-                    rounds_mask: &rounds_mask,
-                    round_titles: &round_titles,
-                    clip: &clip,
-                    scale: scale_arg,
-                    twosided: user_settings.twosided,
-                    swap_sides,
-                };
-                let result = crate::replay_render::render(request, &output_for_thread, &canceller_thread, cb)
-                    .map(|()| output_for_thread)
-                    .map_err(|e| format!("{e}"));
-                *done_arc_thread.lock().unwrap() = Some(result);
-                // `progress_tx` drops here, closing the channel, which
-                // signals the iced stream to read `done_arc` — which is
-                // now safely set above.
-                drop(progress_tx);
+        // The same boot the player uses, through the local seat's own
+        // engine door.
+        let total_ticks = engine.total_ticks();
+        engine.config.disable_bgm = user_settings.disable_bgm;
+        // A whole-replay export is the degenerate clip covering the full
+        // stream, cut at the analysis's round marks; the player's clip
+        // brings the live session's boundaries and a mask selecting
+        // every round — its gate is the span. A snapshot restore would
+        // erase the priming-time BGM-disable poke, so muted renders
+        // re-sim from boot.
+        let (mut clip, rounds_mask) = match clip {
+            Some(c) => {
+                let all_rounds = vec![true; c.round_marks.len() + 1];
+                (c, all_rounds)
+            }
+            None => (
+                crate::replay_render::Clip {
+                    start: 0,
+                    end: total_ticks,
+                    snapshot: None,
+                    round_marks,
+                },
+                rounds_mask,
+            ),
+        };
+        if user_settings.disable_bgm {
+            clip.snapshot = None;
+        }
+        let job = crate::replay_render::Job {
+            engine,
+            rounds_mask,
+            round_titles,
+            clip,
+            // scale == 0 is the slider's raw-output stop (RGB24 + PCM,
+            // no upscale); 1..=10 is a lossy render at that
+            // nearest-neighbor upscale. The exporter picks the codecs and
+            // container to match.
+            scale: (user_settings.scale != 0).then_some(user_settings.scale as usize),
+            twosided: user_settings.twosided,
+            swap_sides,
+        };
+        iced::Task::stream(crate::replay_render::spawn(job, output_path, canceller)).map(move |event| {
+            let replay = replay_path.clone();
+            M::Export(match event {
+                crate::replay_render::Event::Progress { completed, total } => ExportMessage::Progress {
+                    replay,
+                    completed,
+                    total,
+                },
+                crate::replay_render::Event::Finished(result) => ExportMessage::Finished {
+                    replay,
+                    result: result.map_err(|e| ExportError::Render(std::sync::Arc::new(e))),
+                },
             })
-            .expect("spawn replay-export thread");
-
-        // Drain progress + a synthetic final ExportFinished from
-        // the same stream. We poll done_arc whenever the channel
-        // drains so the finished message arrives even if the
-        // export errored before sending any progress.
-        let replay_for_stream = replay_path;
-        let stream = futures::stream::unfold(
-            (progress_rx, done_arc, replay_for_stream, false),
-            |(mut rx, done, replay, finished_sent)| async move {
-                use futures::StreamExt;
-                if finished_sent {
-                    return None;
-                }
-                tokio::select! {
-                    biased;
-                    next = rx.next() => match next {
-                        Some((c, t)) => Some((
-                            tabs::replays::Message::Export(tabs::replays::ExportMessage::Progress {
-                                replay: replay.clone(),
-                                completed: c,
-                                total: t,
-                            }),
-                            (rx, done, replay, false),
-                        )),
-                        None => {
-                            // Channel closed — the task is done.
-                            // Pull the result out of done_arc.
-                            let r = done.lock().unwrap().take().unwrap_or_else(|| {
-                                Err("export task ended without result".to_string())
-                            });
-                            Some((
-                                tabs::replays::Message::Export(tabs::replays::ExportMessage::Finished {
-                                    replay: replay.clone(),
-                                    result: r,
-                                }),
-                                (rx, done, replay, true),
-                            ))
-                        }
-                    }
-                }
-            },
-        );
-        iced::Task::stream(stream)
+        })
     }
 
     /// Hand a played-out replay session over to the next queued replay.
@@ -594,7 +494,7 @@ impl App {
 
         let (partial_tx, partial_rx) = futures::channel::mpsc::unbounded::<tango_match::analysis::MatchStats>();
         let done: std::sync::Arc<std::sync::Mutex<Option<tango_match::analysis::MatchStats>>> = Default::default();
-        let job = session::replay::PrefetchStatsJob {
+        let job = session::PrefetchStatsFeed {
             partial_tx,
             done: done.clone(),
         };
@@ -677,23 +577,14 @@ impl App {
         iced::Task::stream(stream)
     }
 
-    /// Capture the live seek snapshot and perspective before opening the
-    /// asynchronous file dialog. Export jobs are owned by the Replays tab.
-    pub(super) fn export_replay_clip(&mut self, start: u32, end: u32) -> iced::Task<Message> {
-        let Some(path) = self.session.replay_path.clone() else {
-            return iced::Task::none();
-        };
-        let (snapshot, round_marks, swap_sides) = self
-            .session
-            .active_as::<session::replay::ReplaySession>()
-            .map(|s| (s.clip_start_capture(start), s.round_boundaries(), s.swap_perspective()))
-            .unwrap_or_default();
-        let clip = crate::replay_render::Clip {
-            start,
-            end,
-            snapshot,
-            round_marks,
-        };
+    /// Ask where to write a clip the playing session captured, then start
+    /// its export. Export jobs are owned by the Replays tab.
+    pub(super) fn export_replay_clip(
+        &mut self,
+        path: std::path::PathBuf,
+        clip: crate::replay_render::Clip,
+        swap_sides: bool,
+    ) -> iced::Task<Message> {
         let raw_output = self.replays.export_settings.scale == 0;
         let replay_for_msg = path.clone();
         self.export_save_dialog(path, raw_output, "-clip", move |output| {
@@ -704,5 +595,38 @@ impl App {
                 swap_sides,
             })
         })
+    }
+}
+
+/// Read what selecting the replay at `path` needs: its stats sidecar and,
+/// when `builds`, each participant's save-view build — the library's
+/// best-effort preview of that seat, which renders even when the seat's
+/// patch can't be applied.
+fn load_replay_preview(
+    scanners: &crate::library::Catalog,
+    config: &crate::config::Config,
+    path: &std::path::Path,
+    builds: bool,
+) -> tabs::replays::ReplayPreview {
+    let builds = builds.then(|| {
+        let f = std::fs::File::open(path)?;
+        let replay = tango_replay::Replay::decode(f)?;
+        let resolver = scanners.resolver(crate::library::storage(), config);
+        let seat = |player: u8, side: &str| {
+            resolver
+                .preview_replay_seat(&replay, player)
+                .inspect_err(|e| log::warn!("{side} replay build preview failed: {e}"))
+                .ok()
+                .map(crate::selection::load)
+        };
+        Ok(tabs::replays::ReplayBuilds {
+            local: seat(replay.local_player_index, "local"),
+            opponent: seat(1 - replay.local_player_index, "opponent"),
+            total_ticks: replay.inputs.len() as u32,
+        })
+    });
+    tabs::replays::ReplayPreview {
+        builds,
+        stats: replays::load_match_stats(&config.cache_path(), &config.replays_path(), path),
     }
 }

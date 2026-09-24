@@ -1,22 +1,13 @@
 //! Training-mode emulator session: a real link battle you fight
-//! locally, against a **dummy controller** on the opponent core.
+//! locally, against a **dummy** on the opponent core.
 //!
 //! Mechanically this is a netplay match with the network cut out: the
 //! game's own registration starts it, and both seats' input is supplied
 //! locally before the tick advances. Both cores run the player's own ROM + save
 //! (a mirror match), primed all the way into their link battle exactly
 //! as a netplay match would be — so training *starts in a battle*, not
-//! at the title screen. The player drives one core; the other core's
-//! input each tick comes from a [`TrainingController`].
-//!
-//! Out of the box that controller does nothing: the stock
-//! [`NoopController`] presses no buttons, so the opponent just stands
-//! there. The point of the mode is the seam, not any behaviour — it
-//! exists so future work has one obvious place to hook in: implement
-//! [`TrainingController`], read either core's state off the live pair in
-//! [`TrainingController::poll`], and decide what the dummy should press.
-//! A controller can be swapped in at any time with
-//! [`TrainingSession::set_controller`].
+//! at the title screen. The player drives one core; the dummy on the
+//! other presses nothing, so the opponent just stands there.
 //!
 //! The battle runs entirely off in-memory SRAM, so nothing a training
 //! session does is written back to the player's `.sav` on disk. There is
@@ -25,7 +16,9 @@
 //! runs in perfect lockstep.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use crate::local::{Pacing, Surfaces};
 
 use tango_match::telemetry::Event;
 
@@ -33,53 +26,6 @@ use tango_match::telemetry::Event;
 /// there's no lobby to pick a mode, and the default do-nothing opponent
 /// makes best-of-N pointless.
 const TRAINING_MATCH_TYPE: (u8, u8) = (0, 0);
-
-/// What the drive loop hands a [`TrainingController`] each tick: the live
-/// linked pair (read either core's RAM/video to decide what to do) and
-/// which core is which. This is the whole integration surface — a
-/// controller inspects the pair, then returns the joyflags the dummy
-/// should hold for the tick about to advance.
-pub struct ControllerContext {
-    /// The core the dummy drives (the non-human core).
-    pub dummy_player: usize,
-    /// The core the human drives.
-    pub human_player: usize,
-    /// Ticks elapsed since the battle started (0 on the first poll).
-    pub frame: u64,
-}
-
-/// A pluggable per-tick input source for the training dummy — the one
-/// extension point of training mode. The drive loop calls [`poll`] once
-/// per tick, just before that tick advances, and feeds the returned
-/// joyflags to the dummy's core as its input for the tick.
-///
-/// The stock implementation is [`NoopController`], which presses nothing.
-/// Implement this to drive the dummy: read state off `ctx.pair`, return
-/// the buttons to hold this tick.
-///
-/// [`poll`]: TrainingController::poll
-pub trait TrainingController: Send {
-    /// Produce the dummy's input for the tick about to advance. Return a
-    /// joyflag bitmap (the pad half of what
-    /// [`crate::Session::set_input`] carries); return `0` to press
-    /// nothing.
-    fn poll(&mut self, ctx: &mut ControllerContext) -> u32;
-}
-
-/// The default dummy controller: presses nothing, every tick. A training
-/// session built with it is a battle against an opponent that just
-/// stands there — until a real [`TrainingController`] is installed.
-pub struct NoopController;
-
-impl TrainingController for NoopController {
-    fn poll(&mut self, _ctx: &mut ControllerContext) -> u32 {
-        0
-    }
-}
-
-/// A boxed, hot-swappable training controller shared between the session
-/// (which can replace it) and the drive thread (which polls it).
-type SharedController = Arc<Mutex<Box<dyn TrainingController>>>;
 
 pub struct TrainingSession {
     game: &'static tango_gamesupport::Game,
@@ -90,24 +36,10 @@ pub struct TrainingSession {
     /// controlled core).
     controlled: Arc<AtomicUsize>,
     joyflags: Arc<AtomicU32>,
-    controller: SharedController,
-    /// The engine's native frame rate — what the speed dial's 1.0× means.
-    expected_fps: f32,
-    /// Pacing target as f32 bits — realtime by default; `set_speed`
-    /// raises it for fast-forward and the audio stream compresses to
-    /// match.
-    fps_bits: Arc<AtomicU32>,
-    /// The most recent joyflags the dummy controller produced, for the
-    /// host to observe.
-    dummy_joyflags: Arc<AtomicU32>,
-    /// Whether the opponent-screen picture-in-picture is on.
-    show_pip: Arc<AtomicBool>,
-    /// The non-controlled core's screen, written each tick while the PiP
-    /// is on.
-    pip: Arc<crate::Framebuffer>,
-    /// Whether `pip` holds a frame from the current PiP activation
-    /// (cleared while off, so a stale capture never flashes on re-toggle).
-    pip_fresh: Arc<AtomicBool>,
+    pacing: Pacing,
+    /// The controlled core's screen, and the non-controlled core's as
+    /// the picture-in-picture while that is on.
+    surfaces: Surfaces,
     /// The console's screens, as the game's engine presents them —
     /// what the session's surfaces are sized for.
     layout: tango_match::ScreenLayout,
@@ -116,14 +48,11 @@ pub struct TrainingSession {
     /// session down.
     ended: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
-    screen: Arc<crate::Framebuffer>,
-    wake: Arc<tokio::sync::Notify>,
 }
 
 impl TrainingSession {
-    /// Boot a training battle with `controller` as the dummy's input
-    /// source (pass `Box::new(NoopController)` for the do-nothing
-    /// default). Both cores run `rom` + `save_sram` (a mirror match); the
+    /// Boot a training battle against the do-nothing dummy. Both cores
+    /// run `rom` + `save_sram` (a mirror match); the
     /// SRAM is in-memory, so nothing persists back to disk.
     ///
     /// Primes both games into their link battle before returning — a
@@ -137,9 +66,7 @@ impl TrainingSession {
         save_sram: Vec<u8>,
         rtc: std::time::SystemTime,
         rng_seed: [u8; 16],
-        expected_fps: f32,
         sample_rate: u32,
-        controller: Box<dyn TrainingController>,
     ) -> Result<(Self, Driver, crate::audio::Stream), crate::Error> {
         // The engine's local core is core 0; `advance` always feeds core
         // 0 and `add_remote_input` core 1. The player starts on core 0
@@ -181,48 +108,30 @@ impl TrainingSession {
 
         let controlled = Arc::new(AtomicUsize::new(0));
         let joyflags = Arc::new(AtomicU32::new(0));
-        let controller: SharedController = Arc::new(Mutex::new(controller));
-        let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
-        let dummy_joyflags = Arc::new(AtomicU32::new(0));
-        let show_pip = Arc::new(AtomicBool::new(false));
+        let pacing = Pacing::new(game);
         // A primed pair, same as netplay — the dummy seat is the pair's
         // other console, not a solo boot.
         let layout = game.pvp.screen_layout(tango_match::SessionMode::PvP {
             match_type: TRAINING_MATCH_TYPE,
         });
-        let pip = crate::Framebuffer::new(&layout);
-        let pip_fresh = Arc::new(AtomicBool::new(false));
+        let surfaces = Surfaces::new(&layout, false);
         let ended = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
-        let screen = crate::Framebuffer::new(&layout);
-        let wake = Arc::new(tokio::sync::Notify::new());
 
         // Audio comes off whichever core the player is driving (same
         // path as PvP), rate control following the pacing target. A swap
         // tells the match to listen to the other seat, so the sound
         // follows the player without anything here being rebuilt.
-        let audio = crate::audio::Stream::new(
-            audio_out,
-            expected_fps,
-            crate::audio::Stream::fps_from_bits(fps_bits.clone()),
-            sample_rate,
-        );
+        let audio = pacing.audio_stream(audio_out, sample_rate);
 
         let driver = Driver {
             match_,
             controlled: controlled.clone(),
             joyflags: joyflags.clone(),
-            controller: controller.clone(),
-            fps_bits: fps_bits.clone(),
-            dummy_joyflags: dummy_joyflags.clone(),
-            show_pip: show_pip.clone(),
-            pip: pip.clone(),
-            pip_fresh: pip_fresh.clone(),
+            pacing: pacing.clone(),
+            surfaces: surfaces.clone(),
             ended: ended.clone(),
             stop: stop.clone(),
-            screen: screen.clone(),
-            wake: wake.clone(),
-            frame: 0,
             confirmed_through: 0,
         };
 
@@ -231,42 +140,15 @@ impl TrainingSession {
                 game,
                 controlled,
                 joyflags,
-                controller,
-                expected_fps,
-                fps_bits,
-                dummy_joyflags,
-                show_pip,
-                pip,
-                pip_fresh,
+                pacing,
+                surfaces,
                 ended,
                 stop,
                 layout,
-                screen,
-                wake,
             },
             driver,
             audio,
         ))
-    }
-
-    /// Install a new dummy controller, replacing whatever is running.
-    /// Takes effect on the next tick the drive loop polls. The other
-    /// half of the extension point: build a session with
-    /// [`NoopController`], then swap in real behaviour whenever it's
-    /// ready.
-    pub fn set_controller(&self, controller: Box<dyn TrainingController>) {
-        *self.controller.lock().unwrap() = controller;
-    }
-
-    /// The joyflags the dummy controller produced on its most recent
-    /// poll. `0` with the stock [`NoopController`].
-    pub fn dummy_joyflags(&self) -> u32 {
-        self.dummy_joyflags.load(Ordering::Relaxed)
-    }
-
-    /// Which core the human currently drives (0 or 1).
-    pub fn controlled_player(&self) -> usize {
-        self.controlled.load(Ordering::Relaxed)
     }
 
     /// Whether the player has swapped to the non-default side (control of
@@ -286,7 +168,7 @@ impl TrainingSession {
     /// that surface as either picture-in-picture or an equal second pane.
     /// Takes effect on the next published frame.
     pub fn set_opponent_visible(&self, visible: bool) {
-        self.show_pip.store(visible, Ordering::Relaxed);
+        self.surfaces.set_pip_visible(visible);
     }
 }
 
@@ -296,7 +178,7 @@ impl crate::Session for TrainingSession {
     }
 
     fn frame(&self) -> Vec<u8> {
-        self.screen.read()
+        self.surfaces.screen.read()
     }
 
     fn screen_layout(&self) -> tango_match::ScreenLayout {
@@ -304,13 +186,13 @@ impl crate::Session for TrainingSession {
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {
-        self.wake.clone()
+        self.surfaces.wake.clone()
     }
 
     /// The non-controlled core's screen — `None` while the PiP is off or
     /// before its first captured frame.
     fn pip_frame(&self) -> Option<Vec<u8>> {
-        (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed)).then(|| self.pip.read())
+        self.surfaces.pip_frame()
     }
 
     fn set_input(&self, input: crate::HostInput) {
@@ -319,10 +201,7 @@ impl crate::Session for TrainingSession {
     }
 
     fn set_speed(&self, factor: f32) {
-        self.fps_bits.store(
-            crate::clamp_speed(self.expected_fps, factor).to_bits(),
-            Ordering::Relaxed,
-        );
+        self.pacing.set_speed(factor);
     }
 
     /// True once the battle's own match-end path fired, so the host
@@ -345,19 +224,10 @@ pub struct Driver {
     match_: tango_match::Match,
     controlled: Arc<AtomicUsize>,
     joyflags: Arc<AtomicU32>,
-    controller: SharedController,
-    fps_bits: Arc<AtomicU32>,
-    dummy_joyflags: Arc<AtomicU32>,
-    show_pip: Arc<AtomicBool>,
-    pip: Arc<crate::Framebuffer>,
-    pip_fresh: Arc<AtomicBool>,
+    pacing: Pacing,
+    surfaces: Surfaces,
     ended: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
-    screen: Arc<crate::Framebuffer>,
-    wake: Arc<tokio::sync::Notify>,
-    /// Ticks run, handed to the dummy controller so it can time its
-    /// takes.
-    frame: u64,
     /// Number of authoritative rows returned by the match so far, used as the
     /// confirmed telemetry boundary. Training discards the rows themselves.
     confirmed_through: u32,
@@ -369,17 +239,16 @@ impl crate::Drive for Driver {
     }
 
     fn fps_target(&self) -> f32 {
-        f32::from_bits(self.fps_bits.load(Ordering::Relaxed))
+        self.pacing.fps_target()
     }
 }
 
 impl Driver {
-    /// Advance the battle one tick: poll the dummy, route both inputs,
-    /// step the pair, publish the screens. `false` once the session has
+    /// Advance the battle one tick: route both inputs, step the pair,
+    /// publish the screens. `false` once the session has
     /// ended — the battle's own match-end path, a failed advance, or the
     /// session being dropped.
     pub fn tick(&mut self) -> bool {
-        let frame = self.frame;
         if self.stop.load(Ordering::Relaxed) {
             return false;
         }
@@ -393,17 +262,8 @@ impl Driver {
             // tail never plays under the new one.
             self.match_.listen_to(controlled);
 
-            // Poll the dummy controller for the tick about to advance. It
-            // sees the pair parked at the newest simulated tick; its
-            // output becomes the dummy core's input for this tick. The
-            // stock NoopController returns 0.
-            let controller = self.controller.clone();
-            let dummy = controller.lock().unwrap().poll(&mut ControllerContext {
-                dummy_player,
-                human_player: controlled,
-                frame,
-            });
-            self.dummy_joyflags.store(dummy, Ordering::Relaxed);
+            // The dummy presses nothing.
+            let dummy = 0;
 
             // Route each input to its core, then feed the engine: core 0
             // via `advance`, core 1 via `add_remote_input` (the engine's
@@ -420,7 +280,7 @@ impl Driver {
                 Err(e) => {
                     log::error!("training: advance failed: {e}");
                     self.ended.store(true, Ordering::Release);
-                    self.wake.notify_one();
+                    self.surfaces.wake.notify_one();
                     return false;
                 }
             };
@@ -438,25 +298,19 @@ impl Driver {
             };
             if events.iter().any(|(_, e)| matches!(e, Event::MatchEnded)) {
                 self.ended.store(true, Ordering::Release);
-                self.wake.notify_one();
+                self.surfaces.wake.notify_one();
                 return false;
             }
 
             // Publish the controlled core to the main screen; the other
             // core feeds the PiP while it's on.
-            if let Some(buf) = self.match_.seat_frame(controlled) {
-                self.screen.write(&buf);
-            }
-            if self.show_pip.load(Ordering::Relaxed) {
-                if let Some(buf) = self.match_.seat_frame(dummy_player) {
-                    self.pip.write(&buf);
-                    self.pip_fresh.store(true, Ordering::Relaxed);
-                }
+            let main = self.match_.seat_frame(controlled);
+            let other = if self.surfaces.pip_visible() {
+                self.match_.seat_frame(dummy_player)
             } else {
-                self.pip_fresh.store(false, Ordering::Relaxed);
-            }
-            self.frame = frame.wrapping_add(1);
-            self.wake.notify_one();
+                None
+            };
+            self.surfaces.publish(main.as_deref(), other.as_deref());
         }
         true
     }

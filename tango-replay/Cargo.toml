@@ -8,6 +8,7 @@ license = "GPL-3.0-or-later"
 byteorder.workspace = true
 prost.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 zstd.workspace = true
 
 [build-dependencies]

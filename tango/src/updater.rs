@@ -1,6 +1,6 @@
-//! Self-updater. Ported from `tango/src/updater.rs`.
+//! Self-updater.
 //!
-//! Lifecycle (matches legacy):
+//! Lifecycle:
 //!
 //!   1. Query GitHub for the latest tango release.
 //!   2. If newer than the current build, stream the platform's
@@ -117,7 +117,7 @@ fn do_update(path: &std::path::Path) {
 
 #[cfg(not(target_os = "windows"))]
 fn do_update(path: &std::path::Path) {
-    // Non-Windows hand-off isn't ported yet (legacy uses macOS
+    // No automated hand-off outside Windows (it would take macOS
     // CFBundle + Linux execve gymnastics). Open the downloaded
     // asset and let the user finish manually rather than fail
     // silently.

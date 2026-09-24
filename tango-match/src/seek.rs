@@ -1,7 +1,7 @@
 //! Requesting a seek, and being told where one got to.
 //!
-//! This is pure orchestration — atomics, a condvar, and a publish gate
-//! — with no emulator anywhere in it, which is why it sits in the seam
+//! This is pure orchestration — atomics and a condvar — with no
+//! emulator anywhere in it, which is why it sits in the seam
 //! rather than in a backend. A host's UI thread posts targets, a worker
 //! chases the newest one on whatever engine is behind the replay, and
 //! the two never learn anything about each other.
@@ -9,8 +9,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Condvar, Mutex};
 
-/// Coordination state between seek requesters (the UI thread), the seek
-/// worker thread, and the playback core's frame callback. Requests
+/// Coordination state between seek requesters (the UI thread) and the
+/// seek worker chasing on the playback pair. Requests
 /// coalesce: only the most recent target matters, and an in-flight chase
 /// retargets mid-loop instead of finishing stale work.
 pub struct SeekController {
@@ -91,18 +91,8 @@ impl SeekController {
         self.resume.store(false, Ordering::Release);
     }
 
-    /// Whether the frame at `frame_index` should reach the display.
-    /// During a chase only the landing frame passes — publishing every
-    /// intermediate catch-up frame strobes a fast-forward of everything
-    /// between the start snapshot and the target. `frame_index` is the
-    /// recorded-frame index, same scale as the target.
-    pub fn should_publish_frame(&self, frame_index: u32) -> bool {
-        !self.chasing.load(Ordering::Acquire) || frame_index >= self.target.load(Ordering::Acquire)
-    }
-
-    // --- worker-side surface, for seek workers living outside this
-    // module (the hosts driving [`crate::Replay`]'s chase). The trap
-    // worker below predates these and touches the fields directly.
+    // --- worker-side surface, for the seek workers outside this module
+    // (the hosts driving [`crate::Replay`]'s chase).
 
     /// Block until a request lands ([`Self::request`]) or the controller
     /// shuts down. Returns false on shutdown.
@@ -119,8 +109,8 @@ impl SeekController {
         }
     }
 
-    /// Mark a chase pass running — the publish gate closes and
-    /// [`Self::pending_target`] keeps reporting until [`Self::end_pass`].
+    /// Mark a chase pass running — [`Self::pending_target`] keeps
+    /// reporting until [`Self::end_pass`].
     pub fn begin_pass(&self) {
         self.chasing.store(true, Ordering::Release);
     }

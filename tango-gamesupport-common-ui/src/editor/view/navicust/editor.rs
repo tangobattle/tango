@@ -200,7 +200,7 @@ pub const DISPLAY_W: f32 = 360.0;
 
 /// Corner-rounding of the editor grid, in display pixels — matches the
 /// radius the read-only viewer image is masked to (see
-/// `selection::build_navicust_render`).
+/// `editor::loaded::build_navicust_render`).
 const CORNER_RADIUS_DISPLAY: f32 = 4.0;
 
 /// Maximum number of copies of one part (by id) allowed on the grid.

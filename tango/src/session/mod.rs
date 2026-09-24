@@ -6,16 +6,20 @@
 //! library inputs and starts desktop workers; `runtime` owns their cleanup
 //! and save persistence. Hosts install the resulting [`Launch`] through
 //! [`State::install`], which also resets the presentation for the new session.
+//! `update` holds each session kind's controls and the [`update::Effect`]s
+//! they hand the App; `view` only renders.
 
 mod launch;
 mod recording;
 mod runtime;
 pub use launch::{build_playback, spawn_pvp, spawn_singleplayer, spawn_training, Launch};
+pub use runtime::PrefetchStatsFeed;
 
 pub mod scrubber;
+pub mod update;
 pub mod view;
 
-pub use tango_session::{pvp, replay, singleplayer, training, Session};
+pub use tango_session::{pvp, replay, singleplayer, training, Priming, Session};
 
 use crate::config;
 use crate::i18n::t;
@@ -250,7 +254,7 @@ impl Scrub {
     pub fn refresh_thumb(&mut self, replay: &replay::ReplaySession) {
         let Some(h) = self.hover else { return };
         if let Some(snap) = replay.nearest_snapshot(h.tick) {
-            let snap_tick = snap.key_tick();
+            let snap_tick = snap.frame_index();
             if self.thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
                 let fb = snap.local_framebuffer();
                 // Length-checked rather than just non-empty: a capture
@@ -350,7 +354,7 @@ impl MatchResults {
         // No recording length to pin the timeline to — the match just
         // ended and its replay is still flushing — so the cards run to
         // the last reading.
-        let (cooked, max_hp) = crate::ui::widgets::cook_hp_rounds(&stats, loadeds, None);
+        let (cooked, max_hp) = crate::ui::matchup::cook_hp_rounds(&stats, loadeds, None);
         let rounds = cooked
             .into_iter()
             // Every round the match simulated is on the card, decided or
@@ -516,7 +520,7 @@ pub struct State {
     /// to the wait on the peer's is a new wait, and carrying the first
     /// one's clock into it would overstate how long the opponent has
     /// been holding things up.
-    pub prime_wait_since: Option<(PrimeWait, std::time::Instant)>,
+    pub prime_wait_since: Option<(Priming, std::time::Instant)>,
     /// Show/hide transition for the floating controls bar. Synced
     /// after every update: shown while the mouse moved recently,
     /// the cursor rests on the bar, any overlay is open, a scrub
@@ -593,60 +597,12 @@ impl State {
     }
 
     /// Where the active session stands on its priming walk, or `None`
-    /// once it is simply running. The one place the cases are
-    /// recognized: the [`subscription`] reads it to keep redraws coming
-    /// while nothing is producing frames, the frame handler to stamp
-    /// [`prime_wait_since`](Self::prime_wait_since), and the views to
-    /// draw the notice over the session's own screen.
-    pub fn prime_wait(&self) -> Option<PrimeWait> {
-        if let Some(pvp) = self.active_as::<pvp::PvpSession>() {
-            if let Some(error) = pvp.prime_error() {
-                return Some(PrimeWait::Failed(error));
-            }
-            if pvp.is_booting() {
-                return Some(PrimeWait::Match);
-            }
-            return pvp.waiting_for_peer().then_some(PrimeWait::Peer);
-        }
-        if let Some(replay) = self.active_as::<replay::ReplaySession>() {
-            if let Some(error) = replay.prime_error() {
-                return Some(PrimeWait::Failed(error));
-            }
-            return replay.is_booting().then_some(PrimeWait::Playback);
-        }
-        None
-    }
-}
-
-/// Where a session is in its priming walk — the seconds of emulation
-/// that get a game from power-on to its link battle. Both kinds that
-/// walk come up before it runs and show nothing at all while it does,
-/// which on a DS-class game is long enough to read as a hang.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PrimeWait {
-    /// A match's own pair is being booted and primed
-    /// ([`pvp::PvpSession::is_booting`]).
-    Match,
-    /// Ours is primed and the drive loop is idling at the ready gate
-    /// for the peer's to get there
-    /// ([`pvp::PvpSession::waiting_for_peer`]).
-    Peer,
-    /// A replay's pair is being booted and primed
-    /// ([`replay::ReplaySession::is_booting`]).
-    Playback,
-    /// The walk failed, carrying its reason. Terminal, and the only
-    /// state the user has to act on: the session stays up with nothing
-    /// to run until they dismiss it.
-    Failed(String),
-}
-
-impl PrimeWait {
-    /// Whether this is a wait that is still going somewhere — which is
-    /// also what decides whether the host keeps redrawing for it (see
-    /// [`subscription`]). A failure is over; it just hasn't been read
-    /// yet.
-    pub fn in_progress(&self) -> bool {
-        !matches!(self, PrimeWait::Failed(_))
+    /// once it is simply running. The [`subscription`] reads it to keep
+    /// redraws coming while nothing is producing frames, the frame
+    /// handler to stamp [`prime_wait_since`](Self::prime_wait_since), and
+    /// the views to draw the notice over the session's own screen.
+    pub fn prime_wait(&self) -> Option<Priming> {
+        self.active.as_deref()?.priming()
     }
 }
 
@@ -667,24 +623,24 @@ pub enum Message {
     /// Mapping into joyflags, and pushes them to the active
     /// session. Live-session speed-up uses the same mechanism
     /// (edge-detected); replay transport keys are decoded before it.
-    Input(InputEvent),
+    Input(crate::platform::input::Event),
     /// Pointer event over the emulator surface of a console with a
     /// touch screen, already mapped into that screen's pixels by the
     /// framebuffer widget. Folded into the same session input push as
     /// [`Input`](Self::Input).
     Stylus(StylusEvent),
     /// Replay-view messages (transport, scrubber, display toggles) —
-    /// defined + handled in [`view::replay`].
-    Replay(view::replay::Message),
+    /// defined + handled in [`update::replay`].
+    Replay(update::replay::Message),
     /// PvP-view messages (frame delay, setup panels, save views,
-    /// disconnect confirm) — defined + handled in [`view::pvp`].
-    Pvp(view::pvp::Message),
+    /// disconnect confirm) — defined + handled in [`update::pvp`].
+    Pvp(update::pvp::Message),
     /// Training-view messages (PiP + side-swap toggles) — defined +
-    /// handled in [`view::training`].
-    Training(view::training::Message),
+    /// handled in [`update::training`].
+    Training(update::training::Message),
     /// Post-match results screen messages — defined in
-    /// [`view::results`]. Dismiss is handled here; WatchReplay by the
-    /// App wrapper (building a playback session needs the scanners +
+    /// [`view::results`]. Dismiss is handled here; WatchReplay becomes
+    /// an [`update::Effect`] (building a playback session needs the scanners +
     /// config).
     Results(view::results::Message),
     /// User pressed Esc inside a session. Dismisses whichever overlay is on top
@@ -726,23 +682,12 @@ pub enum Message {
     NoOp,
 }
 
-/// Atomic input event we feed to the mapping resolver. Lives in
-/// [`crate::platform::input`] (as [`Event`](crate::platform::input::Event)) because the
-/// settings input pane's live binding highlight consumes the same
-/// normalized stream.
-pub use crate::platform::input::Event as InputEvent;
-
 impl State {
-    /// Apply a session message to the state. Returns the iced Task
-    /// that should be scheduled (always Task::none today — kept for
-    /// API parity with the other tabs).
-    pub fn update(
-        &mut self,
-        msg: Message,
-        mapping: &crate::platform::input::Mapping,
-        lang: &LanguageIdentifier,
-    ) -> iced::Task<Message> {
-        let task = self.update_inner(msg, mapping, lang);
+    /// Apply a session message to the state. Anything that needs the
+    /// application's configuration or library comes back as a single
+    /// optional [`update::Effect`], the same way the tabs report theirs.
+    pub fn update(&mut self, msg: Message, config: &config::Config) -> Option<update::Effect> {
+        let effect = self.update_inner(msg, config);
         // Hold-to-quit: Esc held to the threshold tears the session
         // down, same as the Close button. Checked here on every
         // message (the 60 Hz frame wakes, plus the dedicated
@@ -785,7 +730,7 @@ impl State {
             || self.scrub.tools_open
             || self.last_mouse_move.elapsed() < CONTROLS_HIDE_AFTER;
         self.controls_anim.set(show_controls, now);
-        task
+        effect
     }
 
     /// Replace the current runtime and install its presentation in one step.
@@ -794,7 +739,7 @@ impl State {
         self.close_session();
         if let Some(pvp) = launch.runtime.downcast_ref::<pvp::PvpSession>() {
             // The local slider remains live while an async launch is building.
-            pvp.set_frame_delay(config.frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY));
+            pvp.set_frame_delay(config.frame_delay);
         }
         launch.runtime.bind_audio(binder);
         self.active = Some(launch.runtime);
@@ -882,12 +827,8 @@ impl State {
         }
     }
 
-    fn update_inner(
-        &mut self,
-        msg: Message,
-        mapping: &crate::platform::input::Mapping,
-        lang: &LanguageIdentifier,
-    ) -> iced::Task<Message> {
+    fn update_inner(&mut self, msg: Message, config: &config::Config) -> Option<update::Effect> {
+        let mapping = &config.input_mapping;
         match msg {
             Message::Close => {
                 self.close_session();
@@ -928,14 +869,18 @@ impl State {
             }
             // Kind-specific view messages — defined + handled beside
             // the views that emit them.
-            Message::Replay(m) => return view::replay::update(self, m).map(Message::Replay),
-            Message::Pvp(m) => return view::pvp::update(self, m, lang).map(Message::Pvp),
-            Message::Training(m) => return view::training::update(self, m).map(Message::Training),
+            Message::Replay(m) => return update::replay::update(self, m, config),
+            Message::Pvp(m) => return update::pvp::update(self, m, &config.language),
+            Message::Training(m) => return update::training::update(self, m),
             Message::Results(m) => match m {
                 view::results::Message::Dismiss => self.results = None,
-                // App-level: the wrapper intercepts this and builds the
-                // playback session (needs scanners + config).
-                view::results::Message::WatchReplay => {}
+                view::results::Message::WatchReplay => {
+                    return self
+                        .results
+                        .as_ref()
+                        .and_then(|r| r.replay_path.clone())
+                        .map(update::Effect::WatchReplay);
+                }
             },
             Message::EscPressed => {
                 // Arm hold-to-quit on the first press of a physical
@@ -979,7 +924,7 @@ impl State {
             }
             Message::UpdateFramebuffer => {
                 // Keep the user's .sav current while they play — see
-                // [`SaveBackup`]. No-op for every other session kind.
+                // `runtime::SaveBackup`. No-op for every other session kind.
                 self.autosave_singleplayer();
                 // Telemetry snapshot for the persistent sparklines, captured while
                 // the session is borrowed below and pushed afterward. `None`
@@ -1058,7 +1003,7 @@ impl State {
                 };
             }
         }
-        iced::Task::none()
+        None
     }
 }
 
@@ -1195,11 +1140,17 @@ fn thumbnail_handle(width: u32, height: u32, pixels: Vec<u8>) -> iced::widget::i
     iced::widget::image::Handle::from_rgba(width, height, pixels)
 }
 
-/// Convert a tick count (60 Hz GBA frames) into `m:ss` for the scrub
-/// bar's wallclock labels.
+/// Convert a tick count (60 Hz GBA frames) into `m:ss` (or `h:mm:ss`
+/// past an hour): the scrub bar's wallclock labels and a replay's
+/// length in the replays tab.
 pub fn format_tick(tick: u32) -> String {
     let total_s = tick / 60;
-    let m = total_s / 60;
+    let h = total_s / 3600;
+    let m = (total_s % 3600) / 60;
     let s = total_s % 60;
-    format!("{m}:{s:02}")
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }

@@ -16,9 +16,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use tango_match::seek::SeekController;
 
-/// A GBA screen, which is what every game with replays is on today.
-pub const SCREEN_WIDTH: u32 = 240;
-pub const SCREEN_HEIGHT: u32 = 160;
+use crate::local::Surfaces;
+
+mod engine;
+pub use engine::{analyze, ConfigError, EngineReplay};
 
 /// What the input display overlay reads off a replay: every recorded
 /// (local, remote) joyflags pair, flattened across rounds in playhead
@@ -52,27 +53,18 @@ pub struct ReplaySession {
     /// the `Session` enum — small, same as the PvP variant.
     input_display: Box<InputDisplay>,
     /// The console's screens, as the local game's engine presents them
-    /// — what both surfaces below are sized for.
+    /// — what the surfaces below are sized for.
     layout: tango_match::ScreenLayout,
     /// This session's display, kept so [`Self::scrub_preview`] can blit
     /// snapshot framebuffers without going through the emulator at all.
-    screen: Arc<crate::Framebuffer>,
-    /// Repaint wake, fired once per published frame (and per blit).
-    wake: Arc<tokio::sync::Notify>,
-    /// Whether the opponent-screen PiP is on (a per-session toggle on
-    /// the transport bar).
-    show_pip: Arc<AtomicBool>,
+    /// The PiP (a per-session toggle on the transport bar) carries the
+    /// opponent's screen.
+    surfaces: Surfaces,
     /// Whether the main screen shows the opponent's perspective instead
     /// of the local one — a per-session toggle on the transport bar. The
     /// PiP, when also on, carries the local screen so the two surfaces
     /// always show both sides.
     swap_perspective: Arc<AtomicBool>,
-    /// The opponent's screen, written once per published frame while
-    /// the PiP is on.
-    pip: Arc<crate::Framebuffer>,
-    /// Whether `pip` holds a frame from the current PiP activation
-    /// (cleared while off, so a stale capture never flashes on re-toggle).
-    pip_fresh: Arc<AtomicBool>,
     /// The selected transport rate plus the custom-screen override that
     /// derives the effective drive/audio rate from it.
     speed: Arc<SpeedControl>,
@@ -228,47 +220,30 @@ impl ReplaySession {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         games: [&'static tango_gamesupport::Game; 2],
-        roms: [Arc<Vec<u8>>; 2],
+        roms: [Vec<u8>; 2],
         replay: Arc<tango_replay::Replay>,
-        expected_fps: f32,
         sample_rate: u32,
         show_pip: bool,
-        stats_job: Option<PrefetchStatsJob>,
+        // Whether the prefetch pass should also fold the match-stats
+        // analysis, for a host that wants [`PrefetchWorker::preview`] and
+        // [`PrefetchWorker::finished`].
+        want_stats: bool,
         // The recording's round boundaries, when the host already had
         // its analysis (a stats sidecar) — the scrub bar draws them from
         // the first frame instead of waiting out a pass that would only
         // rediscover them. Empty otherwise, and the pass fills them in.
         round_boundaries: Vec<u32>,
     ) -> Result<(Self, Workers, crate::audio::Stream), crate::Error> {
-        let local_player = replay.local_player_index as usize;
-        if local_player >= 2 {
-            return Err(crate::Error::BadLocalPlayerIndex);
-        }
+        let mut engine = EngineReplay::new(games, roms, &replay)?;
+        let local_player = engine.config.local_player;
+        let expected_fps = crate::local::native_fps(games[local_player]);
+        let total_ticks = engine.total_ticks();
 
         // The engine gets a head start on the two pairs playback runs
         // (display + the keyframe pass's). The pairs boot lazily from
         // the host's tick loop, so by then the event loop has turned —
         // which is what a browser engine's worker startup needs.
-        games[local_player].pvp.prepare(4);
-        // The replay's input stream is already absolute pair order
-        // (core 0 runs player 0's game) — just widen into the seam's
-        // vocabulary.
-        let inputs: Arc<Vec<[tango_match::HostInput; 2]>> = Arc::new(
-            replay
-                .inputs
-                .iter()
-                .map(|&row| {
-                    row.map(|input| tango_match::HostInput {
-                        keys: input.keys as u32,
-                        touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
-                    })
-                })
-                .collect(),
-        );
-        let total_ticks = inputs.len() as u32;
-        if total_ticks == 0 {
-            return Err(crate::Error::EmptyReplay);
-        }
+        engine.backend.prepare(4);
 
         let nickname_of =
             |side: Option<&tango_replay::metadata::Side>| side.map(|s| s.nickname.clone()).unwrap_or_default();
@@ -303,12 +278,11 @@ impl ReplaySession {
 
         // The mode the recording was played in, which the re-primed
         // pair below walks back into and the pane is shaped by.
-        let match_type = (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8);
-        let layout = games[local_player]
-            .pvp
+        let match_type = engine.config.match_type;
+        let layout = engine
+            .backend
             .screen_layout(tango_match::SessionMode::PvP { match_type });
-        let screen = crate::Framebuffer::new(&layout);
-        let wake = Arc::new(tokio::sync::Notify::new());
+        let surfaces = Surfaces::new(&layout, show_pip);
         let playback: SharedPlayback = Arc::new(Mutex::new(None));
         let cursor = Arc::new(AtomicU32::new(0));
         let paused = Arc::new(crate::PauseGate::new(false));
@@ -324,54 +298,32 @@ impl ReplaySession {
         let cancel = Arc::new(AtomicBool::new(false));
         let booted = Arc::new(AtomicBool::new(false));
         let prime_error = Arc::new(Mutex::new(None));
-        let show_pip = Arc::new(AtomicBool::new(show_pip));
         let swap_perspective = Arc::new(AtomicBool::new(false));
         // Which seat is on screen and in the speakers. Kept as a number
         // rather than derived at each use, because the engine's audio
         // pull reads it per fill.
         let shown_seat = Arc::new(AtomicUsize::new(local_player));
-        let pip = crate::Framebuffer::new(&layout);
-        let pip_fresh = Arc::new(AtomicBool::new(false));
 
         // The recording as the local game's engine offers it. Nothing
         // is simulated yet: the display pair boots on the drive worker,
         // and the prefetch worker's pass either reuses its primed first
         // state (parking until it lands) or — on an engine that can't
         // hand over a bare pair — walks its own prime concurrently.
-        let set: Arc<tango_match::ReplaySet> =
-            Arc::new(games[local_player].pvp.open_replay(tango_match::ReplayConfig {
-                roms: [roms[0].to_vec(), roms[1].to_vec()],
-                saves: replay.srams.clone(),
-                inputs: inputs.clone(),
-                rng_seed: replay.rng_seed,
-                rtc: replay.rtc_time(),
-                match_type,
-                local_player,
-                peer_rom: tango_match::PeerRom {
-                    code: *games[1 - local_player].rom_code,
-                    revision: games[1 - local_player].revision,
-                },
-                // The fold is also where round boundaries come from, so
-                // a session that doesn't know them yet wants it even
-                // with no stats job asking for the rest.
-                want_stats: stats_job.is_some() || discover_marks,
-                // The games' own audio is the point of watching one.
-                disable_bgm: false,
-            })?);
+        // The fold is also where round boundaries come from, so a
+        // session that doesn't know them yet wants it even with no
+        // host asking for the rest.
+        engine.config.want_stats = want_stats || discover_marks;
+        let set: Arc<tango_match::ReplaySet> = Arc::new(engine.backend.open_replay(engine.config)?);
         // The session's audio ring, made before the pair that feeds it
         // exists: the host binds the stream at construction, and the
         // ring simply reads empty — so the stream primes — through the
         // priming walk the boot runs.
         let (audio_in, audio_out) = crate::audio::ring();
 
-        let surfaces = Surfaces {
+        let perspective = Perspective {
             shown_seat: shown_seat.clone(),
-            screen: screen.clone(),
-            pip: pip.clone(),
-            pip_fresh: pip_fresh.clone(),
-            show_pip: show_pip.clone(),
+            surfaces: surfaces.clone(),
             swap_perspective: swap_perspective.clone(),
-            wake: wake.clone(),
             local_player,
         };
 
@@ -396,7 +348,7 @@ impl ReplaySession {
                     cursor: cursor.clone(),
                     paused: paused.clone(),
                     cancel: cancel.clone(),
-                    surfaces: surfaces.clone(),
+                    perspective: perspective.clone(),
                     audio: Mutex::new(Some(audio_in)),
                     seat: shown_seat.clone(),
                     booted: booted.clone(),
@@ -407,14 +359,14 @@ impl ReplaySession {
                 paused: paused.clone(),
                 cancel: cancel.clone(),
                 booted: false,
-                backend: games[local_player].pvp,
+                backend: engine.backend,
             },
             seek: SeekWorker {
                 seek: seek.clone(),
                 playback: playback.clone(),
                 cursor: cursor.clone(),
                 paused: paused.clone(),
-                surfaces: surfaces.clone(),
+                perspective,
                 speed: speed.clone(),
             },
             prefetch: PrefetchWorker {
@@ -422,7 +374,6 @@ impl ReplaySession {
                 round_marks: discover_marks.then(|| round_marks.clone()),
                 progress: prefetch_progress.clone(),
                 cancel: cancel.clone(),
-                stats_job,
                 pass: None,
                 finished: None,
                 done: false,
@@ -436,12 +387,8 @@ impl ReplaySession {
             total_ticks,
             input_display,
             layout,
-            screen,
-            wake,
-            show_pip,
+            surfaces,
             swap_perspective,
-            pip,
-            pip_fresh,
             speed,
             engine: Engine {
                 local_player,
@@ -464,7 +411,7 @@ impl ReplaySession {
     /// re-blitted from the current frame's snapshot immediately. The host
     /// decides whether that surface is an inset or an equal second pane.
     pub fn set_opponent_visible(&self, visible: bool) {
-        self.show_pip.store(visible, Ordering::Relaxed);
+        self.surfaces.set_pip_visible(visible);
         self.refresh_paused_frame();
     }
 
@@ -728,16 +675,12 @@ impl ReplaySession {
     }
 
     /// Copy `snap`'s stored framebuffers into the display surfaces —
-    /// see [`Surfaces`].
+    /// see [`Perspective`].
     fn blit_snapshot(&self, snap: &NearestSnapshot) -> bool {
-        Surfaces {
+        Perspective {
             shown_seat: Arc::new(AtomicUsize::new(snap.local_player)),
-            screen: self.screen.clone(),
-            pip: self.pip.clone(),
-            pip_fresh: self.pip_fresh.clone(),
-            show_pip: self.show_pip.clone(),
+            surfaces: self.surfaces.clone(),
             swap_perspective: self.swap_perspective.clone(),
-            wake: self.wake.clone(),
             local_player: snap.local_player,
         }
         .publish_frames(&snap.frames);
@@ -751,7 +694,7 @@ impl crate::Session for ReplaySession {
     }
 
     fn frame(&self) -> Vec<u8> {
-        self.screen.read()
+        self.surfaces.screen.read()
     }
 
     fn screen_layout(&self) -> tango_match::ScreenLayout {
@@ -759,13 +702,13 @@ impl crate::Session for ReplaySession {
     }
 
     fn wake(&self) -> Arc<tokio::sync::Notify> {
-        self.wake.clone()
+        self.surfaces.wake.clone()
     }
 
     /// The opponent's screen, or the local one while swapped — `None`
     /// while the PiP is off or before its first captured frame.
     fn pip_frame(&self) -> Option<Vec<u8>> {
-        (self.show_pip.load(Ordering::Relaxed) && self.pip_fresh.load(Ordering::Relaxed)).then(|| self.pip.read())
+        self.surfaces.pip_frame()
     }
 
     /// 0.5 = slow-mo. This changes the selected base rate; an enabled
@@ -790,11 +733,6 @@ impl NearestSnapshot {
         self.frames.tick
     }
 
-    /// Stable cache key for the hover thumbnail.
-    pub fn key_tick(&self) -> u32 {
-        self.frames.tick
-    }
-
     /// The local perspective's pixels, same RGBA8 as
     /// [`Session::frame`](crate::Session::frame). May be empty if the
     /// capture had no rendered frame.
@@ -806,23 +744,18 @@ impl NearestSnapshot {
 /// The display surfaces an SIO playback session publishes into, plus
 /// the perspective toggles that pick which core lands where — shared
 /// between the drive loop, the seek worker's landing publisher, and
-/// paused-frame blits so the paths can't drift (the SIO analogue of
-/// [`blit_snapshot_surfaces`]).
+/// paused-frame blits so the paths can't drift.
 #[derive(Clone)]
-struct Surfaces {
+struct Perspective {
     /// Mirrors `swap_perspective` as a seat number, for the engine's
     /// audio pull.
     shown_seat: Arc<AtomicUsize>,
-    screen: Arc<crate::Framebuffer>,
-    pip: Arc<crate::Framebuffer>,
-    pip_fresh: Arc<AtomicBool>,
-    show_pip: Arc<AtomicBool>,
+    surfaces: Surfaces,
     swap_perspective: Arc<AtomicBool>,
-    wake: Arc<tokio::sync::Notify>,
     local_player: usize,
 }
 
-impl Surfaces {
+impl Perspective {
     /// Which seat the main screen currently shows.
     fn shown(&self) -> usize {
         let shown = if self.swap_perspective.load(Ordering::Relaxed) {
@@ -835,25 +768,6 @@ impl Surfaces {
         shown
     }
 
-    /// Copy a (main, other) frame pair into the surfaces and wake the
-    /// renderer. Either side may be absent (`None`/empty) — that surface
-    /// keeps its last frame.
-    fn publish(&self, main: Option<&[u8]>, other: Option<&[u8]>) {
-        if let Some(main) = main {
-            self.screen.write(main);
-        }
-        if self.show_pip.load(Ordering::Relaxed) {
-            if let Some(other) = other {
-                self.pip.write(other);
-                self.pip_fresh.store(true, Ordering::Relaxed);
-            }
-        } else {
-            self.pip_fresh.store(false, Ordering::Relaxed);
-        }
-        // One wake for the pair, after both surfaces are up.
-        self.wake.notify_one();
-    }
-
     /// Publish a capture's frames — live or landed, the player draws no
     /// distinction and neither does this.
     fn publish_frames(&self, frames: &tango_match::LiveFrames) {
@@ -861,17 +775,11 @@ impl Surfaces {
         fn pick(fb: &[u8]) -> Option<&[u8]> {
             (!fb.is_empty()).then_some(fb)
         }
-        self.publish(pick(&frames.frames[shown]), pick(&frames.frames[1 - shown]));
+        self.surfaces
+            .publish(pick(&frames.frames[shown]), pick(&frames.frames[1 - shown]));
     }
 }
 
-/// Body of the SIO playback drive thread: boot + prime the pair (the
-/// slow part — the session shows black + silence until it's done), then
-/// pace the linear re-sim at the published fps target, capturing every
-/// tick into the rewind ring (keyframes shared into the store) and
-/// publishing frames. Reaching end-of-stream pauses; unpausing there is
-/// a no-op until a seek moves the playhead back.
-#[allow(clippy::too_many_arguments)]
 /// Everything the playback half of a replay session needs, whoever is
 /// driving it. A desktop gives each of the session's three concerns a
 /// thread of its own (see [`Workers::split`]); a browser has one event
@@ -882,7 +790,7 @@ struct Playhead {
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
     cancel: Arc<AtomicBool>,
-    surfaces: Surfaces,
+    perspective: Perspective,
     /// The producing end of the ring the host's stream is already bound
     /// to, handed to the pair when the boot brings one up. `None` once
     /// it has been; until then the ring reads empty and the stream
@@ -912,7 +820,7 @@ impl Playhead {
                 log::error!("replay: boot failed: {e:?}");
                 *self.prime_error.lock().unwrap() = Some(e);
                 // The view is watching a black frame for this.
-                self.surfaces.wake.notify_one();
+                self.perspective.surfaces.wake.notify_one();
                 return false;
             }
         };
@@ -923,7 +831,7 @@ impl Playhead {
         }
         // Show the primed first frame while paused-at-start or still
         // spinning up.
-        self.surfaces.publish_frames(&pb.frames());
+        self.perspective.publish_frames(&pb.frames());
         *self.playback.lock().unwrap() = Some(pb);
         true
     }
@@ -944,7 +852,7 @@ impl Playhead {
         pb.step();
         self.cursor.store(pb.cursor(), Ordering::Relaxed);
         self.speed.set_custom_screen_active(pb.either_player_in_custom_screen());
-        self.surfaces.publish_frames(&pb.frames());
+        self.perspective.publish_frames(&pb.frames());
         true
     }
 }
@@ -1030,7 +938,7 @@ pub struct SeekWorker {
     playback: SharedPlayback,
     cursor: Arc<AtomicU32>,
     paused: Arc<crate::PauseGate>,
-    surfaces: Surfaces,
+    perspective: Perspective,
     speed: Arc<SpeedControl>,
 }
 
@@ -1046,7 +954,7 @@ impl SeekWorker {
             &self.seek,
             budget,
             &mut |tick| self.cursor.store(tick, Ordering::Relaxed),
-            &mut |frames| self.surfaces.publish_frames(frames),
+            &mut |frames| self.perspective.publish_frames(frames),
             &mut || self.paused.set(false),
         ) == tango_match::SeekStep::Working;
         self.speed.set_custom_screen_active(pb.either_player_in_custom_screen());
@@ -1077,10 +985,9 @@ pub struct PrefetchWorker {
     /// refreshed from the pass once per slice — like the marks.
     progress: Arc<AtomicU32>,
     cancel: Arc<AtomicBool>,
-    stats_job: Option<PrefetchStatsJob>,
     pass: Option<tango_match::StatsPass>,
-    /// What the pass produced, kept so a host can cache it after the
-    /// loop rather than racing the deliver.
+    /// What the pass produced, kept so a host can take it after the
+    /// loop.
     finished: Option<tango_match::analysis::MatchStats>,
     /// The pass finished, failed, or was cancelled — don't reopen it.
     done: bool,
@@ -1139,9 +1046,7 @@ impl PrefetchWorker {
             }
             Ok(false) => {
                 self.mirror_marks();
-                let stats = self.pass.take().and_then(|p| p.finish());
-                self.finished = stats.clone();
-                self.deliver(stats);
+                self.finished = self.pass.take().and_then(|p| p.finish());
                 self.done = true;
                 false
             }
@@ -1179,21 +1084,6 @@ impl PrefetchWorker {
     /// somewhere to put it and a browser doesn't.
     pub fn finished(&self) -> Option<tango_match::analysis::MatchStats> {
         self.finished.clone()
-    }
-
-    /// The stats job this pass was opened for, if any — the host
-    /// delivers to it when the pass finishes, and previews into it as
-    /// the fold runs.
-    pub fn stats_job(&self) -> Option<&PrefetchStatsJob> {
-        self.stats_job.as_ref()
-    }
-
-    /// Hand a finished pass's stats to its host. Persistence is host-owned.
-    fn deliver(&self, stats: Option<tango_match::analysis::MatchStats>) {
-        let (Some(stats), Some(job)) = (stats, self.stats_job.as_ref()) else {
-            return;
-        };
-        *job.done.lock().unwrap() = Some(stats);
     }
 }
 
@@ -1264,11 +1154,6 @@ impl crate::Drive for Driver {
     fn fps_target(&self) -> f32 {
         self.drive.fps_target()
     }
-}
-
-pub struct PrefetchStatsJob {
-    pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_match::analysis::MatchStats>,
-    pub done: Arc<Mutex<Option<tango_match::analysis::MatchStats>>>,
 }
 
 #[cfg(test)]

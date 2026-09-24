@@ -131,7 +131,7 @@ impl App {
     /// installed. A download that failed is retried, so a selection
     /// change picks up again once the network comes back.
     pub(super) fn fetch_selected_patch(&mut self) -> iced::Task<Message> {
-        let (Some(name), Some(version)) = (self.loadout.patch.clone(), self.loadout.patch_version.clone()) else {
+        let Some((name, version)) = self.loadout.patch().map(|(n, v)| (n.to_owned(), v.clone())) else {
             return iced::Task::none();
         };
         {

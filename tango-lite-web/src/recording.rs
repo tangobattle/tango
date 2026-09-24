@@ -31,7 +31,7 @@ impl ReplayStore for BrowserReplayStore {
         let stored_key = key.clone();
         wasm_bindgen_futures::spawn_local(async move {
             if let Ok(bytes) = rx.await {
-                crate::library::write_replay(&library, &stored_key, &bytes);
+                crate::library::write_replay(&library, &stored_key, &bytes).await;
             }
         });
         Ok(Recording {

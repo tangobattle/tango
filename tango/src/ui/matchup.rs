@@ -5,8 +5,7 @@
 //! `tango_ui::widgets::hp_match_graph` can stay game- and engine-free.
 //! Lives here because it is the one place that speaks both the engine's
 //! stats and the toolkit's chart shapes, and it needs no more of a save
-//! than that public table. Re-exported into [`crate::ui::widgets`] so
-//! call sites read the same as the toolkit's own widgets.
+//! than that public table.
 
 use super::widgets::*;
 

@@ -1,7 +1,7 @@
 //! Offline evaluation of remote-input predictors against a replay corpus.
 //!
 //! The live rollback engine guesses the remote player's joyflags for ticks whose
-//! real input hasn't arrived yet ([`MgbaWorld::predict`]); every wrong guess
+//! real input hasn't arrived yet ([`getgud::World::predict`]); every wrong guess
 //! discards the speculative tail, re-simulates it, and visibly pops the
 //! displayed state. This harness replays recorded input streams through the
 //! real [`getgud::Session`] bookkeeping over a lightweight stand-in world, so
@@ -282,8 +282,8 @@ fn load_corpus(paths: &[std::path::PathBuf]) -> Corpus {
     let mut seen = std::collections::HashSet::<[u8; 16]>::new();
     for path in &files {
         let replay = match std::fs::File::open(path)
-            .map_err(std::io::Error::from)
-            .and_then(|f| tango_replay::Replay::decode(f))
+            .map_err(tango_replay::DecodeError::from)
+            .and_then(tango_replay::Replay::decode)
         {
             Ok(replay) => replay,
             Err(e) => {

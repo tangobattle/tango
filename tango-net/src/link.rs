@@ -472,17 +472,10 @@ impl Link {
     /// until `deadline`, returning `None` on timeout or cancellation.
     ///
     /// Returns the rebuilt [`super::channel::Channels`] bundle regardless of
-    /// transport — the matchmaking path funnels the signaling client's
-    /// `Connected` through the same [`Channels::from_signaling`] the initial
-    /// connect uses, so a rebuild and a fresh build produce the identical
-    /// shape (fingerprints and all).
-    ///
-    /// [`Channels::from_signaling`]: super::channel::Channels::from_signaling
-    ///
-    /// Both transports rebuild in a browser except the direct one, which
-    /// re-dials a UDP socket a browser can't open — and can't be holding
-    /// a direct link in the first place, so that arm is unreachable there
-    /// rather than merely unavailable.
+    /// transport — each attempt runs the same [`super::open_channels`] the
+    /// lobby's initial connect does, so a rebuild and a fresh build produce
+    /// the identical shape (fingerprints and all). A direct recipe can't be
+    /// rebuilt in a browser, and can't have been built there either.
     async fn rebuild_connection(
         &self,
         recipe: &ReconnectRecipe,
@@ -501,51 +494,7 @@ impl Link {
             // remaining give-up budget, so the deadline fires on time instead
             // of overrunning by a whole attempt.
             let this_timeout = attempt_timeout.min(deadline.saturating_duration_since(now));
-            let attempt = async {
-                let mut channels = match recipe {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    ReconnectRecipe::Direct(DirectRole::Host { port }) => super::direct_rtc::host(*port).await?,
-                    #[cfg(not(target_arch = "wasm32"))]
-                    ReconnectRecipe::Direct(DirectRole::Connect { addr }) => super::direct_rtc::connect(addr).await?,
-                    // A browser can't have built a direct link, so it can't
-                    // be rebuilding one either.
-                    #[cfg(target_arch = "wasm32")]
-                    ReconnectRecipe::Direct(_) => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::Unsupported,
-                            "a direct link can't be rebuilt in a browser",
-                        ))
-                    }
-                    ReconnectRecipe::Matchmaking {
-                        endpoint,
-                        session_id,
-                        use_relay,
-                    } => {
-                        let connecting = tango_signaling::connect(
-                            endpoint,
-                            session_id,
-                            *use_relay,
-                            tango_net_protocol::PROTOCOL_VERSION,
-                            vec![super::channel::control_channel(), super::channel::in_match_channel()],
-                        )
-                        .await
-                        .map_err(|e| std::io::Error::other(format!("signaling: {e}")))?;
-                        // Blocks at the server until the peer rejoins the session, then
-                        // completes the WebRTC handshake — the matchmaking rendezvous.
-                        // The bundle carries this handshake's fingerprints so the link
-                        // can re-derive the session_id for the next drop; they don't
-                        // affect *this* rendezvous (its id is already fixed).
-                        let connected = connecting
-                            .await
-                            .map_err(|e| std::io::Error::other(format!("webrtc: {e}")))?;
-                        super::channel::Channels::from_signaling(connected)?
-                    }
-                };
-                super::negotiate(&mut channels.control.0, &mut channels.control.1)
-                    .await
-                    .map_err(|e| std::io::Error::other(format!("negotiate: {e:?}")))?;
-                Ok::<_, std::io::Error>(channels)
-            };
+            let attempt = super::open_channels(recipe.route(), |_| {});
             let outcome = tokio::select! {
                 biased;
                 _ = self.cancel.cancelled() => return None,

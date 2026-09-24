@@ -3,11 +3,11 @@
 //!
 //! This is a thin arrangement of [`tango_library`] around the two
 //! browser seams ([`crate::storage::Files`], [`crate::http::BrowserHttp`]).
-//! The scanners, the patch catalog, the download-and-verify, the BPS
-//! apply and the netplay tag resolution are all the desktop's, verbatim
-//! — which is the point: a patched match only works if both clients
-//! agree byte for byte on what "this patch" means, and the way to
-//! guarantee that is to run the same code.
+//! The scanners, the patch catalog, the save-file rules, the
+//! download-and-verify, the BPS apply and the netplay tag resolution are
+//! all the desktop's, verbatim — which is the point: a patched match
+//! only works if both clients agree byte for byte on what "this patch"
+//! means, and the way to guarantee that is to run the same code.
 //!
 //! An explicit [`Handle`] retains the library and its revision counter.
 //! Components read through [`with`] and re-render when [`revision`]
@@ -18,8 +18,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use tango_library::config::Config;
+use tango_library::loadout::Selection;
 use tango_library::rom::GameRef;
-use tango_library::{game, patch, rom, save, storage::Storage as _};
+use tango_library::{game, patch, save, storage::Storage as _, Catalog};
 
 use crate::http::BrowserHttp;
 use crate::storage::Files;
@@ -34,10 +35,9 @@ const CONFIG_PATH: &str = "/config.json";
 pub struct Library {
     pub files: Files,
     pub http: BrowserHttp,
-    pub config: Config,
-    pub roms: rom::Scanner,
-    pub saves: save::Scanner,
-    pub patches: patch::Scanner,
+    /// Mutable for the selection memory [`remember_selection`] records.
+    pub config: RefCell<Config>,
+    pub catalog: Catalog,
 }
 
 /// An independently owned library, cheaply cloned by browser tasks.
@@ -56,10 +56,8 @@ pub async fn open(handle: &Handle) {
     let library = Rc::new(Library {
         files,
         http: BrowserHttp,
-        config,
-        roms: rom::Scanner::new(),
-        saves: save::Scanner::new(),
-        patches: patch::Scanner::new(),
+        config: RefCell::new(config),
+        catalog: Catalog::new(),
     });
     *handle.inner.borrow_mut() = Some(library);
     rescan(handle).await;
@@ -89,28 +87,9 @@ pub async fn rescan(handle: &Handle) {
     let Some(library) = handle.inner.borrow().clone() else {
         return;
     };
-    let config = &library.config;
-
-    let rom_listing = library.files.list(&rom::scan_roots(&config.roms_path())).await;
-    library
-        .roms
-        .rescan_if_changed(&rom_listing, || Some(rom::scan_roms(&library.files, &rom_listing)));
-
-    let save_listing = library.files.list(&[config.saves_path()]).await;
-    library
-        .saves
-        .rescan_if_changed(&save_listing, || Some(save::scan_saves(&library.files, &save_listing)));
-
-    let patch_listing = library.files.list(&patch::scan_roots(&config.patches_path())).await;
-    library.patches.rescan_if_changed(&patch_listing, || {
-        match patch::scan(&library.files, &config.patches_path(), &patch_listing) {
-            Ok(catalog) => Some(catalog),
-            Err(e) => {
-                log::warn!("patch scan failed: {e}");
-                None
-            }
-        }
-    });
+    let config = library.config.borrow().clone();
+    let listings = Catalog::list(&library.files, &config).await;
+    library.catalog.rescan(&library.files, &config, &listings);
 
     touch(handle);
 }
@@ -119,7 +98,7 @@ pub async fn rescan(handle: &Handle) {
 /// doesn't reshuffle between renders.
 pub fn owned_games(handle: &Handle) -> Vec<GameRef> {
     with(handle, |library| {
-        let roms = library.roms.read();
+        let roms = library.catalog.roms.read();
         game::GAMES.iter().copied().filter(|g| roms.contains_key(g)).collect()
     })
     .unwrap_or_default()
@@ -150,7 +129,11 @@ pub async fn import_rom(handle: &Handle, file_name: &str, bytes: &[u8]) -> Optio
     let (family, variant) = game.family_and_variant();
     let ext = rom_extension(game);
     let path = with(handle, |library| {
-        library.config.roms_path().join(format!("{family}-{variant}.{ext}"))
+        library
+            .config
+            .borrow()
+            .roms_path()
+            .join(format!("{family}-{variant}.{ext}"))
     })?;
     log::info!("importing {file_name} as {family} v{variant}");
     with(handle, |library| library.files.write(&path, &bytes))?.ok()?;
@@ -163,7 +146,7 @@ pub async fn import_rom(handle: &Handle, file_name: &str, bytes: &[u8]) -> Optio
 pub async fn import_save(handle: &Handle, file_name: &str, bytes: &[u8]) -> bool {
     // Which game it belongs to is decided by which game can parse it —
     // the same rule `save::scan_saves` applies on the way back out.
-    let Some(game) = game::GAMES.iter().copied().find(|g| g.parse_save(bytes).is_ok()) else {
+    let Some(game) = save::detect_game(bytes) else {
         return false;
     };
     let (family, variant) = game.family_and_variant();
@@ -174,6 +157,7 @@ pub async fn import_save(handle: &Handle, file_name: &str, bytes: &[u8]) -> bool
     let path = match with(handle, |library| {
         library
             .config
+            .borrow()
             .saves_path()
             .join(format!("{family}-{variant}-{stem}.sav"))
     }) {
@@ -187,88 +171,77 @@ pub async fn import_save(handle: &Handle, file_name: &str, bytes: &[u8]) -> bool
     true
 }
 
-/// Write out a game's bundled starter save, so a first-time player can
-/// get into a link battle without hunting down a `.sav` on a phone.
-///
-/// Named after the template in the family's own words — "Heat Guts",
-/// "Saito/Normal" — because that name is the only thing distinguishing
-/// one starter from another, and a file called `bn3-0-new` tells you
-/// nothing about which style is in it.
-pub async fn create_starter_save(handle: &Handle, game: GameRef, template_name: &str) -> bool {
-    let Some(templates) = game.save_templates else {
-        return false;
-    };
-    let Some((template_name, template)) = templates
-        .iter()
-        .find(|(name, _)| *name == template_name)
-        .or_else(|| templates.first())
-    else {
-        return false;
-    };
-    // The checksum has to be rebuilt before the dump is a save file the
-    // game — or our own scanner — will accept. Skipping it writes bytes
-    // that parse back as nothing, which reads as "New save did nothing".
-    let mut save = template.clone_box();
-    save.rebuild_checksum();
-    let Some(path) = free_save_path(handle, game, &crate::lang::save_template_name(game, template_name)) else {
-        return false;
-    };
-    if with(handle, |library| library.files.write(&path, &save.to_sram_dump())).is_none() {
-        return false;
-    }
+/// Write out a starter save from one of the game's templates — the
+/// patch's own first, then the game's bundled ones — so a first-time
+/// player can get into a link battle without hunting down a `.sav` on a
+/// phone. Named the way the desktop names one: the game, then the
+/// template in the family's own words ("Heat Guts", "Saito/Normal"),
+/// with a counter when that's taken. Returns the new file.
+pub async fn create_starter_save(
+    handle: &Handle,
+    game: GameRef,
+    patch: Option<(String, semver::Version)>,
+    template_name: &str,
+) -> Option<PathBuf> {
+    let patch = patch.as_ref().map(|(name, version)| (name.as_str(), version));
+    let created = with(handle, |library| {
+        let template = save::template(game, &library.catalog.patches.read(), patch, template_name)?;
+        let saves_path = library.config.borrow().saves_path();
+        let label = crate::lang::save_template_name(game, template_name);
+        let name = save::free_name(
+            &library.files,
+            &saves_path,
+            &save::suggest_name(&crate::lang::game_name(game), Some(&label)),
+        );
+        save::create(&library.files, &saves_path, &name, template.as_ref())
+            .inspect_err(|e| log::warn!("creating a starter save: {e}"))
+            .ok()
+    })??;
     rescan(handle).await;
-    true
+    Some(created)
 }
 
-/// The starter saves this game ships, as `(template, label)` — BN3
-/// alone has eight, and they are only distinguishable by name.
-pub fn save_templates(game: GameRef) -> Vec<(String, String)> {
-    game.save_templates
-        .into_iter()
-        .flat_map(|t| t.iter())
-        .map(|(name, _)| (name.to_string(), crate::lang::save_template_name(game, name)))
-        .collect()
-}
-
-/// A save path for `game` called `name`, with a counter appended if that
-/// is taken — pressing "New save" twice should give two saves, not
-/// silently overwrite the first.
-fn free_save_path(handle: &Handle, game: GameRef, name: &str) -> Option<PathBuf> {
-    let (family, variant) = game.family_and_variant();
-    // Saves are keyed by game in the filename, and the name comes from a
-    // translation, so strip what a path can't carry.
-    let name: String = name
-        .chars()
-        .map(|c| if "/\\?%*:|\"<>".contains(c) { '-' } else { c })
-        .collect();
-    let name = name.trim();
-    let saves = with(handle, |library| library.config.saves_path())?;
-    for attempt in 0..100 {
-        let stem = if attempt == 0 {
-            format!("{family}-{variant}-{name}")
-        } else {
-            format!("{family}-{variant}-{name} {}", attempt + 1)
-        };
-        let path = saves.join(format!("{stem}.sav"));
-        if !with(handle, |library| library.files.is_file(&path)).unwrap_or(false) {
-            return Some(path);
-        }
-    }
-    None
+/// The starter saves this game can be created from under `patch`, as
+/// `(template, label)` — BN3 alone has eight, and they are only
+/// distinguishable by name.
+pub fn save_templates(
+    handle: &Handle,
+    game: GameRef,
+    patch: Option<(&str, &semver::Version)>,
+) -> Vec<(String, String)> {
+    with(handle, |library| {
+        save::templates(game, &library.catalog.patches.read(), patch)
+            .into_iter()
+            .map(|(name, _)| {
+                let label = crate::lang::save_template_name(game, &name);
+                (name, label)
+            })
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 /// Persist a session's savedata back over the file it was loaded from.
 /// Single-player only — a PvP match runs entirely off the committed
-/// in-memory image and never writes anyone's save.
-pub fn write_save(handle: &Handle, path: &Path, bytes: &[u8]) {
-    if with(handle, |library| library.files.write(path, bytes)).is_none() {
-        return;
+/// in-memory image and never writes anyone's save. `true` once the
+/// bytes are in storage.
+pub fn write_save(handle: &Handle, path: &Path, bytes: &[u8]) -> bool {
+    match with(handle, |library| library.files.write(path, bytes)) {
+        Some(Ok(())) => {}
+        Some(Err(e)) => {
+            log::warn!("writing {}: {e}", path.display());
+            return false;
+        }
+        None => return false,
     }
     touch(handle);
+    true
 }
 
-pub async fn delete_file(handle: &Handle, path: PathBuf) {
-    let _ = with(handle, |library| library.files.remove_file(&path));
+pub async fn delete_save(handle: &Handle, path: PathBuf) {
+    if let Some(Err(e)) = with(handle, |library| save::delete(&library.files, &path)) {
+        log::warn!("deleting {}: {e}", path.display());
+    }
     rescan(handle).await;
 }
 
@@ -280,8 +253,12 @@ pub async fn delete_game(handle: &Handle, game: GameRef) {
     let (family, variant) = game.family_and_variant();
     let ext = rom_extension(game);
     let paths = with(handle, |library| {
-        let mut paths = vec![library.config.roms_path().join(format!("{family}-{variant}.{ext}"))];
-        if let Some(saves) = library.saves.read().get(&game) {
+        let mut paths = vec![library
+            .config
+            .borrow()
+            .roms_path()
+            .join(format!("{family}-{variant}.{ext}"))];
+        if let Some(saves) = library.catalog.saves.read().get(&game) {
             paths.extend(saves.iter().map(|s| s.path.clone()));
         }
         paths
@@ -307,7 +284,8 @@ pub fn bytes_used(handle: &Handle) -> u64 {
 /// `Config` derives its own from the data root and this one has to
 /// agree with it.
 pub fn replays_path(handle: &Handle) -> PathBuf {
-    with(handle, |library| library.config.replays_path()).unwrap_or_else(|| PathBuf::from(DATA_ROOT).join("replays"))
+    with(handle, |library| library.config.borrow().replays_path())
+        .unwrap_or_else(|| PathBuf::from(DATA_ROOT).join("replays"))
 }
 
 /// A recorded match: its key, and enough of the metadata to list it
@@ -325,44 +303,39 @@ pub struct ReplayEntry {
     pub bytes: u64,
 }
 
-/// Everything recorded, newest first. Reads each file's header — the
-/// metadata sits at the front, so this doesn't decode the input stream.
+/// Everything recorded, newest first, off the library's replay index —
+/// the same one the desktop lists, so a recording neither build can
+/// replay is hidden here too.
 pub fn replays(handle: &Handle) -> Vec<ReplayEntry> {
-    let Some(library) = handle.inner.borrow().clone() else {
-        return Vec::new();
-    };
-    let mut out: Vec<ReplayEntry> = Vec::new();
-    for path in library.files.paths_under(&replays_path(handle)) {
-        let Ok(raw) = library.files.read(&path) else { continue };
-        let mut cursor = std::io::Cursor::new(&raw);
-        let Ok((_, local_player_index, metadata)) = tango_replay::read_metadata(&mut cursor) else {
-            log::warn!("replay scan: {}: unreadable", path.display());
-            continue;
-        };
-        let side = |s: Option<&tango_replay::metadata::Side>| s.map(|s| s.nickname.clone()).unwrap_or_default();
-        let (p1, p2) = (side(metadata.p1_side.as_ref()), side(metadata.p2_side.as_ref()));
-        let mine = local_player_index == 0;
-        let game = metadata
-            .p1_side
-            .as_ref()
-            .and_then(|s| s.game_info.as_ref())
-            .map(|g| crate::lang::game_name_of(&g.rom_family, g.rom_variant as u8))
-            .unwrap_or_default();
-        out.push(ReplayEntry {
-            name: path
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            sides: if mine { (p1, p2) } else { (p2, p1) },
-            game,
-            ts: metadata.ts,
-            bytes: raw.len() as u64,
-            path,
-        });
-    }
-    // Newest first: the one you just played is the one you want.
-    out.sort_by(|a, b| b.ts.cmp(&a.ts).then_with(|| b.name.cmp(&a.name)));
-    out
+    with(handle, |library| {
+        library
+            .catalog
+            .replays
+            .read()
+            .iter()
+            .map(|replay| {
+                let side = |s: Option<&tango_replay::metadata::Side>| s.map(|s| s.nickname.clone()).unwrap_or_default();
+                let game = replay
+                    .local_side()
+                    .and_then(|s| s.game_info.as_ref())
+                    .map(|g| crate::lang::game_name_of(&g.rom_family, g.rom_variant as u8))
+                    .unwrap_or_default();
+                ReplayEntry {
+                    name: replay
+                        .path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    sides: (side(replay.local_side()), side(replay.remote_side())),
+                    game,
+                    ts: replay.metadata.ts,
+                    bytes: replay.len,
+                    path: replay.path.clone(),
+                }
+            })
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 /// Decode a recording into something playable.
@@ -390,7 +363,7 @@ pub async fn import_replay(handle: &Handle, file_name: &str, bytes: &[u8]) -> bo
     if with(handle, |library| library.files.write(&path, bytes)).is_none() {
         return false;
     }
-    touch(handle);
+    rescan(handle).await;
     true
 }
 
@@ -399,14 +372,13 @@ pub fn replay_bytes(handle: &Handle, path: &Path) -> Option<Vec<u8>> {
     with(handle, |library| library.files.read(path))?.ok()
 }
 
-/// File a finished recording. Synchronous because it is called from the
-/// sink's `Drop` (see [`crate::recording`]), which can't await — the
-/// storage mirror's write-back is asynchronous on its own.
-pub fn write_replay(handle: &Handle, path: &Path, bytes: &[u8]) {
+/// File a finished recording, handed over by the sink's `Drop` (see
+/// [`crate::recording`]), and index it.
+pub async fn write_replay(handle: &Handle, path: &Path, bytes: &[u8]) {
     if with(handle, |library| library.files.write(path, bytes)).is_none() {
         return;
     }
-    touch(handle);
+    rescan(handle).await;
 }
 
 // ---------------------------------------------------------------------
@@ -419,14 +391,13 @@ pub async fn fetch_index(handle: &Handle) -> Result<(), String> {
     let Some(library) = handle.inner.borrow().clone() else {
         return Err("library not open".into());
     };
-    let changed = patch::fetch_index(
-        &library.http,
-        &library.files,
-        &library.config.patch_repo_url(),
-        &library.config.patches_path(),
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    let (repo, patches_path) = {
+        let config = library.config.borrow();
+        (config.patch_repo_url(), config.patches_path())
+    };
+    let changed = patch::fetch_index(&library.http, &library.files, &repo, &patches_path)
+        .await
+        .map_err(|e| e.to_string())?;
     if changed {
         rescan(handle).await;
     }
@@ -440,17 +411,22 @@ pub async fn install_patch(handle: &Handle, name: String, version: semver::Versi
         return Err("library not open".into());
     };
     let entry = library
+        .catalog
         .patches
         .read()
         .entry(&name, &version)
         .cloned()
         .ok_or_else(|| format!("{name} {version} is not in the index"))?;
 
+    let (repo, patches_path) = {
+        let config = library.config.borrow();
+        (config.patch_repo_url(), config.patches_path())
+    };
     let outcome = patch::download(
         &library.http,
         &library.files,
-        &library.config.patch_repo_url(),
-        &library.config.patches_path(),
+        &repo,
+        &patches_path,
         &name,
         &version,
         &entry,
@@ -474,7 +450,8 @@ pub async fn uninstall_patch(handle: &Handle, name: String, version: semver::Ver
     let Some(library) = handle.inner.borrow().clone() else {
         return;
     };
-    if let Err(e) = patch::uninstall(&library.files, &library.config.patches_path(), &name, &version) {
+    let patches_path = library.config.borrow().patches_path();
+    if let Err(e) = patch::uninstall(&library.files, &patches_path, &name, &version) {
         log::warn!("uninstall {name} {version}: {e}");
     }
     rescan(handle).await;
@@ -491,19 +468,62 @@ pub fn download_progress(handle: &Handle) -> Option<patch::Progress> {
 }
 
 /// Every `(name, newest version)` in the catalog that supports `game` —
-/// what the patch picker offers for the current pick.
+/// what the patch picker offers for the current pick, favorites first.
 pub fn patches_for(handle: &Handle, game: GameRef) -> Vec<(String, semver::Version, bool)> {
     with(handle, |library| {
-        let catalog = library.patches.read();
-        catalog
-            .names()
+        let catalog = library.catalog.patches.read();
+        let favorites = library.config.borrow().favorite_patches.clone();
+        tango_library::loadout::patch_names_for(&catalog, &[game], &favorites)
             .into_iter()
             .filter_map(|name| {
-                let version = catalog.newest_version(name, Some(game))?;
-                let installed = catalog.is_installed(name, &version);
-                Some((name.to_string(), version, installed))
+                let version = catalog.newest_version(&name, Some(game))?;
+                let installed = catalog.is_installed(&name, &version);
+                Some((name, version, installed))
             })
             .collect()
     })
     .unwrap_or_default()
+}
+
+/// Record `selection` in the config and write it out, so the next visit
+/// comes back to the same game, save, and patch. A no-op before the
+/// library has opened, and when nothing changed.
+pub fn remember_selection(handle: &Handle, selection: &Selection) {
+    with(handle, |library| {
+        let mut config = library.config.borrow_mut();
+        let before = (
+            config.last_family.clone(),
+            config.last_game.clone(),
+            config.last_save_per_family.clone(),
+            config.last_patch_per_save.clone(),
+        );
+        selection.persist(&mut config);
+        let after = (
+            &config.last_family,
+            &config.last_game,
+            &config.last_save_per_family,
+            &config.last_patch_per_save,
+        );
+        if (&before.0, &before.1, &before.2, &before.3) != after {
+            if let Err(e) = config.save(&library.files, Path::new(CONFIG_PATH)) {
+                log::warn!("saving config: {e}");
+            }
+        }
+    });
+}
+
+/// Remember `match_type` as the one `family` was last picked in, so the
+/// lobby offers it again next time. A no-op before the library has
+/// opened, and when nothing changed.
+pub fn remember_match_type(handle: &Handle, family: &str, match_type: (u8, u8)) {
+    with(handle, |library| {
+        let mut config = library.config.borrow_mut();
+        if config.last_match_type_per_family.get(family) == Some(&match_type) {
+            return;
+        }
+        config.last_match_type_per_family.insert(family.to_owned(), match_type);
+        if let Err(e) = config.save(&library.files, Path::new(CONFIG_PATH)) {
+            log::warn!("saving config: {e}");
+        }
+    });
 }

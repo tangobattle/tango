@@ -8,6 +8,8 @@
 //!   content the library folders hold.
 //! * [`bnlc`]: Battle Network Legacy Collection (Steam) discovery, an
 //!   extra source of ROMs — native only, and absent from a wasm build.
+//! * [`catalog`]: the four scanners bundled, with the rescan pipeline
+//!   and the preparation helpers that read them.
 //! * [`config`]: the persisted settings model.
 //!
 //! The optional `ui` feature attaches save editors to registered games.
@@ -18,6 +20,7 @@
 //! implementations; a browser build turns it off and hands in IndexedDB and
 //! `fetch` instead.
 
+pub mod catalog;
 pub mod config;
 pub mod game;
 pub mod http;
@@ -36,6 +39,7 @@ pub mod storage;
 #[cfg(all(feature = "native", not(target_arch = "wasm32")))]
 pub mod bnlc;
 
+pub use catalog::Catalog;
 pub use storage::Storage;
 
 #[cfg(test)]

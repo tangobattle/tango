@@ -11,7 +11,7 @@ const RECONNECT_UI_TICK: std::time::Duration = std::time::Duration::from_millis(
 
 /// Grace window after a successful reconnect during which the stall watchdog
 /// is suppressed. On reconnect the local input queue is still pegged at
-/// [`crate::net::data::RECONNECT_QUEUE_LENGTH`] — that's *why* we reconnected
+/// [`tango_net::data::RECONNECT_QUEUE_LENGTH`] — that's *why* we reconnected
 /// — and the resumed drive loop only drains it back down as the peer's resent
 /// window arrives. Without this grace the still-high `queue_len` would re-trip
 /// the stall the instant the supervisor loops back, re-pausing the drive loop
@@ -30,13 +30,13 @@ const RECONNECT_DRAIN_GRACE: std::time::Duration = std::time::Duration::from_sec
 /// chooses where it runs — a blocking thread on the desktop, the event
 /// loop in a browser — so it can't await a send itself.
 pub(super) fn spawn_primed_announcer(
-    link: Arc<crate::net::link::Link>,
+    link: Arc<tango_net::link::Link>,
     local_primed: Arc<AtomicBool>,
     announce: Arc<tokio::sync::Notify>,
     end: EndState,
     cancel: tokio_util::sync::CancellationToken,
 ) {
-    crate::platform::spawn(async move {
+    tango_platform::spawn(async move {
         while !local_primed.load(Ordering::Acquire) {
             tokio::select! {
                 _ = cancel.cancelled() => return,
@@ -68,9 +68,9 @@ pub(super) fn spawn_primed_announcer(
 // The receive pump + link supervisor.
 
 pub(super) struct SupervisorContext {
-    pub(super) link: Arc<crate::net::link::Link>,
-    pub(super) in_match: crate::net::InMatchTx,
-    pub(super) event_tx: std::sync::mpsc::Sender<crate::net::data::Input>,
+    pub(super) link: Arc<tango_net::link::Link>,
+    pub(super) in_match: tango_net::InMatchTx,
+    pub(super) event_tx: std::sync::mpsc::Sender<tango_net::data::Input>,
     pub(super) end: EndState,
     pub(super) completed: Arc<AtomicBool>,
     pub(super) cancel: tokio_util::sync::CancellationToken,
@@ -89,8 +89,8 @@ pub(super) struct SupervisorContext {
 /// thread. Returns when the channel dies (the reconnect decision is the
 /// supervisor's).
 async fn run_receive_pump(
-    mut receiver: crate::net::PvpReceiver,
-    event_tx: std::sync::mpsc::Sender<crate::net::data::Input>,
+    mut receiver: tango_net::PvpReceiver,
+    event_tx: std::sync::mpsc::Sender<tango_net::data::Input>,
     wake: Arc<tokio::sync::Notify>,
 ) -> std::io::Error {
     loop {
@@ -114,7 +114,7 @@ async fn run_receive_pump(
 /// when a trip is worth reconnecting and freezing/unfreezing the drive
 /// loop around the attempt. The transport surgery (silent teardown,
 /// rebuild, hot-swap under the persistent rennet streams) is
-/// [`crate::net::link::Link::reconnect`]'s; the lockstep sim treats the
+/// [`tango_net::link::Link::reconnect`]'s; the lockstep sim treats the
 /// whole gap as a pause, so no state resync is needed.
 pub(super) fn spawn_supervisor(ctx: SupervisorContext) {
     let SupervisorContext {
@@ -136,8 +136,8 @@ pub(super) fn spawn_supervisor(ctx: SupervisorContext) {
         let in_match = in_match.clone();
         let end = end.clone();
         let wake = wake.clone();
-        move || -> Option<crate::net::PvpReceiver> {
-            Some(crate::net::PvpReceiver::new(
+        move || -> Option<tango_net::PvpReceiver> {
+            Some(tango_net::PvpReceiver::new(
                 link.take_match_receiver()?,
                 in_match.clone(),
                 link.latency_handle(),
@@ -147,7 +147,7 @@ pub(super) fn spawn_supervisor(ctx: SupervisorContext) {
         }
     };
 
-    crate::platform::spawn(async move {
+    tango_platform::spawn(async move {
         // Why the receive loop ended this iteration.
         enum Trip {
             /// Clean local teardown (user closed / cancelled). Announces the
@@ -185,23 +185,23 @@ pub(super) fn spawn_supervisor(ctx: SupervisorContext) {
             let stall_watch = async {
                 loop {
                     let queue_len = metrics.queue_len.load(Ordering::Relaxed) as usize;
-                    if queue_len < crate::net::data::RECONNECT_QUEUE_LENGTH {
+                    if queue_len < tango_net::data::RECONNECT_QUEUE_LENGTH {
                         drain_until = None;
                     } else if drain_until.is_none_or(|t| web_time::Instant::now() >= t) {
                         return;
                     }
-                    crate::platform::sleep(std::time::Duration::from_millis(100)).await;
+                    tango_platform::sleep(std::time::Duration::from_millis(100)).await;
                 }
             };
             let trip = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => Trip::Cancelled,
                 end = link.watch_control() => match end {
-                    crate::net::link::ControlEnd::Goodbye => {
+                    tango_net::link::ControlEnd::Goodbye => {
                         log::info!("pvp: peer announced a quit");
                         Trip::PeerQuit
                     }
-                    crate::net::link::ControlEnd::Eof => Trip::Closed,
+                    tango_net::link::ControlEnd::Eof => Trip::Closed,
                 },
                 e = run_receive_pump(receiver, event_tx.clone(), wake.clone()) => {
                     log::info!("pvp in-match channel closed: {e:?}");
@@ -261,7 +261,7 @@ pub(super) fn spawn_supervisor(ctx: SupervisorContext) {
             // drive loop produces no frames.
             let restored = {
                 let ui_tick = async {
-                    let mut iv = crate::platform::Ticker::immediate(RECONNECT_UI_TICK);
+                    let mut iv = tango_platform::Ticker::immediate(RECONNECT_UI_TICK);
                     loop {
                         iv.tick().await;
                         wake.notify_one();
@@ -278,12 +278,12 @@ pub(super) fn spawn_supervisor(ctx: SupervisorContext) {
                     // This task is deliberately independent of the reconnect
                     // future: when the displayed budget runs out, end the
                     // session even if WebRTC cleanup is still stuck.
-                    crate::platform::spawn(async move {
+                    tango_platform::spawn(async move {
                         tokio::select! {
                             biased;
                             _ = watchdog_done.cancelled() => {}
                             _ = cancel.cancelled() => {}
-                            _ = crate::platform::sleep(timeout) => {
+                            _ = tango_platform::sleep(timeout) => {
                                 end.remote_disconnected.store(true, Ordering::Release);
                                 drive_paused.set(false);
                                 cancel.cancel();

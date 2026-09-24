@@ -1,18 +1,24 @@
 use crate::config;
 use crate::i18n::t;
 use crate::library::replays;
-use crate::library::Scanners;
+use crate::library::Catalog;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_TITLE};
 use crate::ui::widgets;
 use iced::widget::space::horizontal as horizontal_space;
 use iced::widget::{button, container, scrollable, text, Space};
 use iced::{Alignment, Element, Fill, Length};
 use lucide_icons::Icon;
-use sweeten::widget::{column, row, text_input};
+use sweeten::widget::{column, text_input};
 use unic_langid::LanguageIdentifier;
 
+mod detail;
 mod export;
-pub use export::{ExportJob, ExportMessage, ExportSettings, PerReplay};
+mod format;
+mod list;
+use detail::replay_detail;
+pub use export::{ExportError, ExportMessage, ExportSettings, PerReplay};
+use format::{family_display_name, format_ts, link_code_display};
+pub use list::DateFilter;
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -35,6 +41,13 @@ pub enum Message {
     /// only.
     ShowIncompleteToggled(bool),
     Selected(std::path::PathBuf),
+    /// An [`Effect::LoadPreview`] finished: what selecting the replay
+    /// needed from disk. The once-taken slot lets iced clone messages
+    /// without cloning the loaded saves.
+    PreviewLoaded(
+        std::path::PathBuf,
+        std::sync::Arc<std::sync::Mutex<Option<ReplayPreview>>>,
+    ),
     /// Select which replay participant's embedded build is shown in the
     /// save viewer. The You/Opponent cards act as the two-choice control.
     BuildSelected(BuildSide),
@@ -91,35 +104,6 @@ pub enum BuildSide {
     Opponent,
 }
 
-/// Date-dropdown filter: the replay's timestamp must fall within
-/// the window ending now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DateFilter {
-    #[default]
-    Any,
-    PastDay,
-    PastWeek,
-    PastMonth,
-    PastYear,
-}
-
-impl DateFilter {
-    fn matches(self, ts_ms: u64) -> bool {
-        let window_secs: u64 = match self {
-            DateFilter::Any => return true,
-            DateFilter::PastDay => 60 * 60 * 24,
-            DateFilter::PastWeek => 60 * 60 * 24 * 7,
-            DateFilter::PastMonth => 60 * 60 * 24 * 30,
-            DateFilter::PastYear => 60 * 60 * 24 * 365,
-        };
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        ts_ms >= now_ms.saturating_sub(window_secs * 1000)
-    }
-}
-
 #[derive(Default)]
 pub struct ReplaysState {
     /// `(family, variant)` pair the replays' local-side must match.
@@ -165,9 +149,14 @@ pub struct ReplaysState {
     /// Path the cached `loaded` was built for. Used to invalidate the
     /// cache when the selection changes.
     pub loaded_cache_path: Option<std::path::PathBuf>,
+    /// A clicked replay whose [`Effect::LoadPreview`] is still out. The
+    /// selection moves to it when its preview lands, so the detail panel
+    /// switches in one step, as it did when the load ran inline; a newer
+    /// click or a filter change supersedes it.
+    pub pending_selection: Option<std::path::PathBuf>,
     /// Recorded tick count of the selected replay, from the same decode
     /// that builds `loaded`. This is what fixes the HP chart's timeline
-    /// while its analysis runs (see [`widgets::cook_hp_rounds`]) — the
+    /// while its analysis runs (see [`crate::ui::matchup::cook_hp_rounds`]) — the
     /// recording's length is known from the first frame even though its
     /// rounds are not.
     pub loaded_total_ticks: Option<u32>,
@@ -201,7 +190,7 @@ pub struct ReplaysState {
 }
 
 /// A replay's match stats, cooked for drawing (see
-/// [`widgets::cook_hp_rounds`]). Built once per replay when its
+/// [`crate::ui::matchup::cook_hp_rounds`]). Built once per replay when its
 /// [`tango_match::analysis::MatchStats`] arrive.
 pub struct HpChart {
     pub rounds: Vec<widgets::CookedHpRound>,
@@ -235,7 +224,7 @@ impl HpChart {
         // Resolve each lane through that participant's own ROM/save assets.
         // A side whose build could not be loaded falls back to `???`/no icon;
         // BN1 records no chip events at all.
-        let (rounds, max_hp) = widgets::cook_hp_rounds(stats, loadeds, total_ticks);
+        let (rounds, max_hp) = crate::ui::matchup::cook_hp_rounds(stats, loadeds, total_ticks);
         Self {
             rounds,
             max_hp,
@@ -244,6 +233,32 @@ impl HpChart {
             has_setup: complete && stats.has_setup(),
         }
     }
+}
+
+/// What selecting a replay needed read from disk, loaded off the UI
+/// thread for [`Message::PreviewLoaded`].
+pub struct ReplayPreview {
+    /// Both participants' builds, or why the recording couldn't be read.
+    /// `None` when the cached builds still apply.
+    pub builds: Option<anyhow::Result<ReplayBuilds>>,
+    /// The replay's stats sidecar, when it has one.
+    pub stats: Option<tango_match::analysis::MatchStats>,
+}
+
+impl std::fmt::Debug for ReplayPreview {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReplayPreview").finish_non_exhaustive()
+    }
+}
+
+/// Each participant's save-view build of a replay (either can be missing
+/// — say, a ROM that isn't in the library), plus the recording's length.
+pub struct ReplayBuilds {
+    pub local: Option<crate::selection::LoadedSave>,
+    pub opponent: Option<crate::selection::LoadedSave>,
+    /// Recorded tick count, which fixes the HP chart's timeline while
+    /// its analysis runs.
+    pub total_ticks: u32,
 }
 
 /// Side-effects the tab can't perform itself (because they touch
@@ -261,6 +276,11 @@ pub enum Effect {
     Watch(std::path::PathBuf),
     /// Stop the patch download a Watch click started.
     CancelPatchDownload(crate::library::patch::VersionKey),
+    /// Read what selecting a replay needs off the UI thread — its stats
+    /// sidecar, and, unless `builds` is false because the cached ones
+    /// still apply, both participants' builds — and post it back as
+    /// [`Message::PreviewLoaded`].
+    LoadPreview { replay: std::path::PathBuf, builds: bool },
     /// A focused replay has no stats sidecar — App spawns
     /// `replays::compute_and_cache_match_stats` on a blocking worker
     /// and posts the result back as [`Message::HpStatsLoaded`].
@@ -281,7 +301,7 @@ pub enum Effect {
         raw_output: bool,
     },
     /// User confirmed an export. App decodes the replay, resolves
-    /// hooks + ROMs, spawns the crate::replay_render task,
+    /// hooks + ROMs, spawns the [`crate::replay_render`] job,
     /// and streams `Message::ExportProgress` / `ExportFinished`
     /// back into this module. `clip` is the player's marked span
     /// (`None` = whole replay, gated by `rounds`; the spawn builds
@@ -303,6 +323,9 @@ pub enum Effect {
         /// false for the panel's whole-replay exports, which have no
         /// swap notion.
         swap_sides: bool,
+        /// The job's canceller, which this tab keeps for its Cancel
+        /// button.
+        canceller: crate::replay_render::Canceller,
     },
     /// Task returned from the save view's `ui.update`. Generic Task
     /// pipe so save_editor-internal side effects (currently just
@@ -316,7 +339,7 @@ impl ReplaysState {
     /// in-place; anything that needs the App's collaborators
     /// (clipboard, file dialog, session host, …) is bubbled up
     /// as a single optional [`Effect`].
-    pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
+    pub fn update(&mut self, msg: Message, config: &config::Config) -> Option<Effect> {
         match msg {
             Message::GameFilterSelected(pair) => {
                 self.game_filter = pair;
@@ -380,47 +403,32 @@ impl ReplaysState {
                 }
             }
             Message::Selected(p) => {
-                if self.selected.as_ref() != Some(&p) {
-                    self.detail_enter.start(iced::time::Instant::now());
-                    self.viewed_build = BuildSide::You;
-                    // Moving off a replay re-masks it, so coming back to one
-                    // that was unmasked earlier doesn't put its chart straight
-                    // back on the stream.
-                    self.revealed = None;
+                let builds = self.loaded_cache_path.as_ref() != Some(&p);
+                let stats = !self.hp_charts.contains_key(&p) && !self.hp_pending.contains(&p);
+                if !builds && !stats {
+                    self.pending_selection = None;
+                    return self.select(
+                        p,
+                        ReplayPreview {
+                            builds: None,
+                            stats: None,
+                        },
+                    );
                 }
-                self.selected = Some(p.clone());
-                self.refresh_loaded(scanners, config);
-                self.sweep_idle_entries();
-                // A chart from earlier in the session is kept as it is —
-                // but the fresh selection cleared this replay's export
-                // mask, so re-seat it from what that chart's analysis
-                // found. Without this a second visit would silently lose
-                // the round selector.
-                if let Some(rounds) = self.hp_charts.get(&p).filter(|c| c.complete).map(|c| c.rounds.len()) {
-                    self.per.entry(p.clone()).or_default().rounds = vec![true; rounds.max(1)];
+                self.pending_selection = Some(p.clone());
+                Some(Effect::LoadPreview { replay: p, builds })
+            }
+            Message::PreviewLoaded(p, slot) => {
+                // A newer click, or a filter change, has moved on.
+                if self.pending_selection.as_ref() != Some(&p) {
+                    return None;
                 }
-                // First focus builds the replay's match stats: try the
-                // sidecar (cheap; e.g. written at match teardown, or by a
-                // previous focus), and only re-simulate when there isn't
-                // one. Failures clear `hp_pending` via the result message,
-                // so a later focus retries.
-                if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains(&p) {
-                    if let Some(stats) =
-                        crate::library::replays::load_match_stats(&config.cache_path(), &config.replays_path(), &p)
-                    {
-                        // `refresh_loaded` above already pointed `loaded` at
-                        // this replay, so chip beads get the right names.
-                        self.adopt_stats(p.clone(), &stats, true);
-                    } else {
-                        // Seed an empty chart so the pane has its frame
-                        // from the start; the analysis fills it in a
-                        // round at a time.
-                        self.adopt_stats(p.clone(), &Default::default(), false);
-                        self.hp_pending.insert(p.clone());
-                        return Some(Effect::AnalyzeReplay(p));
-                    }
-                }
-                None
+                self.pending_selection = None;
+                let preview = slot.lock().unwrap().take().unwrap_or(ReplayPreview {
+                    builds: Some(Err(anyhow::anyhow!("replay preview worker failed"))),
+                    stats: None,
+                });
+                self.select(p, preview)
             }
             Message::BuildSelected(side) => {
                 let available = match side {
@@ -514,12 +522,59 @@ impl ReplaysState {
 
     fn clear_selection(&mut self) {
         self.selected = None;
+        self.pending_selection = None;
         self.loaded = None;
         self.opponent_loaded = None;
         self.viewed_build = BuildSide::You;
         self.loaded_cache_path = None;
         self.loaded_total_ticks = None;
         self.sweep_idle_entries();
+    }
+
+    /// Move the selection to `p`, with whatever its [`ReplayPreview`]
+    /// loaded.
+    fn select(&mut self, p: std::path::PathBuf, preview: ReplayPreview) -> Option<Effect> {
+        if self.selected.as_ref() != Some(&p) {
+            self.detail_enter.start(iced::time::Instant::now());
+            self.viewed_build = BuildSide::You;
+            // Moving off a replay re-masks it, so coming back to one
+            // that was unmasked earlier doesn't put its chart straight
+            // back on the stream.
+            self.revealed = None;
+        }
+        self.selected = Some(p.clone());
+        if let Some(builds) = preview.builds {
+            self.adopt_builds(&p, builds);
+        }
+        self.sweep_idle_entries();
+        // A chart from earlier in the session is kept as it is —
+        // but the fresh selection cleared this replay's export
+        // mask, so re-seat it from what that chart's analysis
+        // found. Without this a second visit would silently lose
+        // the round selector.
+        if let Some(rounds) = self.hp_charts.get(&p).filter(|c| c.complete).map(|c| c.rounds.len()) {
+            self.per.entry(p.clone()).or_default().rounds = vec![true; rounds.max(1)];
+        }
+        // First focus builds the replay's match stats: take the
+        // sidecar (cheap; e.g. written at match teardown, or by a
+        // previous focus), and only re-simulate when there isn't
+        // one. Failures clear `hp_pending` via the result message,
+        // so a later focus retries.
+        if !self.hp_charts.contains_key(&p) && !self.hp_pending.contains(&p) {
+            if let Some(stats) = preview.stats {
+                // The builds above already point at this replay, so
+                // chip beads get the right names.
+                self.adopt_stats(p.clone(), &stats, true);
+            } else {
+                // Seed an empty chart so the pane has its frame
+                // from the start; the analysis fills it in a
+                // round at a time.
+                self.adopt_stats(p.clone(), &Default::default(), false);
+                self.hp_pending.insert(p.clone());
+                return Some(Effect::AnalyzeReplay(p));
+            }
+        }
+        None
     }
 
     /// Take a replay's stats: cook them into the chart, and — only once
@@ -555,41 +610,20 @@ impl ReplaysState {
         );
     }
 
-    /// Decode the currently-selected replay and build each participant's
-    /// save-view OpenSave. Cache only once both sides are available; a side
-    /// whose ROM arrives after a rescan can then be retried by reselecting it.
-    fn refresh_loaded(&mut self, scanners: &Scanners, config: &config::Config) {
-        let Some(path) = self.selected.clone() else {
-            self.loaded = None;
-            self.opponent_loaded = None;
-            self.loaded_cache_path = None;
-            return;
-        };
-        if self.loaded_cache_path.as_ref() == Some(&path) {
-            return;
-        }
-        let res = (|| -> anyhow::Result<(Option<crate::selection::LoadedSave>, Option<crate::selection::LoadedSave>, u32)> {
-            let f = std::fs::File::open(&path)?;
-            let replay = tango_replay::Replay::decode(f)?;
-            let total_ticks = replay.inputs.len() as u32;
-            let local = crate::selection::for_replay_local(scanners, config, &replay)
-                .inspect_err(|e| log::warn!("local replay build preview failed: {e}"))
-                .ok();
-            let opponent = crate::selection::for_replay_remote(scanners, config, &replay)
-                .inspect_err(|e| log::warn!("opponent replay build preview failed: {e}"))
-                .ok();
-            Ok((local, opponent, total_ticks))
-        })();
-        match res {
-            Ok((loaded, opponent_loaded, total_ticks)) => {
-                self.loaded = loaded;
-                self.opponent_loaded = opponent_loaded;
+    /// Take the selected replay's freshly loaded builds. Cache only once
+    /// both sides are available; a side whose ROM arrives after a rescan
+    /// can then be retried by reselecting it.
+    fn adopt_builds(&mut self, path: &std::path::Path, builds: anyhow::Result<ReplayBuilds>) {
+        match builds {
+            Ok(builds) => {
+                self.loaded = builds.local;
+                self.opponent_loaded = builds.opponent;
                 if self.loaded.is_none() && self.opponent_loaded.is_some() {
                     self.viewed_build = BuildSide::Opponent;
                 }
                 self.loaded_cache_path =
-                    (self.loaded.is_some() && self.opponent_loaded.is_some()).then(|| path.clone());
-                self.loaded_total_ticks = Some(total_ticks);
+                    (self.loaded.is_some() && self.opponent_loaded.is_some()).then(|| path.to_path_buf());
+                self.loaded_total_ticks = Some(builds.total_ticks);
             }
             Err(e) => {
                 log::warn!("replay save preview failed: {e}");
@@ -602,13 +636,13 @@ impl ReplaysState {
         // The rounds are the analysis's to say, not the file's: a fresh
         // selection starts with no mask, and `adopt_stats` fills one in
         // when this replay's stats land.
-        self.per.entry(path).or_default().rounds.clear();
+        self.per.entry(path.to_path_buf()).or_default().rounds.clear();
     }
 
     pub fn view<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
+        scanners: &'a Catalog,
         config: &'a config::Config,
         netplay_phase: &'a crate::netplay::Phase,
         downloads: &'a crate::library::patch::Downloads,
@@ -695,1001 +729,5 @@ impl ReplaysState {
         };
 
         widgets::top_split_pane(top, left, right)
-    }
-
-    /// The playback queue, its own pane under the replay list — `None` when
-    /// nothing is queued, so the tab looks exactly as it did for anyone who
-    /// never uses it. A header (count + Play + Clear) over one row per
-    /// waiting replay, each carrying the same two lines the list row it came
-    /// from carries. Play is disabled for the same reason Watch is: a
-    /// playback session can't start while netplay holds the emulator.
-    fn queue_strip<'a>(
-        &'a self,
-        lang: &'a LanguageIdentifier,
-        replays: &[replays::ScannedReplay],
-        netplay_active: bool,
-    ) -> Option<Element<'a, Message>> {
-        if self.queue.is_empty() {
-            return None;
-        }
-        // A glyph and the count lead; the action pair rides the right edge
-        // with Clear immediately left of Play. Play carries the primary
-        // treatment — starting the queue is the header's one real action, and
-        // it reads as the counterpart to the detail panel's Watch button.
-        let header = row![
-            // The pane sits directly under the replay list with nothing but a
-            // count to say what it is, so it gets the list-of-videos glyph —
-            // the same family as the ListPlus on the button that fills it.
-            // Body-sized against the caption beside it: a glyph shrunk to
-            // caption size reads as a smudge, and muted keeps it from
-            // outweighing the header's buttons.
-            Icon::ListVideo
-                .widget()
-                .size(TEXT_BODY)
-                .style(widgets::muted_text_style),
-            text(t!(lang, "replays-queue-count", n = self.queue.len() as i64))
-                .size(TEXT_CAPTION)
-                .style(widgets::muted_text_style),
-            Space::new().width(Fill),
-            widgets::icon_button(
-                Icon::Trash2,
-                t!(lang, "replays-queue-clear"),
-                Message::ClearQueue,
-                style::ROW_PADDING,
-            ),
-            widgets::icon_button_styled(
-                Icon::Play,
-                t!(lang, "replays-queue-play"),
-                (!netplay_active).then_some(Message::PlayQueue),
-                style::ROW_PADDING,
-                if netplay_active {
-                    widgets::neutral
-                } else {
-                    widgets::primary_button
-                },
-            ),
-        ]
-        .spacing(6)
-        .align_y(Alignment::Center);
-
-        // Vertical breathing room only — horizontal inset is each row's own,
-        // so the scrollable spans the pane edge to edge and its bar sits
-        // flush with the right edge, matching the replay list above.
-        let mut rows = column![].spacing(2).padding([4, 0]);
-        for (i, path) in self.queue.iter().enumerate() {
-            // A queued replay that has since left the scan (deleted on disk)
-            // still gets a row, so it can be taken out by hand rather than
-            // just failing when its turn comes.
-            let scanned = replays.iter().find(|r| &r.path == path);
-            let (line, caption) = match scanned {
-                Some(r) => Self::replay_caption(lang, r),
-                None => (
-                    path.file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default(),
-                    t!(lang, "replays-queue-missing"),
-                ),
-            };
-            // The position number is the whole point of a queue, so it leads
-            // each row in a fixed-width gutter — the rows stay aligned as the
-            // count crosses into double digits.
-            rows = rows.push(
-                container(
-                    row![
-                        container(
-                            text(format!("{}", i + 1))
-                                .size(TEXT_CAPTION)
-                                .style(widgets::muted_text_style)
-                        )
-                        .width(Length::Fixed(18.0)),
-                        column![
-                            text(line).size(TEXT_CAPTION).wrapping(text::Wrapping::None),
-                            text(caption)
-                                .size(TEXT_CAPTION)
-                                .style(widgets::muted_text_style)
-                                .wrapping(text::Wrapping::None),
-                        ]
-                        .spacing(1)
-                        .width(Fill),
-                        // Understated on purpose: removing one entry is
-                        // incidental next to the header's Play and Clear, so
-                        // it's a borderless muted glyph that only picks up a
-                        // plate on hover.
-                        widgets::icon_button_styled(
-                            Icon::X,
-                            t!(lang, "replays-queue-remove"),
-                            Some(Message::Dequeue(i)),
-                            [2.0, 6.0],
-                            |theme: &iced::Theme, status| {
-                                let mut st = widgets::flat(theme, status);
-                                if matches!(status, iced::widget::button::Status::Active) {
-                                    st.text_color = widgets::muted_color(theme);
-                                }
-                                st
-                            },
-                        ),
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center),
-                )
-                .padding(style::ROW_PADDING)
-                .width(Fill)
-                .clip(true),
-            );
-        }
-
-        // Height-capped and scrollable: a long queue is the normal case for
-        // this feature, and it must not push the list it was built from off
-        // the tab.
-        const QUEUE_MAX_H: f32 = 168.0;
-        Some(
-            container(
-                column![
-                    // Only the header is inset, and by the same 8px the
-                    // list's own column uses at its top — a full PANE_PADDING
-                    // here left the queue looking loose against the tight
-                    // list above it. Horizontally it lines the count up with
-                    // the row text below. The pane itself carries no padding,
-                    // so the scrollable can run to the edges.
-                    container(header).padding([8.0, style::ROW_PADDING[1]]).width(Fill),
-                    scrollable(rows)
-                        .style(widgets::chunky_scrollable)
-                        .height(Length::Shrink)
-                        .width(Fill),
-                ]
-                .width(Fill),
-            )
-            .max_height(QUEUE_MAX_H)
-            .width(Fill)
-            .style(widgets::pane)
-            .into(),
-        )
-    }
-
-    /// Top strip: game + date filter dropdowns, the free-text
-    /// search box, and the show-incomplete toggle. Game options are
-    /// derived from the distinct families seen across the scanned
-    /// replays; "All …" is always the first option.
-    fn filter_strip<'a>(
-        &'a self,
-        lang: &'a LanguageIdentifier,
-        replays: &[replays::ScannedReplay],
-    ) -> Element<'a, Message> {
-        let all_games = t!(lang, "replays-filter-all-games");
-        let mut game_options = vec![widgets::Choice::new(None, all_games.clone())];
-        {
-            use itertools::Itertools;
-            // Dedupe by family only — the filter ignores variant,
-            // so listing "BN6" once covers both Gregar and Falzar.
-            let mut seen: Vec<String> = replays
-                .iter()
-                .filter_map(|r| {
-                    let gi = r.local_side()?.game_info.as_ref()?;
-                    Some(gi.rom_family.clone())
-                })
-                .unique()
-                .collect();
-            seen.sort();
-            for family in seen {
-                let display = family_display_name(lang, &family, 0);
-                game_options.push(widgets::Choice::new(Some(family), display));
-            }
-        }
-        let selected_game = game_options
-            .iter()
-            .find(|o| o.value == self.game_filter)
-            .cloned()
-            .unwrap_or_else(|| game_options[0].clone());
-        let date_options = vec![
-            widgets::Choice::new(DateFilter::Any, t!(lang, "replays-filter-any-time")),
-            widgets::Choice::new(DateFilter::PastDay, t!(lang, "replays-filter-past-day")),
-            widgets::Choice::new(DateFilter::PastWeek, t!(lang, "replays-filter-past-week")),
-            widgets::Choice::new(DateFilter::PastMonth, t!(lang, "replays-filter-past-month")),
-            widgets::Choice::new(DateFilter::PastYear, t!(lang, "replays-filter-past-year")),
-        ];
-        let selected_date = date_options
-            .iter()
-            .find(|o| o.value == self.date_filter)
-            .cloned()
-            .unwrap_or_else(|| date_options[0].clone());
-        let show_incomplete_toggle = iced::widget::checkbox(self.show_incomplete)
-            .on_toggle(Message::ShowIncompleteToggled)
-            .label(t!(lang, "replays-show-incomplete"))
-            .size(TEXT_BODY)
-            .text_size(TEXT_BODY)
-            .style(widgets::chunky_checkbox);
-        container(
-            row![
-                widgets::picker(
-                    game_options,
-                    Some(selected_game),
-                    |o: widgets::Choice<Option<String>>| { Message::GameFilterSelected(o.value) }
-                ),
-                widgets::picker(date_options, Some(selected_date), |o: widgets::Choice<DateFilter>| {
-                    Message::DateFilterSelected(o.value)
-                }),
-                text_input(&t!(lang, "replays-filter-search-placeholder"), &self.search,)
-                    .on_input(Message::SearchChanged)
-                    .padding(STANDARD_PADDING)
-                    .width(Length::Fixed(220.0))
-                    .style(widgets::chunky_text_input),
-                show_incomplete_toggle,
-            ]
-            .spacing(8)
-            .align_y(Alignment::Center),
-        )
-        .padding(style::PANE_PADDING)
-        .width(Fill)
-        .style(widgets::pane)
-        .into()
-    }
-
-    /// AND of the game + date + search + completeness filters.
-    /// Search splits into whitespace-separated terms, each of which
-    /// must appear (case-insensitive) somewhere in the replay's
-    /// haystack — see [`search_haystack`]. Completeness only drops a
-    /// row once its stats have actually loaded — unloaded entries
-    /// pass through so a freshly-scanned replay isn't hidden during
-    /// the lazy stats-worker window.
-    fn matches_filters(
-        &self,
-        lang: &LanguageIdentifier,
-        replays_path: &std::path::Path,
-        r: &replays::ScannedReplay,
-    ) -> bool {
-        let g_ok = self
-            .game_filter
-            .as_ref()
-            .map(|family| {
-                r.local_side()
-                    .and_then(|s| s.game_info.as_ref())
-                    .map(|gi| gi.rom_family == *family)
-                    .unwrap_or(false)
-            })
-            .unwrap_or(true);
-        let d_ok = self.date_filter.matches(r.metadata.ts);
-        let query = self.search.trim().to_lowercase();
-        let s_ok = query.is_empty() || {
-            // Haystack is only built for a non-empty query, so the
-            // idle (no-search) view pays nothing per row.
-            let hay = search_haystack(lang, replays_path, r);
-            query.split_whitespace().all(|term| hay.contains(term))
-        };
-        let c_ok = self.show_incomplete || self.stats.get(&r.path).map(|s| s.is_complete).unwrap_or(false);
-        g_ok && d_ok && s_ok && c_ok
-    }
-
-    /// The two lines that name a replay in the list: its timestamp, and the
-    /// "game @ code · nicknames" caption under it. Shared with the playback
-    /// queue, so a queued entry reads exactly like the row it was added from.
-    fn replay_caption(lang: &LanguageIdentifier, r: &replays::ScannedReplay) -> (String, String) {
-        let md = &r.metadata;
-        let local_nick = r.local_side().map(|s| s.nickname.clone()).unwrap_or_default();
-        let remote_nick = r.remote_side().map(|s| s.nickname.clone()).unwrap_or_default();
-        let local_gi = r.local_side().and_then(|s| s.game_info.as_ref());
-        let game_label = local_gi
-            .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-            .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
-            .map(|g| crate::library::game::short_name(lang, g))
-            .or_else(|| local_gi.map(|g| g.rom_family.clone()))
-            .unwrap_or_default();
-        let nick_pair = if remote_nick.is_empty() && local_nick.is_empty() {
-            link_code_display(lang, &md.link_code).into_owned()
-        } else {
-            format!("{local_nick} vs {remote_nick}")
-        };
-        (
-            format_ts(md.ts, "%Y-%m-%d %H:%M:%S"),
-            format!(
-                "{game_label} @ {}  ·  {nick_pair}",
-                link_code_display(lang, &md.link_code)
-            ),
-        )
-    }
-
-    /// One row of the replay list: timestamp + status glyph, the
-    /// "game @ code · nicknames" line, an optional stats line once the
-    /// lazy stats worker gets here, and a bottom progress strip while
-    /// an export render is in flight.
-    fn replay_list_row<'a>(
-        &'a self,
-        lang: &'a LanguageIdentifier,
-        r: &replays::ScannedReplay,
-        idx: usize,
-    ) -> Element<'a, Message> {
-        let md = &r.metadata;
-        let (ts_str, caption) = Self::replay_caption(lang, r);
-        let local_gi = r.local_side().and_then(|s| s.game_info.as_ref());
-
-        let selected = self.selected.as_ref() == Some(&r.path);
-        // Right-edge status glyph: a clapperboard while a render
-        // is in flight, a green check on success, a red X on
-        // failure. In-flight renders additionally get a progress
-        // bar flush along the row's bottom edge (see
-        // `progress_strip`).
-        let job_state = self.job(&r.path);
-        let rendering = matches!(job_state, Some(j) if j.result.is_none());
-        let render_done_ok = matches!(job_state, Some(j) if matches!(&j.result, Some(Ok(_))));
-        let render_done_err = matches!(job_state, Some(j) if matches!(&j.result, Some(Err(_))));
-        let status_badge = |icon: Icon, color: fn(&iced::Theme) -> iced::Color| -> Element<'a, Message> {
-            container(
-                icon.widget()
-                    .style(move |theme: &iced::Theme| iced::widget::text::Style {
-                        color: Some(color(theme)),
-                    }),
-            )
-            .padding([0, 4])
-            .into()
-        };
-        let badge: Element<'_, Message> = if rendering {
-            status_badge(Icon::Clapperboard, |theme| theme.palette().primary)
-        } else if render_done_ok {
-            status_badge(Icon::Check, |theme| theme.palette().success)
-        } else if render_done_err {
-            status_badge(Icon::X, |theme| theme.palette().danger)
-        } else {
-            Space::new().width(Length::Fixed(0.0)).into()
-        };
-        // Bottom progress strip. While an export is in flight we
-        // draw a full-width bar flush with the row's bottom edge
-        // (no label — the detail panel carries the percentage);
-        // otherwise we reserve the same height with an empty
-        // spacer so toggling the bar on never shifts row height.
-        let progress_strip: Element<'_, Message> = if rendering {
-            let pct = match job_state.filter(|j| j.total > 0) {
-                Some(j) => (j.completed as f32 / j.total as f32).clamp(0.0, 1.0),
-                None => 0.0,
-            };
-            iced::widget::progress_bar(0.0..=1.0, pct)
-                .girth(Length::Fixed(4.0))
-                .style(|theme: &iced::Theme| {
-                    iced::widget::progress_bar::Style {
-                        // Transparent track lets the row's own
-                        // background show through — so it matches
-                        // exactly, including the zebra stripe on
-                        // alternating rows. Only the filled portion
-                        // reads as progress. Square corners, no
-                        // border — a flush bottom-edge accent.
-                        background: iced::Background::Color(iced::Color::TRANSPARENT),
-                        bar: iced::Background::Color(theme.palette().primary),
-                        border: iced::Border {
-                            radius: 0.0.into(),
-                            width: 0.0,
-                            color: iced::Color::TRANSPARENT,
-                        },
-                    }
-                })
-                .into()
-        } else {
-            Space::new().height(Length::Fixed(4.0)).into()
-        };
-        // Match-type name (e.g. "Triple") for the stats line.
-        let family = local_gi.map(|g| g.rom_family.clone()).unwrap_or_default();
-        let type_name =
-            crate::library::game::match_type_name(lang, &family, md.match_type as u8, md.match_subtype as u8);
-        // Stats line: "Triple (2 rounds) · 0:42" once the lazy
-        // stats worker gets here, with " · incomplete" tacked on
-        // when the recorded stream didn't reach END_OF_REPLAY.
-        // Composed from the per-locale match-type-value + the
-        // shared "incomplete" string so we don't carry a
-        // dedicated stats-line template just to glue them.
-        // The round count is only there for a replay whose telemetry
-        // analysis is cached — nothing else counts rounds.
-        let stats = self.stats.get(&r.path);
-        let stats_line = stats.map(|s| {
-            let mut parts = vec![type_name.clone()];
-            parts.extend(s.round_count.map(|n| t!(lang, "replays-round-count", count = n as i64)));
-            parts.push(format_duration(s.tick_count));
-            if !s.is_complete {
-                parts.push(t!(lang, "replays-incomplete"));
-            }
-            parts.join(" · ")
-        });
-        let is_complete = stats.map(|s| s.is_complete).unwrap_or(true);
-        // Two static caption lines, optionally a third with
-        // duration / rounds / incomplete (only when stats
-        // have loaded for this row).
-        let mut text_col = column![
-            // Title line carries the status glyph pinned to its
-            // right. Keeping it on this fixed first line (rather
-            // than vertically centered across the whole row) means
-            // it never moves as the optional stats line loads or
-            // the glyph changes.
-            row![text(ts_str).size(TEXT_BODY), Space::new().width(Fill), badge].align_y(Alignment::Center),
-            text(caption)
-                .size(TEXT_CAPTION)
-                .style(widgets::list_caption_style(selected)),
-        ]
-        .spacing(2)
-        .width(Fill);
-        if let Some(line) = stats_line {
-            text_col = text_col.push(text(line).size(TEXT_CAPTION).style(move |theme: &iced::Theme| {
-                if !is_complete {
-                    widgets::danger_text_style(theme)
-                } else {
-                    widgets::list_caption_style(selected)(theme)
-                }
-            }));
-        }
-        button(
-            column![
-                container(text_col).padding(style::ROW_PADDING).width(Fill),
-                progress_strip,
-            ]
-            .width(Fill),
-        )
-        .padding(0)
-        .width(Fill)
-        .style(widgets::list_item(selected, idx))
-        .on_press(Message::Selected(r.path.clone()))
-        .into()
-    }
-}
-
-/// The replay's own patch download, when it has one in flight or
-/// failed: the same row the patches tab, play strip and lobby use.
-/// Absent the rest of the time, so the detail carries no empty slot.
-fn patch_download_line<'a>(
-    lang: &'a LanguageIdentifier,
-    r: &replays::ScannedReplay,
-    scanners: &'a Scanners,
-    downloads: &'a crate::library::patch::Downloads,
-) -> Option<Element<'a, Message>> {
-    // Same pick App makes when Watch fires: the first side's patch we
-    // don't have. Both sides matter -- playback runs both games.
-    let patches = scanners.patches.read();
-    let key = [r.metadata.side(0), r.metadata.side(1)]
-        .into_iter()
-        .flatten()
-        .filter_map(|s| s.game_info.as_ref()?.patch.as_ref())
-        .find_map(|p| {
-            let version = semver::Version::parse(&p.version).ok()?;
-            (!patches.is_installed(&p.name, &version)).then_some((p.name.clone(), version))
-        });
-    let key = key?;
-    match downloads.get(&key) {
-        Some(download) if download.is_running() => {
-            let caption = match download.percent() {
-                Some(percent) => t!(lang, "replays-patch-downloading-progress", percent = percent as i64),
-                None => t!(lang, "replays-patch-downloading"),
-            };
-            Some(widgets::download_row(
-                caption,
-                download.fraction(),
-                false,
-                None,
-                Some((t!(lang, "patches-cancel"), Message::CancelPatchDownload(key))),
-            ))
-        }
-        Some(crate::library::patch::Download::Failed) => Some(widgets::download_row(
-            t!(lang, "replays-patch-download-failed"),
-            None,
-            true,
-            // Retrying is just watching again: App re-runs the fetch and
-            // queues the playback behind it.
-            Some((t!(lang, "patches-retry"), Message::Watch(r.path.clone()))),
-            None,
-        )),
-        _ => None,
-    }
-}
-
-/// What stands in for the HP chart while streamer mode has it masked: the
-/// reason and the button that unmasks it, on one row so the whole thing fits
-/// the height the chart would have taken. Same [`DETAIL_HP_GRAPH_H`] as the
-/// chart, so revealing swaps the pane's contents without moving the panes
-/// below it.
-fn streamer_masked_chart<'a>(lang: &'a LanguageIdentifier) -> Element<'a, Message> {
-    container(
-        row![
-            text(t!(lang, "replays-streamer-hidden"))
-                .size(TEXT_CAPTION)
-                .style(widgets::muted_text_style),
-            widgets::labeled_icon_button(
-                lucide_icons::Icon::Eye,
-                t!(lang, "replays-streamer-show"),
-                Message::RevealChart,
-                [4.0, 10.0],
-                widgets::neutral,
-            ),
-        ]
-        .spacing(12)
-        .align_y(Alignment::Center),
-    )
-    .center(Fill)
-    .height(Length::Fixed(DETAIL_HP_GRAPH_H))
-    .width(Fill)
-    .style(widgets::pane)
-    .into()
-}
-
-/// Quiet, non-CTA styling for the two build choices in the matchup pane.
-/// The checked dot uses the app's selection gold; the ring and hover remain
-/// neutral so this small selector does not read as another green action.
-fn build_selector_radio(theme: &iced::Theme, status: iced::widget::radio::Status) -> iced::widget::radio::Style {
-    let hovered = matches!(status, iced::widget::radio::Status::Hovered { .. });
-    iced::widget::radio::Style {
-        background: if hovered {
-            iced::Color {
-                a: 0.08,
-                ..theme.palette().text
-            }
-            .into()
-        } else {
-            iced::Color::TRANSPARENT.into()
-        },
-        dot_color: widgets::SELECT_YELLOW,
-        border_width: 1.0,
-        border_color: iced::Color {
-            a: if hovered { 0.75 } else { 0.45 },
-            ..theme.palette().text
-        },
-        text_color: None,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn replay_detail<'a>(
-    lang: &'a LanguageIdentifier,
-    r: &replays::ScannedReplay,
-    replays_path: &std::path::Path,
-    state: &'a ReplaysState,
-    scanners: &'a Scanners,
-    netplay_active: bool,
-    streamer_mode: bool,
-    downloads: &'a crate::library::patch::Downloads,
-) -> Element<'a, Message> {
-    // Playback needs a scanned ROM for the local-side game; without
-    // one the emulator session would error on construction. Resolve
-    // now so the Watch button can disable + explain.
-    let local_rom_present = r
-        .local_side()
-        .and_then(|s| s.game_info.as_ref())
-        .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-        .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
-        .map(|g| scanners.roms.read().contains_key(&g))
-        .unwrap_or(false);
-    let md = &r.metadata;
-    let ts_str = format_ts(md.ts, "%Y-%m-%d %H:%M:%S %z");
-
-    let row_for_side = |label: String,
-                        side: Option<&tango_replay::metadata::Side>,
-                        build: BuildSide,
-                        available: bool|
-     -> Element<'static, Message> {
-        let nick = side.map(|s| s.nickname.clone()).unwrap_or_default();
-        let gi = side.and_then(|s| s.game_info.as_ref());
-        let game_line = gi
-            .map(|g| {
-                let mut s = family_display_name(lang, &g.rom_family, g.rom_variant);
-                if let Some(p) = g.patch.as_ref() {
-                    s.push_str(&format!(" · {} v{}", p.name, p.version));
-                }
-                s
-            })
-            .unwrap_or_default();
-        let selector: Element<'static, Message> = if available {
-            iced::widget::radio(label, build, Some(state.viewed_build), Message::BuildSelected)
-                .size(14.0)
-                .spacing(6.0)
-                .text_size(TEXT_CAPTION)
-                .style(build_selector_radio)
-                .into()
-        } else {
-            text(label).size(TEXT_CAPTION).style(widgets::muted_text_style).into()
-        };
-        let col = column![
-            selector,
-            text(nick).size(TEXT_TITLE),
-            text(game_line).size(TEXT_CAPTION)
-        ]
-        .spacing(2);
-        container(col).width(Length::Fill).into()
-    };
-
-    let parent_str = r
-        .path
-        .parent()
-        .map(|p| replays::format_rel_path(replays_path, p))
-        .unwrap_or_else(|| "/".to_string());
-    let filename = r
-        .path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-
-    let game_short = r
-        .local_side()
-        .and_then(|s| s.game_info.as_ref())
-        .and_then(|g| u8::try_from(g.rom_variant).ok().map(|v| (g.rom_family.as_str(), v)))
-        .and_then(|(family, variant)| crate::library::game::find_by_family_and_variant(family, variant))
-        .map(|g| crate::library::game::short_name(lang, g))
-        .unwrap_or_else(|| "?".to_string());
-    let title = format!("{game_short} @ {}", link_code_display(lang, &md.link_code));
-
-    // Title + metadata pane: title row with action buttons, then
-    // timestamp and file path. Render settings float above this
-    // detail stack as a popover rather than changing its layout.
-    let title_pane = container(
-        column![
-            row![
-                // Title in a Fill container so a long link code
-                // wraps naturally without squashing the action
-                // buttons on the right.
-                container(text(title).size(18)).width(Fill),
-                {
-                    // Per-replay toggle. Disabled outright while a
-                    // render for this replay is in flight, so the
-                    // user can't even attempt to close the panel
-                    // mid-render (which would otherwise be a
-                    // no-op, but a dead button is more honest).
-                    let msg = if state.is_rendering(&r.path) {
-                        None
-                    } else if state.is_panel_open(&r.path) {
-                        Some(Message::Export(ExportMessage::PanelClose(r.path.clone())))
-                    } else {
-                        Some(Message::Export(ExportMessage::PanelOpen(r.path.clone())))
-                    };
-                    widgets::icon_button_maybe(Icon::Clapperboard, t!(lang, "replays-export"), msg, STANDARD_PADDING)
-                },
-                widgets::icon_button(
-                    Icon::FolderOpen,
-                    t!(lang, "patches-open-folder"),
-                    Message::RevealReplay(r.path.clone()),
-                    STANDARD_PADDING,
-                ),
-                // Queue: line this replay up to play when the current one
-                // runs out. Repeatable — queueing the same replay twice
-                // plays it twice.
-                widgets::icon_button(
-                    Icon::ListPlus,
-                    t!(lang, "replays-queue-add"),
-                    Message::Enqueue(r.path.clone()),
-                    STANDARD_PADDING,
-                ),
-                // Watch is the main action of the detail view —
-                // promote to primary with a text label so it's
-                // visually obvious. Disabled while netplay is in any
-                // non-Idle phase: starting a playback session would
-                // race with the live emulator. Also disabled when the
-                // local-side ROM isn't scanned (playback can't build
-                // a core without it); a tooltip carries the reason in
-                // that case, since the label alone can't say why.
-                {
-                    let watch_disabled = netplay_active || !local_rom_present;
-                    let btn = widgets::labeled_icon_button_maybe(
-                        Icon::Play,
-                        t!(lang, "replays-watch"),
-                        if watch_disabled {
-                            None
-                        } else {
-                            Some(Message::Watch(r.path.clone()))
-                        },
-                        STANDARD_PADDING,
-                        if watch_disabled {
-                            widgets::neutral
-                        } else {
-                            widgets::primary_button
-                        },
-                    );
-                    if local_rom_present {
-                        btn
-                    } else {
-                        iced::widget::tooltip(
-                            btn,
-                            widgets::tooltip_bubble(t!(lang, "replays-watch-missing-rom")),
-                            iced::widget::tooltip::Position::Top,
-                        )
-                        .gap(4)
-                        .into()
-                    }
-                },
-            ]
-            .spacing(6)
-            // Top-align so the action buttons stay anchored when
-            // a long title wraps to a second line.
-            .align_y(Alignment::Start),
-            // Watch on a replay whose patch we lack starts a download;
-            // without this the click looked like it did nothing at all
-            // until playback appeared, and a failure looked like
-            // nothing happening forever. Only present while there is
-            // one -- no reserved gap the rest of the time.
-            Element::from(
-                patch_download_line(lang, r, scanners, downloads)
-                    .unwrap_or_else(|| iced::widget::space::vertical().height(Length::Fixed(0.0)).into())
-            ),
-            // Metadata rows: file path, timestamp, match type,
-            // duration. Stacked tight in a sub-column so the rows
-            // read as one block (matches the patches detail-card
-            // density at .spacing(3)), with the outer column still
-            // breathing at .spacing(6) between sections.
-            column![
-                text(format!("{parent_str}{filename}"))
-                    .size(TEXT_CAPTION)
-                    .style(widgets::muted_text_style),
-                text(ts_str).size(TEXT_CAPTION).style(widgets::muted_text_style),
-                {
-                    let family = r
-                        .local_side()
-                        .and_then(|s| s.game_info.as_ref())
-                        .map(|g| g.rom_family.clone())
-                        .unwrap_or_default();
-                    let type_name = crate::library::game::match_type_name(
-                        lang,
-                        &family,
-                        md.match_type as u8,
-                        md.match_subtype as u8,
-                    );
-                    // "Triple (2 rounds)" for a replay whose telemetry
-                    // analysis is cached — a recording doesn't say how
-                    // many rounds it holds. Just "Triple" otherwise.
-                    let value = match state.stats.get(&r.path).and_then(|s| s.round_count) {
-                        Some(n) => {
-                            let rounds = t!(lang, "replays-round-count", count = n as i64);
-                            format!("{type_name} · {rounds}")
-                        }
-                        None => type_name,
-                    };
-                    row![
-                        text(t!(lang, "replays-match-type"))
-                            .size(TEXT_CAPTION)
-                            .style(widgets::muted_text_style),
-                        text(value).size(TEXT_CAPTION),
-                    ]
-                    .spacing(6)
-                    .align_y(Alignment::Center)
-                },
-                // Duration row, matching the match-type styling.
-                // Value fills in once the lazy stats worker has
-                // tallied the tick count for this path; em-dash
-                // placeholder until then so the row doesn't pop
-                // into existence.
-                row![
-                    text(t!(lang, "replays-duration"))
-                        .size(TEXT_CAPTION)
-                        .style(widgets::muted_text_style),
-                    text(
-                        state
-                            .stats
-                            .get(&r.path)
-                            .map(|s| format_duration(s.tick_count))
-                            .unwrap_or_else(|| "—".to_string())
-                    )
-                    .size(TEXT_CAPTION),
-                ]
-                .spacing(6)
-                .align_y(Alignment::Center),
-            ]
-            .spacing(3),
-        ]
-        .spacing(6),
-    )
-    .width(Fill)
-    .padding(style::PANE_PADDING)
-    .style(widgets::pane);
-
-    let matchup_pane = widgets::matchup_pane(
-        row_for_side(
-            t!(lang, "play-you"),
-            r.local_side(),
-            BuildSide::You,
-            state.loaded.is_some(),
-        ),
-        row_for_side(
-            t!(lang, "play-opponent"),
-            r.remote_side(),
-            BuildSide::Opponent,
-            state.opponent_loaded.is_some(),
-        ),
-    );
-
-    // HP-over-time pane: the match graph, at a fixed height with the
-    // chip-event lanes always present. During a first-focus analysis the
-    // chart exists from the start (empty segments at their final widths,
-    // seeded on selection) and the re-simulation draws into it live — no
-    // placeholder state.
-    //
-    // Streamer mode masks it instead: the trace reads out how a match went
-    // round by round, and the event lanes name every chip both players used.
-    // The mask is per-selection (see `ReplaysState::revealed`).
-    let hp_pane: Element<'_, Message> = if streamer_mode && state.revealed.as_ref() != Some(&r.path) {
-        streamer_masked_chart(lang)
-    } else {
-        // The pane renders whether or not a chart exists yet (a missing
-        // entry — e.g. a failed analysis — draws as an empty frame), so
-        // the detail column's layout never shifts with analysis state.
-        let chart = state.hp_charts.get(&r.path);
-        let chart_rounds: Vec<widgets::HpGraphRound<'_>> = chart
-            .map(|c| c.rounds.as_slice())
-            .unwrap_or(&[])
-            .iter()
-            .map(|r| widgets::HpGraphRound {
-                trace: &r.trace,
-                custom: &r.custom,
-                chip_uses: [&r.chip_uses[0], &r.chip_uses[1]],
-                outcome: r.outcome,
-                weight: r.weight,
-            })
-            .collect();
-        let body = widgets::hp_match_graph(
-            chart_rounds,
-            chart.map(|c| c.max_hp).unwrap_or(1.0),
-            1.0,
-            DETAIL_HP_GRAPH_H,
-            // Zoomable, keyed on the replay path so switching replays
-            // resets the view.
-            Some({
-                use std::hash::{Hash, Hasher};
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                r.path.hash(&mut hasher);
-                hasher.finish()
-            }),
-        );
-        // No pane padding: the chart's own per-round inset panels are the
-        // content, so the canvas runs edge to edge and the pane background
-        // only peeks through the round dividers.
-        container(body).width(Fill).style(widgets::pane).into()
-    };
-
-    // Save view contributes its own pane pair (tab strip + body)
-    // when a save is loaded; otherwise a single placeholder pane
-    // explaining the empty state.
-    let selected_loaded = match state.viewed_build {
-        BuildSide::You => state.loaded.as_ref(),
-        BuildSide::Opponent => state.opponent_loaded.as_ref(),
-    };
-    let preview: Element<'_, Message> = if let Some(loaded) = selected_loaded {
-        let viewed_build = state.viewed_build;
-        loaded
-            .editor
-            .view(lang, loaded, streamer_mode, None, true, false)
-            .map(move |msg| Message::SaveEditor(viewed_build, msg))
-    } else {
-        container(
-            text(t!(lang, "save-empty"))
-                .size(TEXT_CAPTION)
-                .style(widgets::muted_text_style),
-        )
-        .padding(style::PANE_PADDING)
-        .width(Fill)
-        .style(widgets::pane)
-        .into()
-    };
-
-    let panes = column![title_pane, hp_pane, matchup_pane]
-        .spacing(style::PANE_GAP)
-        .width(Fill);
-    let content: Element<'a, Message> = panes.push(preview).height(Fill).into();
-    if !state.is_panel_open(&r.path) {
-        return content;
-    }
-
-    // Transparent click-away layer, then the popover itself. It is
-    // aligned beneath the top-right replay actions and floats over the
-    // detail panes without reflowing them. An in-flight render stays
-    // pinned: its progress/cancel controls must remain reachable.
-    let dismiss = if state.is_rendering(&r.path) {
-        Message::NoOp
-    } else {
-        Message::Export(ExportMessage::PanelClose(r.path.clone()))
-    };
-    let click_away =
-        iced::widget::mouse_area(iced::widget::Space::new().width(Length::Fill).height(Length::Fill)).on_press(dismiss);
-    let popover = export::export_popover(
-        lang,
-        &state.export_settings,
-        state.rounds_for(&r.path),
-        state.hp_charts.get(&r.path).is_some_and(|c| c.has_setup),
-        state.hp_pending.contains(&r.path),
-        state.job(&r.path),
-        &r.path,
-    );
-    // Swallow presses on unused parts of the panel so they do not hit
-    // the click-away layer. Child controls capture their own presses.
-    let popover = iced::widget::mouse_area(popover).on_press(Message::NoOp);
-    let positioned = container(popover)
-        .width(Fill)
-        .height(Fill)
-        .align_x(iced::alignment::Horizontal::Right)
-        .align_y(iced::alignment::Vertical::Top)
-        .padding(iced::Padding {
-            top: 48.0,
-            right: style::PANE_PADDING,
-            bottom: 0.0,
-            left: 0.0,
-        });
-    iced::widget::stack![content, click_away, positioned].into()
-}
-
-/// Height of the HP graph in the detail panel: a 54 px trace field plus
-/// the widget's two per-side chip-event lanes (18 px, always present),
-/// which also leaves room for the four-line icon hover readout — the
-/// canvas clips anything that hangs past its bounds. One fixed height
-/// for every chart state, so the layout never jerks as an analysis
-/// renders in.
-const DETAIL_HP_GRAPH_H: f32 = 72.0;
-
-/// Everything the free-text search matches against, joined into one
-/// lowercased blob: both sides' nicknames, game names (raw family
-/// plus the localized display/short names, so "exe6" and "battle
-/// network" both hit), patch name + version, the link code, the
-/// date as `YYYY-MM-DD` (so "2026-07" matches a month), and the
-/// path relative to the replays root.
-fn search_haystack(lang: &LanguageIdentifier, replays_path: &std::path::Path, r: &replays::ScannedReplay) -> String {
-    let md = &r.metadata;
-    let mut parts: Vec<String> = Vec::new();
-    for side in [md.side(0), md.side(1)].into_iter().flatten() {
-        parts.push(side.nickname.clone());
-        if let Some(gi) = side.game_info.as_ref() {
-            parts.push(gi.rom_family.clone());
-            parts.push(family_display_name(lang, &gi.rom_family, gi.rom_variant));
-            if let Some(g) = u8::try_from(gi.rom_variant)
-                .ok()
-                .and_then(|v| crate::library::game::find_by_family_and_variant(&gi.rom_family, v))
-            {
-                parts.push(crate::library::game::short_name(lang, g));
-            }
-            if let Some(p) = gi.patch.as_ref() {
-                parts.push(format!("{} v{}", p.name, p.version));
-            }
-        }
-    }
-    parts.push(md.link_code.clone());
-    parts.push(format_ts(md.ts, "%Y-%m-%d"));
-    let parent = r
-        .path
-        .parent()
-        .map(|p| replays::format_rel_path(replays_path, p))
-        .unwrap_or_default();
-    let filename = r
-        .path
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    parts.push(format!("{parent}{filename}"));
-    parts.join("\n").to_lowercase()
-}
-
-/// "Mega Man Battle Network 6" — family-only i18n lookup, matching
-/// how the lobby renders the game line. Falls back to "{family}
-/// v{variant}" for unrecognized families.
-fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) -> String {
-    crate::library::game::family_str(family, lang, "name").unwrap_or_else(|| format!("{family} v{variant}"))
-}
-
-/// A replay's millis-since-epoch timestamp, formatted per `fmt` in
-/// local time; `"(?)"` when the value is out of range.
-fn format_ts(ms: u64, fmt: &str) -> String {
-    std::time::UNIX_EPOCH
-        .checked_add(std::time::Duration::from_millis(ms))
-        .map(|t| chrono::DateTime::<chrono::Local>::from(t).format(fmt).to_string())
-        .unwrap_or_else(|| "(?)".to_string())
-}
-
-/// `tick_count` → `"M:SS"` (or `"H:MM:SS"` past an hour). 60
-/// ticks = 1 second at GBA native rate; replay export uses the
-/// same constant.
-fn format_duration(ticks: u32) -> String {
-    let secs = ticks / 60;
-    let h = secs / 3600;
-    let m = (secs % 3600) / 60;
-    let s = secs % 60;
-    if h > 0 {
-        format!("{h}:{m:02}:{s:02}")
-    } else {
-        format!("{m}:{s:02}")
-    }
-}
-
-/// Display label for the `link_code` field of a replay's
-/// metadata. Direct-TCP sessions leave the field blank in the
-/// metadata (see `netplay::take_pre_match`); render those as a
-/// localized "(direct)" marker so the row / detail panel still
-/// has something where the link code would be.
-fn link_code_display<'a>(lang: &LanguageIdentifier, code: &'a str) -> std::borrow::Cow<'a, str> {
-    if code.is_empty() {
-        std::borrow::Cow::Owned(t!(lang, "replays-direct-marker"))
-    } else {
-        std::borrow::Cow::Borrowed(code)
     }
 }

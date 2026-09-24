@@ -17,12 +17,9 @@
 //!   along with the boot every simulation of a match starts with:
 //!   prime the pair and start the seam's rollback
 //!   [`Match`](tango_match::Match).
-//! - [`analysis`]: the per-tick RAM-poll telemetry as this engine
-//!   drives it, the match-stats types, and the fold between them.
 //!
 //! [`link`]: mod@link
 
-pub mod analysis;
 pub mod backend;
 pub mod link;
 pub mod solo;

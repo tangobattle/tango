@@ -271,7 +271,8 @@ const MAX_PRIME_TICKS: u32 = 3600;
 
 /// Build a pair and prime both games to their link battle — the walk
 /// every simulation of a match starts with: live netplay, replay
-/// playback, and offline re-analysis ([`crate::analysis::analyze`]).
+/// playback, and offline re-analysis
+/// ([`tango_match::ReplaySet::analyze`]).
 ///
 /// The traps do all the driving (each core's walk its own menu state
 /// machine); the pads stay idle throughout. Priming is done when both

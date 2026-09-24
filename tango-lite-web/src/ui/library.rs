@@ -22,7 +22,7 @@ pub fn Library(loadout: Signal<Loadout>, revision: ReadSignal<u64>, onplay: Even
     let host: crate::host::Context = use_context();
     let revision = revision();
     let owned = crate::library::owned_games(&host().library);
-    let picked = loadout().game;
+    let picked = loadout().game();
 
     rsx! {
         div { class: "pane",
@@ -39,11 +39,7 @@ pub fn Library(loadout: Signal<Loadout>, revision: ReadSignal<u64>, onplay: Even
                                 key: "{game.family_and_variant().0}-{game.family_and_variant().1}",
                                 game,
                                 selected: picked == Some(game),
-                                onpick: move |_| {
-                                    let mut next = Loadout { game: Some(game), ..Default::default() };
-                                    crate::loadout::reconcile(&mut next, &host().library);
-                                    loadout.set(next);
-                                },
+                                onpick: move |_| crate::loadout::pick_game(&mut loadout.write(), game, &host().library),
                             }
                         }
                     }
@@ -52,11 +48,7 @@ pub fn Library(loadout: Signal<Loadout>, revision: ReadSignal<u64>, onplay: Even
                     label: "Add ROM".to_string(),
                     onpick: move |(name, bytes): (String, Vec<u8>)| async move {
                         match crate::library::import_rom(&host().library, &name, &bytes).await {
-                            Some(game) => {
-                                let mut next = Loadout { game: Some(game), ..Default::default() };
-                                crate::loadout::reconcile(&mut next, &host().library);
-                                loadout.set(next);
-                            }
+                            Some(game) => crate::loadout::pick_game(&mut loadout.write(), game, &host().library),
                             // Either an unsupported game or a bad dump —
                             // and a bad dump has to be refused, because
                             // it desyncs a match rather than failing.
@@ -146,6 +138,7 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
     let host: crate::host::Context = use_context();
     let saves = crate::library::with(&host().library, |library| {
         library
+            .catalog
             .saves
             .read()
             .get(&game)
@@ -153,8 +146,8 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
             .unwrap_or_default()
     })
     .unwrap_or_default();
-    let picked = loadout().save_path;
-    let templates = crate::library::save_templates(game);
+    let picked = loadout().save().map(std::path::Path::to_path_buf);
+    let templates = crate::library::save_templates(&host().library, game, loadout().patch());
     // One template is a button; several are a choice, and the names are
     // the whole point of the choice (BN3 ships eight styles).
     let mut choosing = use_signal(|| false);
@@ -178,7 +171,7 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
                                 class: "grow title bare",
                                 onclick: {
                                     let path = path.clone();
-                                    move |_| loadout.write().save_path = Some(path.clone())
+                                    move |_| crate::loadout::pick_save(&mut loadout.write(), game, path.clone(), &host().library)
                                 },
                                 "{save_label(&path, game)}"
                             }
@@ -189,7 +182,7 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
                                     move |_| {
                                         let path = path.clone();
                                         async move {
-                                            crate::library::delete_file(&host().library, path).await;
+                                            crate::library::delete_save(&host().library, path).await;
                                             crate::loadout::reconcile(&mut loadout.write(), &host().library);
                                         }
                                     }
@@ -232,8 +225,9 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
                                 move |_| {
                                     let template = template.clone();
                                     async move {
-                                        if crate::library::create_starter_save(&host().library, game, &template).await {
-                                            crate::loadout::reconcile(&mut loadout.write(), &host().library);
+                                        let patch = loadout.peek().patch().map(|(name, version)| (name.to_owned(), version.clone()));
+                                        if let Some(path) = crate::library::create_starter_save(&host().library, game, patch, &template).await {
+                                            crate::loadout::adopt_created_save(&mut loadout.write(), game, path, &host().library);
                                         }
                                         choosing.set(false);
                                     }
@@ -252,7 +246,9 @@ fn SaveCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
 fn PatchCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element {
     let host: crate::host::Context = use_context();
     let available = crate::library::patches_for(&host().library, game);
-    let picked = loadout().patch;
+    let picked = loadout()
+        .patch()
+        .map(|(name, version)| (name.to_owned(), version.clone()));
     let download = crate::library::download_progress(&host().library);
 
     rsx! {
@@ -262,7 +258,7 @@ fn PatchCard(game: GameRef, loadout: Signal<Loadout>, revision: u64) -> Element 
                 button {
                     class: "item",
                     "aria-selected": "{picked.is_none()}",
-                    onclick: move |_| loadout.write().patch = None,
+                    onclick: move |_| crate::loadout::pick_patch(&mut loadout.write(), None, &host().library),
                     div { class: "stack",
                         span { class: "title", "Unpatched" }
                         span { class: "meta", "The game as it shipped" }
@@ -319,7 +315,7 @@ fn PatchRow(
 ) -> Element {
     let host: crate::host::Context = use_context();
     let title = crate::library::with(&host().library, |library| {
-        library.patches.read().title(&name).map(str::to_string)
+        library.catalog.patches.read().title(&name).map(str::to_string)
     })
     .flatten()
     .unwrap_or_else(|| name.clone());
@@ -342,7 +338,7 @@ fn PatchRow(
                                     return;
                                 }
                             }
-                            loadout.write().patch = Some((name, version));
+                            crate::loadout::pick_patch(&mut loadout.write(), Some((name, version)), &host().library);
                         }
                     }
                 },

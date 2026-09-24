@@ -2,38 +2,41 @@
 
 use super::desktop::{copy_html_to_clipboard, copy_image_to_clipboard, open_path, reveal_path};
 use super::{App, Message, RescanFollowup};
-use crate::tabs::play::{create_new_save, duplicate_save, rename_save};
-use crate::{loadout, netplay, session, tabs};
+use crate::library::save;
+use crate::tabs::play::loadout_strip;
+use crate::{netplay, session, tabs};
 
 impl App {
     /// Apply a loadout-strip message (from either tab) to the shared
-    /// App-level [`loadout::Loadout`] and run the selection-change
+    /// App-level selection and run the selection-change
     /// follow-ups. The caller batches a lobby settings-resend after
     /// this, so a mid-lobby save/patch switch reaches the peer.
-    pub(super) fn update_loadout(&mut self, msg: loadout::Message) -> iced::Task<Message> {
+    pub(super) fn update_loadout(&mut self, msg: loadout_strip::Message) -> iced::Task<Message> {
         // Download controls act on the fetch, not the selection, so they
         // carry their own key and skip the selection-changed follow-ups.
         let download_key = match &msg {
-            loadout::Message::RetryPatchDownload(key) | loadout::Message::CancelPatchDownload(key) => Some(key.clone()),
+            loadout_strip::Message::RetryPatchDownload(key) | loadout_strip::Message::CancelPatchDownload(key) => {
+                Some(key.clone())
+            }
             _ => None,
         };
-        let Some(effect) = self.loadout.update(msg, &self.scanners, &self.config) else {
+        let Some(effect) = loadout_strip::update(&mut self.loadout, msg, &self.scanners, &self.config) else {
             return iced::Task::none();
         };
         match effect {
-            loadout::Effect::CancelDownload => {
+            loadout_strip::Effect::CancelDownload => {
                 let Some(key) = download_key else {
                     return iced::Task::none();
                 };
                 return self.cancel_download(key);
             }
-            loadout::Effect::RetryDownload => {
+            loadout_strip::Effect::RetryDownload => {
                 let Some(key) = download_key else {
                     return iced::Task::none();
                 };
                 return self.install_patch(key);
             }
-            loadout::Effect::SelectionChanged => {
+            loadout_strip::Effect::SelectionChanged => {
                 self.refresh_loaded();
                 self.persist_selection();
                 // Game might have just changed — if so, the lobby
@@ -102,23 +105,15 @@ impl App {
                 iced::Task::none()
             }
             E::SetMatchType(mt) => {
-                self.netplay.set_match_type(mt);
-                // An explicit user pick of match type pre-Lobby
-                // would otherwise be clobbered the first time
-                // `resend_settings_if_lobby` runs in Lobby —
-                // that helper's "default to Triple" policy
-                // fires whenever `default_mt_for_family` doesn't
-                // match the current game, which is the case
-                // when the user picked their match type before
-                // any default was applied. Stamp the slot here
-                // so the policy treats the pick as already
-                // having defaulted for this game.
-                if let Some(g) = self.loadout.game {
-                    let fam = g.family_and_variant().0;
-                    self.netplay.lobby.default_mt_for_family = Some(fam.to_string());
+                // Stamping the family keeps the default policy from
+                // clobbering a pick made before it ever ran (see
+                // `netplay::State::pick_match_type`).
+                let family = self.loadout.game().map(|g| g.family_and_variant().0);
+                self.netplay.pick_match_type(family, mt);
+                if let Some(family) = family {
                     // And remember it for the next time this family
                     // comes up, here or in a future launch.
-                    self.config.last_match_type_per_family.insert(fam.to_string(), mt);
+                    self.config.last_match_type_per_family.insert(family.to_string(), mt);
                     self.persist_config();
                 }
                 self.resend_settings_if_lobby()
@@ -164,12 +159,7 @@ impl App {
                 if self.loaded.is_none() {
                     return iced::Task::none();
                 }
-                match session::spawn_singleplayer(
-                    &self.scanners,
-                    &self.config,
-                    &self.audio_binder,
-                    &self.loadout.selection(),
-                ) {
+                match session::spawn_singleplayer(&self.scanners, &self.config, &self.audio_binder, &self.loadout) {
                     Ok(launch) => self.session.install(launch, &self.audio_binder, &self.config),
                     Err(e) => {
                         log::error!("singleplayer start failed: {e:#}");
@@ -187,7 +177,7 @@ impl App {
                     &self.scanners,
                     &self.config,
                     &self.audio_binder,
-                    &self.loadout.selection(),
+                    &self.loadout,
                     &loaded.snapshot_sram(),
                 ) {
                     Ok(launch) => self.session.install(launch, &self.audio_binder, &self.config),
@@ -198,11 +188,11 @@ impl App {
                 iced::Task::none()
             }
             E::SaveDuplicate { new_stem } => {
-                if let Some(src) = self.loadout.save.clone() {
-                    match duplicate_save(&src, &new_stem) {
+                if let Some(src) = self.loadout.save().map(std::path::Path::to_path_buf) {
+                    match save::duplicate(crate::library::storage(), &src, &new_stem) {
                         Ok(dst) => {
                             log::info!("duplicated save: {} → {}", src.display(), dst.display());
-                            self.loadout.save = Some(dst);
+                            self.loadout.follow_save_file(dst);
                             self.persist_selection();
                             return self.rescan_off_thread(RescanFollowup::Refresh);
                         }
@@ -212,11 +202,11 @@ impl App {
                 iced::Task::none()
             }
             E::SaveRename { new_stem } => {
-                if let Some(src) = self.loadout.save.clone() {
-                    match rename_save(&src, &new_stem) {
+                if let Some(src) = self.loadout.save().map(std::path::Path::to_path_buf) {
+                    match save::rename(crate::library::storage(), &src, &new_stem) {
                         Ok(dst) => {
                             log::info!("renamed save: {} → {}", src.display(), dst.display());
-                            self.loadout.save = Some(dst);
+                            self.loadout.follow_save_file(dst);
                             self.persist_selection();
                             return self.rescan_off_thread(RescanFollowup::Refresh);
                         }
@@ -226,8 +216,8 @@ impl App {
                 iced::Task::none()
             }
             E::SaveDelete => {
-                if let Some(src) = self.loadout.save.clone() {
-                    if let Err(e) = std::fs::remove_file(&src) {
+                if let Some(src) = self.loadout.save().map(std::path::Path::to_path_buf) {
+                    if let Err(e) = save::delete(crate::library::storage(), &src) {
                         log::error!("delete save: {e}");
                     } else {
                         log::info!("deleted save: {}", src.display());
@@ -236,7 +226,7 @@ impl App {
                     // "no save" while the rescan is in flight;
                     // PickFirstSave restores the first remaining
                     // entry once the scan finishes.
-                    self.loadout.save = None;
+                    self.loadout.clear_save();
                     self.persist_selection();
                     return self.rescan_off_thread(RescanFollowup::RefreshAndPickFirstSave);
                 }
@@ -247,25 +237,21 @@ impl App {
                 // user picked), which may differ from the currently
                 // selected one — so adopt it as the loadout's game too,
                 // keeping game/save consistent for `refresh_loaded`.
-                if let Some(template) = tabs::play::creation_template(game, &template, &self.loadout, &self.scanners) {
-                    match create_new_save(&self.config.saves_path(), &name, template.as_ref()) {
+                let template = save::template(game, &self.scanners.patches.read(), self.loadout.patch(), &template);
+                if let Some(template) = template {
+                    match save::create(
+                        crate::library::storage(),
+                        &self.config.saves_path(),
+                        &name,
+                        template.as_ref(),
+                    ) {
                         Ok(dst) => {
                             log::info!(
                                 "created new save for {:?}: {}",
                                 game.family_and_variant(),
                                 dst.display()
                             );
-                            // Templates are only offered for patch-supported
-                            // variants, so the patch normally still applies;
-                            // drop it only if it somehow doesn't support the
-                            // created variant.
-                            if !loadout::patch_supports(&self.loadout, &self.scanners, game) {
-                                self.loadout.patch = None;
-                                self.loadout.patch_version = None;
-                            }
-                            self.loadout.game = Some(game);
-                            self.loadout.family = Some(game.family_and_variant().0);
-                            self.loadout.save = Some(dst);
+                            self.loadout.adopt_created_save(game, dst, &self.scanners);
                             // Records the save→patch association too — a
                             // template-created save is born remembering the
                             // patch it was created under.
@@ -284,7 +270,7 @@ impl App {
                 // `Some(sram)` once written; the SRAM is reused below to
                 // refresh a live netplay commitment.
                 let saved_sram = match self.loaded.as_ref().map(|l| l.save_path.as_path()) {
-                    Some(path) if !path.as_os_str().is_empty() => match std::fs::write(path, &sram) {
+                    Some(path) if !path.as_os_str().is_empty() => match crate::library::storage().write(path, &sram) {
                         Ok(()) => {
                             log::info!("saved edited save: {}", path.display());
                             Some(sram)
@@ -342,66 +328,13 @@ impl App {
     /// without a scan (see [`App::new`]); the game, its save and that
     /// save's patch overlay each have to still exist to come back.
     pub(super) fn restore_selection(&mut self) {
-        let Some((family, variant)) = self.config.last_game.as_ref() else {
-            return;
-        };
-        let Some(game) = crate::library::game::find_by_family_and_variant(family, *variant) else {
-            return;
-        };
-        if !self.scanners.roms.read().contains_key(&game) {
-            return;
-        }
-        self.loadout.game = Some(game);
-        self.loadout.family = Some(game.family_and_variant().0);
-        let Some(rel) = self.config.last_save_per_family.get(game.family_and_variant().0) else {
-            return;
-        };
-        let abs = self.config.data_relative_to_absolute(rel);
-        if !self
-            .scanners
-            .saves
-            .read()
-            .get(&game)
-            .map(|v| v.iter().any(|s| s.path == abs))
-            .unwrap_or(false)
-        {
-            return;
-        }
-        self.loadout.save = Some(abs);
-        // The patch overlay hangs off the save — restore whatever this
-        // save was last used with, if the patch still exists and
-        // supports the variant.
-        if let Some(Some((n, v))) = self.config.last_patch_per_save.get(rel) {
-            if self.scanners.patches.read().supported_games(n, v).contains(&game) {
-                self.loadout.patch = Some(n.clone());
-                self.loadout.patch_version = Some(v.clone());
-            }
-        }
+        self.loadout.restore(&self.config, &self.scanners);
     }
 
     /// Record the current selection back to config; called after any
-    /// selection change so the next launch restores it. The save is
-    /// remembered per family, and the patch overlay per save — so every
-    /// save carries the patch it was last used with, including the
-    /// patch a template-created save was born under.
+    /// selection change so the next launch restores it.
     pub(super) fn persist_selection(&mut self) {
-        self.config.last_family = self.loadout.family.map(|f| f.to_string());
-        self.config.last_game = self
-            .loadout
-            .game
-            .map(|g| (g.family_and_variant().0.to_string(), g.family_and_variant().1));
-        if let (Some(g), Some(p)) = (self.loadout.game, self.loadout.save.as_ref()) {
-            if let Some(rel) = self.config.data_relative_string(p) {
-                self.config
-                    .last_save_per_family
-                    .insert(g.family_and_variant().0.to_string(), rel.clone());
-                let overlay = match (&self.loadout.patch, &self.loadout.patch_version) {
-                    (Some(n), Some(v)) => Some((n.clone(), v.clone())),
-                    _ => None,
-                };
-                self.config.last_patch_per_save.insert(rel, overlay);
-            }
-        }
+        self.loadout.persist(&mut self.config);
         self.persist_config();
     }
 }

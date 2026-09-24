@@ -422,8 +422,8 @@ impl tango_match::ReplayBoot for Boot {
     /// into compiled blocks. The frame moved the symptom around without
     /// fixing it, and a landed pair still parted ways on screen about a
     /// minute into a recording. With that carried properly, landing
-    /// straight out of construction is exact for as long as bn5ds's
-    /// `landing_probe` runs a recording (`fresh` mode).
+    /// straight out of construction was checked exact across whole
+    /// recordings.
     fn boot_unprimed(&self, want_stats: bool) -> Result<tango_match::BootedReplay, tango_match::Error> {
         let mut link = self.pair()?;
         if self.disable_bgm {

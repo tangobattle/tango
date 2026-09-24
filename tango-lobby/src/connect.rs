@@ -10,7 +10,7 @@
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
-use super::{DirectRole, Error, Inbound, MatchmakingParams, Progress, Status, PROTOCOL_VERSION};
+use super::{DirectRole, Error, Inbound, MatchmakingParams, Progress};
 
 /// An open, negotiated connection: everything the lobby needs to talk to
 /// the peer, and everything the eventual match needs to take it over.
@@ -62,36 +62,15 @@ impl std::fmt::Debug for Connected {
 pub async fn connect(params: MatchmakingParams, cancel: CancellationToken, progress: Progress) {
     let reporter = progress.clone();
     let work = async {
-        let connecting = tango_signaling::connect(
-            &params.endpoint,
-            &params.link_code,
-            // None = let ICE pick: direct when possible, TURN when
-            // peers can't reach each other. Some(true) = relay-only
-            // transport policy. Some(false) = drop the TURN servers,
-            // direct routes only.
-            params.use_relay,
-            PROTOCOL_VERSION,
-            // Every channel the session needs, created together up front (same
-            // specs the direct path uses — see `net::channel`).
-            vec![
-                tango_net::channel::control_channel(),
-                tango_net::channel::in_match_channel(),
-            ],
-        )
-        .await
-        .map_err(signaling_error)?;
-        // Server hello is in hand (ICE config settled). From here the
-        // await is the slow one — blocked on the peer actually joining.
-        // It fails with the same type as the dial did: a server that
-        // turns us away does it here, having taken the socket first.
-        progress.status(Status::WaitingForOpponent);
-        let connected = connecting.await.map_err(signaling_error)?;
-        // Same split + pairing a mid-match reconnect uses, so both bundle a
-        // matchmaking connection identically (see [`Channels::from_signaling`]).
-        let channels =
-            tango_net::channel::Channels::from_signaling(connected).map_err(|e| Error::Other(e.to_string()))?;
-        progress.status(Status::Negotiating);
-        negotiate(channels, None).await
+        // The same bring-up a mid-match reconnect runs, so both bundle a
+        // matchmaking connection identically.
+        let route = tango_net::connect::Route::Matchmaking {
+            endpoint: &params.endpoint,
+            session_id: &params.link_code,
+            use_relay: params.use_relay,
+        };
+        let channels = tango_net::open_channels(route, |status| progress.status(status)).await?;
+        Ok(bundle(channels, None))
     };
     report(work, cancel, reporter).await;
 }
@@ -106,43 +85,30 @@ pub async fn connect(params: MatchmakingParams, cancel: CancellationToken, progr
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn connect_direct(role: DirectRole, cancel: CancellationToken, progress: Progress) {
     let reporter = progress.clone();
-    // The role is also the rebuild recipe: a dropped direct link is
-    // re-established by re-running this exact `host`/`connect`, so stash a
-    // clone for the in-match reconnect coordinator before it's consumed.
-    let reconnect = Some(role.clone());
     let work = async {
-        let channels = match role {
-            DirectRole::Host { port } => tango_net::direct_rtc::host(port)
-                .await
-                .map_err(|e| Error::Other(format!("direct host: {e}")))?,
-            DirectRole::Connect { addr } => tango_net::direct_rtc::connect(&addr)
-                .await
-                .map_err(|e| Error::Other(format!("direct connect: {e}")))?,
-        };
-        progress.status(Status::Negotiating);
-        negotiate(channels, reconnect).await
+        let channels = tango_net::open_channels(tango_net::connect::Route::Direct(&role), |status| {
+            progress.status(status)
+        })
+        .await?;
+        // The role is also the rebuild recipe: a dropped direct link is
+        // re-established by re-running this exact `host`/`connect`.
+        Ok(bundle(channels, Some(role.clone())))
     };
     report(work, cancel, reporter).await;
 }
 
-/// Run the protocol-version handshake on the reliable channel and bundle
-/// the result. `is_offerer` comes from the SDP on the matchmaking path;
-/// on the direct path the role decides it (host = true), which is what
-/// keeps `pick_local_player_index`'s symmetry break asymmetric.
-async fn negotiate(channels: tango_net::channel::Channels, reconnect: Option<DirectRole>) -> Result<Connected, Error> {
+/// Bundle a negotiated connection for the lobby. `is_offerer` comes from
+/// the SDP on the matchmaking path; on the direct path the role decides
+/// it (host = true), which is what keeps `pick_local_player_index`'s
+/// symmetry break asymmetric.
+fn bundle(channels: tango_net::channel::Channels, reconnect: Option<DirectRole>) -> Connected {
     let tango_net::channel::Channels {
-        control: (mut sender, mut receiver),
+        control: (sender, receiver),
         in_match: (in_match_sender, in_match_receiver),
         peer_conn,
         local_dtls_fingerprint,
         peer_dtls_fingerprint,
     } = channels;
-    // The channels were paired when the connection was bundled; the
-    // handshake runs on the reliable one. The unreliable in-match channel
-    // shares the association and is open by the time the match starts.
-    tango_net::negotiate(&mut sender, &mut receiver)
-        .await
-        .map_err(negotiation_error)?;
     let is_offerer = match &reconnect {
         Some(role) => matches!(role, DirectRole::Host { .. }),
         None => peer_conn
@@ -150,7 +116,7 @@ async fn negotiate(channels: tango_net::channel::Channels, reconnect: Option<Dir
             .map(|d| matches!(d.sdp_type, datachannel_wrapper::SdpType::Offer))
             .unwrap_or(false),
     };
-    Ok(Connected {
+    Connected {
         sender: Arc::new(tokio::sync::Mutex::new(sender)),
         receiver,
         in_match_sender,
@@ -158,12 +124,12 @@ async fn negotiate(channels: tango_net::channel::Channels, reconnect: Option<Dir
         peer_conn,
         is_offerer,
         // Matchmaking can't be re-established without re-running signaling
-        // against the server, so transparent reconnection is off for that
-        // transport (for now) — `reconnect` is `None` there by construction.
+        // against the server, so its recipe is built later, in
+        // `take_pre_match` — `reconnect` is `None` there by construction.
         reconnect,
         local_dtls_fingerprint,
         peer_dtls_fingerprint,
-    })
+    }
 }
 
 /// Race a bring-up against the cancel token and report where it landed.
@@ -182,6 +148,27 @@ async fn report(
     match outcome {
         Ok(connected) => progress.send(Inbound::Connected(Box::new(connected))),
         Err(e) => progress.send(Inbound::Failed(e)),
+    }
+}
+
+impl From<tango_net::ConnectError> for Error {
+    fn from(e: tango_net::ConnectError) -> Self {
+        use tango_net::ConnectError as C;
+        match e {
+            C::Signaling(e) => signaling_error(e),
+            C::Channels(e) => Error::Channels(e.to_string()),
+            C::Direct { hosting, source } => Error::Direct {
+                hosting,
+                message: source.to_string(),
+            },
+            // Unreachable from a lobby: the direct entry point isn't built
+            // for a browser.
+            e @ C::DirectUnsupported => Error::Direct {
+                hosting: false,
+                message: e.to_string(),
+            },
+            C::Negotiation(e) => negotiation_error(e),
+        }
     }
 }
 

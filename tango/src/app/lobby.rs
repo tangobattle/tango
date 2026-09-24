@@ -4,52 +4,21 @@ use super::{App, Message};
 use crate::{netplay, session};
 
 impl App {
-    /// Default match-type policy:
-    ///   - Family JUST changed (or first selection in this lobby):
-    ///     the mode this family was last picked in
-    ///     ([`crate::config::Config::last_match_type_per_family`]), or, failing that,
-    ///     Triple (mode=1) if the game supports it, else Single.
-    ///     Keyed off `default_mt_for_family` so it only fires once per
-    ///     (lobby, family) pair.
-    ///   - Same family, current value invalid for this game: same
-    ///     fallback (paranoia — the versions of a family can differ).
-    ///   - Same family, valid value: leave alone — sticky user pick.
+    /// Re-apply the lobby's default match-type policy
+    /// ([`netplay::State::apply_default_match_type`]) for the current
+    /// game, with this family's remembered pick from
+    /// [`crate::config::Config::last_match_type_per_family`].
     ///
     /// Called any time the current game or lobby state could have
     /// changed in a way that affects the right default: on Connect
     /// (cancel_and_renew wiped the lobby), on selection change,
     /// and defensively inside `resend_settings_if_lobby`.
     pub(super) fn apply_default_match_type(&mut self) {
-        let Some(game) = self.loadout.game else { return };
-        let mt_table = game.family.match_types;
+        let Some(game) = self.loadout.game() else { return };
         let family = game.family_and_variant().0;
-        let family_changed = self.netplay.lobby.default_mt_for_family.as_deref() != Some(family);
-        let (mode, sub) = self.netplay.lobby.match_type;
-        let current_valid =
-            (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0);
-        if family_changed || !current_valid {
-            // What this family was last played in, if the game still
-            // offers it — a remembered pick outranks the built-in
-            // default, and a stale one (the table shrank under a patch)
-            // falls through to it.
-            let remembered = self
-                .config
-                .last_match_type_per_family
-                .get(family)
-                .copied()
-                .filter(|&(mode, sub)| {
-                    (mode as usize) < mt_table.len() && (sub as usize) < *mt_table.get(mode as usize).unwrap_or(&0)
-                });
-            let new_mt = remembered.unwrap_or_else(|| {
-                if mt_table.get(1).copied().unwrap_or(0) > 0 {
-                    (1, 0) // Triple
-                } else {
-                    (0, 0) // Single
-                }
-            });
-            self.netplay.lobby.match_type = new_mt;
-            self.netplay.lobby.default_mt_for_family = Some(family.to_string());
-        }
+        let remembered = self.config.last_match_type_per_family.get(family).copied();
+        self.netplay
+            .apply_default_match_type(family, game.family.match_types, remembered);
     }
 
     /// Both sides have exchanged StartMatch: drain the lobby-side state
@@ -75,85 +44,38 @@ impl App {
         )
     }
 
-    /// Build the current Settings packet and push it to the peer — only
+    /// Run the lobby's follow-up ([`netplay::State::reconcile`]) — only
     /// meaningful while netplay is in Lobby phase; outside that this
-    /// returns `Task::none()`. Wrapped in a helper because it has three
-    /// callers: lobby entry, selection change, and match-type change.
+    /// returns `Task::none()`. Pushes our current Settings (deduped),
+    /// unreadies us if the verdict is no longer Compatible, and fetches a
+    /// patch the lobby needs but doesn't have. Called after every
+    /// netplay report and every Play-tab dispatch.
     pub(super) fn resend_settings_if_lobby(&mut self) -> iced::Task<Message> {
         if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
             return iced::Task::none();
         }
         self.apply_default_match_type();
-        let settings = self.make_local_settings();
-        self.netplay.send_local_settings(settings);
-        iced::Task::none()
-    }
-
-    /// If a netplay state change just flipped the compat verdict to
-    /// anything other than Compatible while we're still flagged
-    /// ready, fire an Uncommit so the local commit doesn't outlive
-    /// the agreement it was based on. Covers the cases the netplay
-    /// handlers don't catch — peer changing their game/patch/
-    /// match_type, or our own available_patches shrinking out from
-    /// under a previously-valid commit.
-    pub(super) fn uncommit_if_incompat(&mut self) {
-        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) || !self.netplay.local_ready() {
-            return;
-        }
-        // Scoped so the scanner read guards (and the borrows of
-        // `netplay.lobby`) are released before the uncommit.
-        let compatible = {
-            let (Some(local), Some(remote)) = (self.netplay.lobby.local.as_ref(), self.netplay.lobby.remote.as_ref())
-            else {
-                return;
-            };
-            let roms = self.scanners.roms.read();
-            let patches = self.scanners.patches.read();
-            matches!(
-                netplay::check_compatibility(local, remote, &roms, &patches),
-                netplay::compat::Verdict::Compatible
+        let missing = {
+            let (loadout, config, scanners) = (&self.loadout, &self.config, &self.scanners);
+            self.netplay.reconcile(
+                |lobby| crate::tabs::play::loadout_strip::local_settings(loadout, config, lobby),
+                |local, remote| {
+                    tango_library::loadout::compatibility_facts(
+                        local,
+                        remote,
+                        &scanners.roms.read(),
+                        &scanners.patches.read(),
+                    )
+                },
             )
         };
-        if !compatible {
-            self.netplay.uncommit();
-        }
-    }
-
-    /// Fetch a patch the lobby needs but doesn't have.
-    ///
-    /// The compatibility check resolves the peer's patch from the repo
-    /// index, so we know a matchup is playable before the package is on
-    /// disk — and the only thing standing in the way is a download we
-    /// can start ourselves. Idempotent: the tab tracks in-flight
-    /// downloads, and this fires on every lobby state change.
-    pub(super) fn fetch_missing_patch(&mut self) -> iced::Task<Message> {
-        if !matches!(self.netplay.phase, netplay::Phase::Lobby { .. }) {
-            return iced::Task::none();
-        }
-        let (Some(local), Some(remote)) = (self.netplay.lobby.local.as_ref(), self.netplay.lobby.remote.as_ref())
-        else {
+        // Idempotent: the download tracker ignores a key already in
+        // flight, and this fires on every lobby state change.
+        let Some(key) = missing else {
             return iced::Task::none();
         };
-        let verdict = {
-            let roms = self.scanners.roms.read();
-            let patches = self.scanners.patches.read();
-            netplay::check_compatibility(local, remote, &roms, &patches)
-        };
-        let Some((name, version)) = verdict.fetchable() else {
-            return iced::Task::none();
-        };
-        let key = (name.to_owned(), version.clone());
         log::info!("lobby needs {} {}, fetching", key.0, key.1);
         self.install_patch(key)
-    }
-
-    /// Build a `protocol::Settings` packet from the App's current
-    /// state: nickname from config, match_type defaults to (0, 0),
-    /// game_info from the local loadout. (No available-games /
-    /// available-patches lists cross the wire — possession of the
-    /// peer's setup is checked locally by `compat::check`.)
-    fn make_local_settings(&self) -> tango_net_protocol::control::Settings {
-        self.loadout.make_local_settings(&self.config, &self.netplay.lobby)
     }
 
     pub(super) fn update_netplay(&mut self, delivery: netplay::Delivery) -> iced::Task<Message> {
@@ -162,7 +84,7 @@ impl App {
         let Some(incoming) = delivery.take() else {
             return iced::Task::none();
         };
-        // Always resend after a report: this covers the
+        // Always reconcile after a report: this covers the
         // Negotiating → Lobby transition (first announce) and
         // lobby-state mutations. The dedupe inside
         // `send_local_settings` makes unchanged dispatches a no-op.
@@ -183,10 +105,8 @@ impl App {
         } else {
             iced::Task::none()
         };
-        let resend = self.resend_settings_if_lobby();
-        self.uncommit_if_incompat();
-        let fetch = self.fetch_missing_patch();
-        iced::Task::batch([task, resend, fetch, attention])
+        let followup = self.resend_settings_if_lobby();
+        iced::Task::batch([task, followup, attention])
     }
 
     pub(super) fn finish_pvp_handoff(
@@ -217,7 +137,8 @@ impl App {
                 // status, which is still on screen (the handoff
                 // kept it up while the session was built).
                 log::error!("pvp session build failed: {e:#}");
-                self.netplay.fail_session_build(netplay::Error::Other(format!("{e:#}")));
+                self.netplay
+                    .fail_session_build(netplay::Error::SessionBuild(format!("{e:#}")));
             }
         }
         iced::Task::none()

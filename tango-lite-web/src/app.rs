@@ -6,7 +6,6 @@
 //! trigger UI renders. Components obtain the same host through context.
 
 use dioxus::prelude::*;
-use num_traits::ToPrimitive;
 
 use crate::engine;
 use crate::link::Snapshot;
@@ -53,6 +52,9 @@ pub fn App() -> Element {
     // still browsable, which is exactly what it's stored for.
     use_future(move || async move {
         crate::library::open(&host().library).await;
+        // What was picked last visit, then whatever of it the library
+        // no longer holds dropped.
+        crate::loadout::restore(&mut loadout.write(), &host().library);
         crate::loadout::reconcile(&mut loadout.write(), &host().library);
         opened.set(true);
         if let Err(e) = crate::library::fetch_index(&host().library).await {
@@ -63,7 +65,7 @@ pub fn App() -> Element {
     // The heartbeat.
     use_future(move || async move {
         loop {
-            tango_session::platform::sleep(HEARTBEAT).await;
+            tango_platform::sleep(HEARTBEAT).await;
 
             let current = crate::library::revision(&host().library);
             if *revision.peek() != current {
@@ -106,7 +108,12 @@ pub fn App() -> Element {
 
     // What we're bringing is also what the lobby advertises and what the
     // handoff builds the match from, so every pick change goes over.
-    use_effect(move || crate::link::set_loadout(&host().link, loadout()));
+    // It is also what the next visit comes back to.
+    use_effect(move || {
+        let loadout = loadout();
+        crate::library::remember_selection(&host().library, &loadout);
+        crate::link::set_loadout(&host().link, loadout);
+    });
 
     // A match that started elsewhere (the peer readied last) takes over
     // the screen when its first frame lands.
@@ -179,7 +186,7 @@ pub fn App() -> Element {
 }
 
 fn subtitle(loadout: &Loadout) -> String {
-    match loadout.game {
+    match loadout.game() {
         Some(game) => crate::ui::game_label(game),
         None => "No game picked".to_string(),
     }
@@ -226,7 +233,7 @@ fn Tabs(screen: Signal<Screen>) -> Element {
 /// whole reason the sink is built here rather than at startup.
 fn start_single_player(host: crate::host::Context, loadout: Loadout, mut screen: Signal<Screen>) {
     spawn(async move {
-        let Some(game) = loadout.game else { return };
+        let Some(game) = loadout.game() else { return };
         let resolved = match crate::loadout::resolve(&loadout, &host().library) {
             Ok(resolved) => resolved,
             Err(e) => {
@@ -238,12 +245,11 @@ fn start_single_player(host: crate::host::Context, loadout: Loadout, mut screen:
         let session = tango_session::singleplayer::SinglePlayerSession::new(
             game,
             resolved.rom,
-            Some(resolved.sram),
+            Some(resolved.sram.clone()),
             // A browser has no cart clock to read, so the match clock
             // that PvP negotiates has a single-player counterpart: pin
             // it to now, once, at boot.
             Some(now()),
-            game.pvp.tps().to_f32().unwrap(),
             crate::audio::sample_rate(),
         );
         match session {
@@ -254,7 +260,7 @@ fn start_single_player(host: crate::host::Context, loadout: Loadout, mut screen:
                     driver,
                     stream,
                     sink,
-                    loadout.save_path.clone(),
+                    loadout.save().map(|path| (path.to_path_buf(), resolved.sram)),
                 );
                 screen.set(Screen::Play);
             }

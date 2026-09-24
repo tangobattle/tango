@@ -84,7 +84,7 @@ pub enum Message {
     Quit,
     /// PvP's bounded close handshake finished; the runtime may now exit.
     Exit,
-    /// Fired when a backgrounded `Scanners::rescan` task completes.
+    /// Fired when a backgrounded `Catalog::rescan` task completes.
     /// `followup` tells the handler which post-scan work to do —
     /// most paths just want `Refresh` (re-validate `self.loaded`),
     /// a rescan with the Replays tab on screen also warms the stats

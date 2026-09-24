@@ -13,7 +13,6 @@ num-rational.workspace = true
 tango-match = { path = "../tango-match" }
 mgba.workspace = true
 mgba-rollback.workspace = true
-getgud.workspace = true
 thiserror.workspace = true
 log.workspace = true
 
@@ -23,4 +22,3 @@ workspace = true
 # The examples re-simulate recorded matches, so they read replay files.
 [dev-dependencies]
 tango-replay = { path = "../tango-replay" }
-tango-session = { path = "../tango-session" }

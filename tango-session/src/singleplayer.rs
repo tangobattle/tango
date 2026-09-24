@@ -23,9 +23,10 @@
 //! No priming happens: this is a vanilla ride for one player, where
 //! netplay's traps would have nothing to prime towards.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::local::Pacing;
 use crate::InputCell;
 
 pub struct SinglePlayerSession {
@@ -35,11 +36,7 @@ pub struct SinglePlayerSession {
     console: tango_match::Solo,
     layout: tango_match::ScreenLayout,
     input: Arc<InputCell>,
-    /// The engine's native frame rate — what the speed dial's 1.0× means.
-    expected_fps: f32,
-    /// Pacing target as f32 bits. 60.0 = realtime; fast-forward raises it
-    /// and the audio stream's faux clock compresses to match.
-    fps_bits: Arc<AtomicU32>,
+    pacing: Pacing,
     stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
@@ -63,7 +60,6 @@ impl SinglePlayerSession {
         rom: Arc<Vec<u8>>,
         save: Option<Vec<u8>>,
         rtc: Option<std::time::SystemTime>,
-        expected_fps: f32,
         sample_rate: u32,
     ) -> Result<(Self, Driver, crate::audio::Stream), crate::Error> {
         // The console pushes into the ring on its way out of every
@@ -79,21 +75,16 @@ impl SinglePlayerSession {
 
         let layout = game.pvp.screen_layout(tango_match::SessionMode::Solo);
         let input = InputCell::new();
-        let fps_bits = Arc::new(AtomicU32::new(expected_fps.to_bits()));
+        let pacing = Pacing::new(game);
         let stop = Arc::new(AtomicBool::new(false));
         let screen = crate::Framebuffer::new(&layout);
         let wake = Arc::new(tokio::sync::Notify::new());
 
-        let audio = crate::audio::Stream::new(
-            audio_out,
-            expected_fps,
-            crate::audio::Stream::fps_from_bits(fps_bits.clone()),
-            sample_rate,
-        );
+        let audio = pacing.audio_stream(audio_out, sample_rate);
         let driver = Driver {
             console: console.clone(),
             input: input.clone(),
-            fps_bits: fps_bits.clone(),
+            pacing: pacing.clone(),
             stop: stop.clone(),
             screen: screen.clone(),
             wake: wake.clone(),
@@ -105,8 +96,7 @@ impl SinglePlayerSession {
                 console,
                 layout,
                 input,
-                expected_fps,
-                fps_bits,
+                pacing,
                 stop,
                 screen,
                 wake,
@@ -122,6 +112,67 @@ impl SinglePlayerSession {
     /// copy periodically rather than only at teardown.
     pub fn export_save(&self) -> Option<Vec<u8>> {
         self.console.export_save()
+    }
+}
+
+/// What a single-player session's savedata write-back should put in its
+/// file next. Nothing here touches storage: the host schedules the
+/// checks, writes the bytes [`next_write`](Self::next_write) returns,
+/// and reports a successful write back with
+/// [`mark_written`](Self::mark_written).
+///
+/// A write is refused unless the cart's image parses as a save for its
+/// game. Before the cartridge has written its SRAM even once,
+/// [`SinglePlayerSession::export_save`] hands back the image as it
+/// powers on — 32KB of `0xff` — and persisting that would overwrite a
+/// real save with a blank one just for booting a game and backing out
+/// before the title screen.
+pub struct SaveWriteback {
+    /// The file as it was when the session booted. A cart's live
+    /// savedata can be shorter than its file — BN1's SRAM is 32K inside
+    /// a 64K `.sav` — so the tail is preserved rather than truncated
+    /// away.
+    original: Vec<u8>,
+    /// The file's contents as last written, so an unchanged save costs
+    /// nothing.
+    written: Vec<u8>,
+}
+
+impl SaveWriteback {
+    /// `initial` is the save file's contents as the session booted it.
+    pub fn new(initial: Vec<u8>) -> Self {
+        Self {
+            written: initial.clone(),
+            original: initial,
+        }
+    }
+
+    /// The file contents to write for the cart's `image`, or `None` when
+    /// there is nothing to write: no image, one that isn't a save for
+    /// `game` yet, or one that changes nothing since the last write.
+    pub fn next_write(&self, game: &tango_gamesupport::Game, image: Option<&[u8]>) -> Option<Vec<u8>> {
+        self.merge(image?, |image| game.parse_save(image).is_ok())
+    }
+
+    /// Record that `file` (as [`next_write`](Self::next_write) returned
+    /// it) reached storage. A host whose write failed skips this, and
+    /// the next check offers the same bytes again.
+    pub fn mark_written(&mut self, file: Vec<u8>) {
+        self.written = file;
+    }
+
+    fn merge(&self, image: &[u8], is_save: impl FnOnce(&[u8]) -> bool) -> Option<Vec<u8>> {
+        if !is_save(image) {
+            return None;
+        }
+        let file = if image.len() >= self.original.len() {
+            image.to_vec()
+        } else {
+            let mut file = self.original.clone();
+            file[..image.len()].copy_from_slice(image);
+            file
+        };
+        (file != self.written).then_some(file)
     }
 }
 
@@ -147,10 +198,7 @@ impl crate::Session for SinglePlayerSession {
     }
 
     fn set_speed(&self, factor: f32) {
-        self.fps_bits.store(
-            crate::clamp_speed(self.expected_fps, factor).to_bits(),
-            Ordering::Relaxed,
-        );
+        self.pacing.set_speed(factor);
     }
 }
 
@@ -169,7 +217,7 @@ impl Drop for SinglePlayerSession {
 pub struct Driver {
     console: tango_match::Solo,
     input: Arc<InputCell>,
-    fps_bits: Arc<AtomicU32>,
+    pacing: Pacing,
     stop: Arc<AtomicBool>,
     screen: Arc<crate::Framebuffer>,
     wake: Arc<tokio::sync::Notify>,
@@ -211,6 +259,44 @@ impl Driver {
     /// The session's current pacing target in fps — what a host paces
     /// `tick` to, and what the audio stream's faux clock follows.
     pub fn fps_target(&self) -> f32 {
-        f32::from_bits(self.fps_bits.load(Ordering::Relaxed))
+        self.pacing.fps_target()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SaveWriteback;
+
+    fn not_blank(image: &[u8]) -> bool {
+        image.iter().any(|&b| b != 0xff)
+    }
+
+    #[test]
+    fn a_blank_image_is_never_written() {
+        let writeback = SaveWriteback::new(vec![1, 2, 3, 4]);
+        assert_eq!(writeback.merge(&[0xff; 4], not_blank), None);
+    }
+
+    #[test]
+    fn a_short_image_keeps_the_file_tail() {
+        let mut writeback = SaveWriteback::new(vec![1, 2, 3, 4]);
+        let file = writeback.merge(&[5, 6], not_blank).unwrap();
+        assert_eq!(file, [5, 6, 3, 4]);
+        writeback.mark_written(file);
+        assert_eq!(
+            writeback.merge(&[7, 8, 9, 10, 11], not_blank).unwrap(),
+            [7, 8, 9, 10, 11]
+        );
+    }
+
+    #[test]
+    fn an_unchanged_save_is_skipped_until_written() {
+        let mut writeback = SaveWriteback::new(vec![1, 2, 3, 4]);
+        assert_eq!(writeback.merge(&[1, 2], not_blank), None);
+        // A failed write isn't marked, so the next check retries it.
+        assert!(writeback.merge(&[5, 6], not_blank).is_some());
+        let file = writeback.merge(&[5, 6], not_blank).unwrap();
+        writeback.mark_written(file);
+        assert_eq!(writeback.merge(&[5, 6], not_blank), None);
     }
 }

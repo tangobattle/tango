@@ -542,6 +542,87 @@ pub fn available_tabs(loaded: &OpenSave, _streamer_mode: bool) -> Vec<Tab> {
     loaded.save_editor.tabs(loaded)
 }
 
+/// The standard section tabs, in display order, for whichever of the
+/// shared views `save` hands out — the default
+/// [`crate::editor::GameSaveEditor::tabs`]. A BN6 link navi has no
+/// navicust or patch cards, so probing (rather than declaring) drops
+/// those tabs at runtime.
+pub fn standard_tabs(save: &dyn crate::dataview::save::Save) -> Vec<Tab> {
+    let mut tabs = vec![];
+    if save.view_navicust().is_some() {
+        tabs.push(Tab::Navicust);
+    }
+    if save.view_chips().is_some() {
+        tabs.push(Tab::Folder);
+    }
+    if save.view_patch_card56s().is_some() {
+        tabs.push(Tab::PatchCards);
+    }
+    if save.view_auto_battle_data().is_some() {
+        tabs.push(Tab::AutoBattleData);
+    }
+    tabs
+}
+
+/// Read-only body for one of the standard tabs; anything else (and a
+/// standard tab whose view the save lacks) is the empty placeholder.
+/// The default [`crate::editor::GameSaveEditor::render`], and the
+/// fallback arm of a game that adds tabs of its own.
+pub fn render_standard<'a>(
+    lang: &'a LanguageIdentifier,
+    tab: Tab,
+    loaded: &'a OpenSave,
+    opts: RenderOpts,
+) -> Element<'a, Action> {
+    match tab {
+        Tab::Cover => cover::render_cover(lang, loaded),
+        Tab::Navicust => navicust::render_navicust_tab(lang, loaded),
+        Tab::Folder => folder::render_folder(lang, loaded, opts.folder_grouped),
+        Tab::PatchCards => patch_cards::render_patch_cards56(lang, loaded),
+        Tab::AutoBattleData => abd::render_auto_battle_data(lang, loaded),
+        _ => placeholder(t!(lang, "save-empty")),
+    }
+}
+
+/// Editor body for one of the standard tabs — the default
+/// [`crate::editor::GameSaveEditor::render_edit`]. Whether a tab gets
+/// here at all is [`crate::editor::GameSaveEditor::tab_editable`]'s call.
+pub fn render_standard_edit<'a>(
+    lang: &'a LanguageIdentifier,
+    tab: Tab,
+    loaded: &'a OpenSave,
+    state: &'a State,
+) -> Element<'a, Action> {
+    match tab {
+        Tab::Navicust => navicust::render_navicust_edit(lang, loaded, state),
+        Tab::Folder => folder::render_folder_edit(lang, loaded, state),
+        Tab::PatchCards => patch_cards::render_patch_cards56_edit(lang, loaded, state),
+        Tab::AutoBattleData => abd::render_auto_battle_data_edit(lang, loaded, state),
+        _ => placeholder(t!(lang, "save-empty")),
+    }
+}
+
+/// Clipboard text for one of the standard tabs — the default
+/// [`crate::editor::GameSaveEditor::tab_as_text`].
+pub fn standard_as_text(lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+    match tab {
+        Tab::Navicust => navicust::navicust_as_text(loaded),
+        Tab::Folder => folder::as_text(loaded, opts),
+        Tab::PatchCards => patch_cards::as_text56(loaded),
+        Tab::AutoBattleData => abd::as_text(lang, loaded),
+        _ => None,
+    }
+}
+
+/// Clipboard image for one of the standard tabs (only the navicust grid
+/// has one) — the default [`crate::editor::GameSaveEditor::tab_as_image`].
+pub fn standard_as_image(tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
+    match tab {
+        Tab::Navicust => navicust::as_image(loaded),
+        _ => None,
+    }
+}
+
 /// Stable copy-feedback key for a tab's copy buttons — shared between
 /// the view (which renders the "Copied!" flash) and the host tabs'
 /// update paths (which fire it once the copy actually lands on the

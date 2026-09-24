@@ -202,6 +202,7 @@ replays-export-cancel = Cancel
 replays-export-cancelling = Cancelling…
 replays-export-success = Render finished.
 replays-export-error = Render failed: { $error }
+replays-export-no-rounds = no rounds selected for export
 replays-export-open = Open render
 replays-export-reset = Reset
 replays-export-scale = Scale

@@ -50,6 +50,14 @@ pub(super) fn open_path(path: impl AsRef<std::path::Path>) -> iced::Task<Message
     iced::Task::none()
 }
 
+/// Open an external link with the OS's default handler.
+pub(super) fn open_url(url: &str) -> iced::Task<Message> {
+    if let Err(e) = open::that(url) {
+        log::warn!("open url {url}: {e}");
+    }
+    iced::Task::none()
+}
+
 /// Reveal a file in the OS file manager with the file itself selected,
 /// rather than opening its containing folder anonymously. Shared by the
 /// per-tab `RevealPath` effects (replays, saves).
@@ -102,15 +110,10 @@ impl App {
     ///   * Otherwise → make_base_activity(current game info)
     fn derive_discord_activity(&self) -> discord::activity::Activity {
         let lang = &self.config.language;
-        let game_info = self.loadout.game.map(|g| {
-            let patch = self
-                .loadout
-                .patch
-                .as_ref()
-                .zip(self.loadout.patch_version.as_ref())
-                .map(|(n, v)| (n.as_str(), v));
-            discord::make_game_info(g, patch, lang)
-        });
+        let game_info = self
+            .loadout
+            .game()
+            .map(|g| discord::make_game_info(g, self.loadout.patch(), lang));
 
         if let Some(active) = self.session.active() {
             let start = self.session_started_at.unwrap_or_else(std::time::SystemTime::now);

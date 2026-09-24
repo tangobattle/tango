@@ -4,12 +4,15 @@
 //! codec ([`control`]), the data-plane element/meta codec over rennet
 //! ([`data`]), the determinism-critical derivations both peers must
 //! compute identically ([`derive`]), and the data-channel identity
-//! ([`channel_spec`]).
+//! ([`channel_spec`]). Also the compatibility [`compat::Facts`] a host
+//! resolves locally, which never crosses the wire but sits here, below
+//! both the library and the lobby.
 //!
 //! Pure codecs only — no transport, no async, no emulator. Builds for
 //! native and wasm32 alike.
 
 pub mod channel_spec;
+pub mod compat;
 pub mod control;
 pub mod data;
 pub mod derive;

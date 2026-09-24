@@ -98,27 +98,40 @@ impl Metadata {
 /// and reading it as one would mean allocating whatever the file says.
 const MAX_METADATA_LEN: u32 = 1024 * 1024;
 
-fn unsupported_version(version: u8) -> std::io::Error {
-    std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        format!("unsupported replay version: {version:02x}"),
-    )
+/// Why a recording didn't decode. Format problems are told apart from
+/// I/O failures so a host can say "recorded by another version" rather
+/// than "couldn't read the file".
+#[derive(Debug, thiserror::Error)]
+pub enum DecodeError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    /// Not a recording at all: the magic doesn't match.
+    #[error("invalid header")]
+    InvalidHeader,
+    /// A recording in a schema this build doesn't read (see [`VERSION`]).
+    #[error("unsupported replay version: {0:02x}")]
+    UnsupportedVersion(u8),
+    /// The header declares more metadata than any real match carries.
+    #[error("metadata length {0} exceeds the {MAX_METADATA_LEN}-byte limit")]
+    MetadataTooLong(u32),
+    #[error(transparent)]
+    Metadata(#[from] prost::DecodeError),
 }
 
-pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
+pub fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, DecodeError> {
     Ok(match version {
         VERSION => protos::replay11::Metadata::decode(raw)?,
-        _ => return Err(unsupported_version(version)),
+        _ => return Err(DecodeError::UnsupportedVersion(version)),
     })
 }
 
 /// The cheap header read for listings: everything before the SRAM
 /// frames. Returns (version, local_player_index, metadata).
-pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(u8, u8, Metadata), std::io::Error> {
+pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(u8, u8, Metadata), DecodeError> {
     let mut header = [0u8; 4];
     r.read_exact(&mut header)?;
     if header != HEADER {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"));
+        return Err(DecodeError::InvalidHeader);
     }
 
     let version = r.read_u8()?;
@@ -130,15 +143,12 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(u8, u8, Metadata), s
     // per file, which is what made scanning a library carried across
     // the 0x1D bump take minutes.
     if version != VERSION {
-        return Err(unsupported_version(version));
+        return Err(DecodeError::UnsupportedVersion(version));
     }
     let local_player_index = r.read_u8()?;
     let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
     if metadata_len > MAX_METADATA_LEN {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("metadata length {metadata_len} exceeds the {MAX_METADATA_LEN}-byte limit"),
-        ));
+        return Err(DecodeError::MetadataTooLong(metadata_len));
     }
     let mut raw = vec![0u8; metadata_len as usize];
     r.read_exact(&mut raw[..])?;
@@ -186,7 +196,7 @@ impl Replay {
         self.metadata.side(1 - self.local_player_index)
     }
 
-    pub fn decode(r: impl std::io::Read) -> std::io::Result<Self> {
+    pub fn decode(r: impl std::io::Read) -> Result<Self, DecodeError> {
         let mut r = std::io::BufReader::new(r);
         // Rejects anything but the current schema.
         let (_, local_player_index, metadata) = read_metadata(&mut r)?;
@@ -359,7 +369,7 @@ mod tests {
         bytes[4] = 0x1D;
 
         let err = Replay::decode(&bytes[..]).err().unwrap();
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(matches!(err, DecodeError::UnsupportedVersion(0x1D)), "{err}");
         assert!(err.to_string().contains("unsupported replay version: 1d"), "{err}");
     }
 
@@ -409,7 +419,7 @@ mod tests {
         assert!(would_have_read > 100 * 1024 * 1024, "{would_have_read}");
 
         let err = read_metadata(&mut &old[..]).unwrap_err();
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+        assert!(matches!(err, DecodeError::UnsupportedVersion(0x1C)), "{err}");
         assert!(err.to_string().contains("unsupported replay version: 1c"), "{err}");
     }
 }

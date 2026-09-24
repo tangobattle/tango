@@ -111,21 +111,3 @@ fn build_progress_stream(tag: &ProgressTag) -> impl futures::Stream<Item = Deliv
         None => futures::stream::empty().right_stream(),
     }
 }
-
-pub fn check_compatibility(
-    local: &tango_net_protocol::control::Settings,
-    remote: &tango_net_protocol::control::Settings,
-    roms: &std::collections::HashMap<tango_library::rom::GameRef, Vec<u8>>,
-    catalog: &tango_library::patch::Catalog,
-) -> compat::Verdict {
-    let facts = tango_library::loadout::compatibility_facts(local, remote, roms, catalog);
-    compat::check(
-        local,
-        remote,
-        compat::Facts {
-            remote_rom_available: facts.remote_rom_available,
-            matching_tags: facts.matching_tags,
-            missing_patch: facts.missing_patch,
-        },
-    )
-}

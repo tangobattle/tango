@@ -50,7 +50,8 @@ becomes a debt that regenerated audio pays down.
 The backend declares a `ScreenLayout` and supplies RGBA8 frames matching it.
 The host selects visible seats and screens, allowing replay PiP, training
 views, and DS layout preferences without teaching the simulation about UI
-widgets. Replay/video consumers keep the backend's rational frame and sample
+widgets. Sessions compose multiple screens side by side;
+`tango-session::screens` re-arranges that composition for presentation. Replay/video consumers keep the backend's rational frame and sample
 rates exact until pacing or resampling requires floating point.
 
 ## Replay and analysis
@@ -72,11 +73,15 @@ re-simulation begins.
 `tango-session::replay` exposes the work as driven workers. The desktop gives
 playback, seeking, and prefetching their own threads. The browser uses a
 combined driver that budgets the work across event-loop turns.
+`tango-session::replay::EngineReplay` is the one mapping from a decoded
+recording to the local seat's backend and its `ReplayConfig`; playback,
+headless analysis (`tango-session::replay::analyze`), and both hosts' video
+export build from it.
 
 `analysis::StatsBuilder` folds confirmed samples and events for live matches
 and offline replay analysis. `telemetry` stores rollback-aware observations;
 `battle` defines their data. The stats codec is here; filesystem sidecar paths
-and persistence live in `tango-session::stats`.
+and persistence live in `tango-library::stats`.
 
 ## Determinism contracts
 

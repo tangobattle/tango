@@ -65,11 +65,12 @@ impl RunningSession {
         if self.save.is_none() {
             return;
         }
+        let game = self.local_game();
         let image = self
             .downcast_ref::<singleplayer::SinglePlayerSession>()
             .and_then(|s| s.export_save());
         if let Some(backup) = self.save.as_mut() {
-            backup.store(image);
+            backup.store(game, image.as_deref());
         }
     }
 }
@@ -107,18 +108,11 @@ impl Drop for RunningSession {
 /// Where a single-player session's savedata goes.
 ///
 /// Single-player keeps SRAM in memory. Copy it to disk periodically and
-/// once at teardown, skipping writes when the image has not changed.
+/// once at teardown; [`singleplayer::SaveWriteback`] decides what, if
+/// anything, each copy writes.
 struct SaveBackup {
     path: std::path::PathBuf,
-    /// The file as it was when the session booted. A cart's live
-    /// savedata can be shorter than its file — BN1's SRAM is 32K inside
-    /// a 64K `.sav` — and the memory-mapped path this replaced only
-    /// ever wrote the leading bytes, so the tail is preserved rather
-    /// than truncated away.
-    original: Vec<u8>,
-    /// The file's contents as last written, so an unchanged save costs
-    /// nothing.
-    written: Vec<u8>,
+    writeback: singleplayer::SaveWriteback,
     next_check: std::time::Instant,
 }
 
@@ -131,31 +125,23 @@ impl SaveBackup {
     fn new(path: std::path::PathBuf, initial: Vec<u8>) -> Self {
         Self {
             path,
-            written: initial.clone(),
-            original: initial,
+            writeback: singleplayer::SaveWriteback::new(initial),
             next_check: std::time::Instant::now() + Self::INTERVAL,
         }
     }
 
-    /// Write the cart's `image` back if it changed anything. Failures
-    /// are logged, not surfaced: a full disk shouldn't take the session
-    /// down mid-battle, and the next check tries again.
-    fn store(&mut self, image: Option<Vec<u8>>) {
-        let Some(image) = image else { return };
-        let mut file = self.original.clone();
-        if image.len() >= file.len() {
-            file = image;
-        } else {
-            file[..image.len()].copy_from_slice(&image);
-        }
-        if file == self.written {
+    /// Write the cart's `image` back if it holds a changed save.
+    /// Failures are logged, not surfaced: a full disk shouldn't take the
+    /// session down mid-battle, and the next check tries again.
+    fn store(&mut self, game: &tango_gamesupport::Game, image: Option<&[u8]>) {
+        let Some(file) = self.writeback.next_write(game, image) else {
             return;
-        }
+        };
         if let Err(e) = std::fs::write(&self.path, &file) {
             log::error!("writing {}: {e}", self.path.display());
             return;
         }
-        self.written = file;
+        self.writeback.mark_written(file);
     }
 }
 
@@ -206,11 +192,20 @@ impl Pacer {
     }
 }
 
+/// Where a playback session's prefetch pass reports the match-stats
+/// analysis it folds: throttled previews while it runs, and the finished
+/// stats, parked before the sender drops so whoever drains `partial_rx`
+/// reads them on close.
+pub struct PrefetchStatsFeed {
+    pub partial_tx: futures::channel::mpsc::UnboundedSender<tango_match::analysis::MatchStats>,
+    pub done: std::sync::Arc<std::sync::Mutex<Option<tango_match::analysis::MatchStats>>>,
+}
+
 /// Race the prefetch pair through the whole replay: keyframes so
 /// seeking backwards works, round marks for recordings without them,
 /// and — when the tab asked for it — the match-stats analysis, previewed
-/// as it folds and cached when it finishes.
-pub(super) fn run_prefetch_pass(worker: replay::PrefetchWorker) {
+/// as it folds and handed over when it finishes.
+pub(super) fn run_prefetch_pass(worker: replay::PrefetchWorker, stats: Option<PrefetchStatsFeed>) {
     /// Live-preview cadence. Each report clones the folded rounds and
     /// becomes a chart rebuild on the UI thread, so pace it to the
     /// display rather than to the simulation.
@@ -226,15 +221,15 @@ pub(super) fn run_prefetch_pass(worker: replay::PrefetchWorker) {
             continue;
         }
         last_preview = now;
-        let (Some(job), Some(preview)) = (worker.stats_job(), worker.preview()) else {
+        let (Some(feed), Some(preview)) = (stats.as_ref(), worker.preview()) else {
             continue;
         };
-        let _ = job.partial_tx.unbounded_send(preview);
+        let _ = feed.partial_tx.unbounded_send(preview);
     }
-    let Some(stats) = worker.finished() else { return };
-    if let Some(job) = worker.stats_job() {
-        *job.done.lock().unwrap() = Some(stats);
-    }
+    let (Some(feed), Some(finished)) = (stats, worker.finished()) else {
+        return;
+    };
+    *feed.done.lock().unwrap() = Some(finished);
 }
 
 /// Run a session's driver on a thread of its own, paced to the fps the
@@ -388,24 +383,5 @@ mod tests {
         drop(state);
         assert_eq!(*new.lock().unwrap(), ["close", "audio", "session", "worker"]);
         assert!(binder.bind(None).is_ok());
-    }
-
-    #[test]
-    fn save_backup_preserves_the_original_file_tail_and_retries_failed_writes() {
-        let root = std::env::temp_dir().join(format!(
-            "tango-save-backup-{}-{}",
-            std::process::id(),
-            rand::random::<u64>()
-        ));
-        let path = root.join("test.sav");
-        let mut backup = SaveBackup::new(path.clone(), vec![1, 2, 3, 4]);
-        backup.store(Some(vec![5, 6])); // Parent is absent: retain the previous written image.
-        assert_eq!(backup.written, [1, 2, 3, 4]);
-        std::fs::create_dir_all(&root).unwrap();
-        backup.store(Some(vec![5, 6]));
-        assert_eq!(std::fs::read(&path).unwrap(), [5, 6, 3, 4]);
-        backup.store(Some(vec![7, 8, 9, 10, 11]));
-        assert_eq!(std::fs::read(&path).unwrap(), [7, 8, 9, 10, 11]);
-        std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -149,6 +149,55 @@ pub fn compute_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
             .sum::<u32>()
 }
 
+/// The size of the GBA SRAM dump a save is written back out as.
+pub const SRAM_DUMP_SIZE: usize = 0x10000;
+
+/// The `N`-byte save image starting at `start` in `buf`, or
+/// [`Error::InvalidSize`] (with `buf`'s whole length) when `buf` stops
+/// short of it.
+pub fn read_image<const N: usize>(buf: &[u8], start: usize) -> Result<[u8; N], Error> {
+    buf.get(start..)
+        .and_then(|buf| buf.get(..N))
+        .and_then(|buf| buf.try_into().ok())
+        .ok_or(Error::InvalidSize(buf.len()))
+}
+
+/// The u32 checksum stored at `checksum_offset`.
+pub fn read_checksum_u32(buf: &[u8], checksum_offset: usize) -> u32 {
+    bytemuck::pod_read_unaligned::<u32>(&buf[checksum_offset..][..std::mem::size_of::<u32>()])
+}
+
+/// Store `checksum` as the u32 at `checksum_offset`.
+pub fn write_checksum_u32(buf: &mut [u8], checksum_offset: usize, checksum: u32) {
+    buf[checksum_offset..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&checksum));
+}
+
+/// `Ok` when the stored checksum `actual` is the `computed` one, else the
+/// single-candidate [`Error::ChecksumMismatch`].
+pub fn verify_checksum(actual: u32, computed: u32, shift: usize) -> Result<(), Error> {
+    if actual != computed {
+        return Err(Error::ChecksumMismatch {
+            actual,
+            expected: vec![computed],
+            shift,
+        });
+    }
+    Ok(())
+}
+
+/// A [`SRAM_DUMP_SIZE`] SRAM dump holding `image` at `start`, masked in
+/// place with the mask word at `mask_offset` for games that mask their
+/// save.
+pub fn sram_dump(image: &[u8], start: usize, mask_offset: Option<usize>) -> Vec<u8> {
+    let mut buf = vec![0; SRAM_DUMP_SIZE];
+    let dst = &mut buf[start..][..image.len()];
+    dst.copy_from_slice(image);
+    if let Some(mask_offset) = mask_offset {
+        mask(dst, mask_offset);
+    }
+    buf
+}
+
 // Discriminant order is A..Z then Star — the order the games list codes
 // in, so the derived Ord is the sort order.
 #[derive(num_derive::FromPrimitive, Clone, Copy, Debug, std::hash::Hash, Eq, PartialEq, Ord, PartialOrd)]

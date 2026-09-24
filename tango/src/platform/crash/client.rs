@@ -1,4 +1,4 @@
-//! Crash logging. Installs a Rust panic hook and a native crash
+//! Child half of crash capture. Installs a Rust panic hook and a native crash
 //! handler ([`crash_handler::CrashHandler`]) so segfaults / SEH
 //! exceptions / mach EXC_BAD_ACCESS — i.e. crashes coming from
 //! mgba, datachannel, or wgpu / driver code — are captured.
@@ -6,7 +6,7 @@
 //! Native crashes are handled **out-of-process**: on a fault the
 //! child's handler does the bare minimum — hand the crash context to
 //! the supervisor over the [`minidumper`] IPC channel — and the
-//! supervisor (see `main.rs`) writes a minidump by reading the
+//! [`supervisor`](super::supervisor) writes a minidump by reading the
 //! suspended child. This is the Breakpad/Crashpad model: all the
 //! heavy, not-signal-safe work (walking memory, writing the dump)
 //! happens in the healthy parent, not in the crashed child. Load the
@@ -24,6 +24,20 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Guards against re-entrant crashes (e.g. a second fault raised
 /// while we're handling the first). Without this we'd loop.
 static IN_HANDLER: AtomicBool = AtomicBool::new(false);
+
+/// Connect to the supervisor's out-of-process dump server, if we were
+/// launched by one, so a minidump is written from the healthy parent
+/// rather than in this process's fault handler.
+pub fn connect() -> Option<minidumper::Client> {
+    let name = std::env::var_os(super::CRASH_SOCKET_ENV_VAR)?;
+    match minidumper::Client::with_name(std::path::Path::new(&name)) {
+        Ok(c) => Some(c),
+        Err(e) => {
+            log::error!("could not connect to crash dump server: {e:?}");
+            None
+        }
+    }
+}
 
 /// Install the panic hook and the native crash handler. `client` is
 /// the connected [`minidumper::Client`] the handler uses to ask the
@@ -55,7 +69,7 @@ pub fn install(client: Option<minidumper::Client>) -> crash_handler::CrashHandle
                 // minidumper's private socket/port, blocking until the
                 // supervisor has written the minidump from our (suspended)
                 // memory. The supervisor writes the crash block to the log
-                // (see `on_minidump_created` in main.rs), so we ignore the
+                // (see `on_minidump_created` in supervisor.rs), so we ignore the
                 // return value — its ack is best-effort and spuriously errors
                 // on macOS *after* a successful dump.
                 //

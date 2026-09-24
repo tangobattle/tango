@@ -1,11 +1,12 @@
 //! Save-file management for the Play tab: the duplicate / rename /
 //! delete / create-from-template flows — their inline-form state
-//! ([`SaveAction`]), message handling, form views, and the on-disk
-//! file operations the App runs for the resulting Effects. Pure
-//! save-library concerns; nothing here touches netplay or the save
-//! view.
+//! ([`SaveAction`]), message handling, and form views. The naming rules
+//! and file operations themselves are [`tango_library::save`]'s; the
+//! App runs those for the resulting Effects. Nothing here touches
+//! netplay or the save view.
 
 use super::*;
+use crate::library::save;
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub enum SaveAction {
@@ -50,17 +51,20 @@ impl State {
     pub(super) fn update_save_manage(
         &mut self,
         msg: Message,
-        scanners: &Scanners,
+        scanners: &Catalog,
         config: &config::Config,
-        loadout: &Loadout,
+        loadout: &Selection,
     ) -> Option<Effect> {
         match msg {
-            Message::SaveOpenFolder => loadout.save.as_ref().map(|p| Effect::RevealPath(p.to_path_buf())),
+            Message::SaveOpenFolder => loadout.save().map(|p| Effect::RevealPath(p.to_path_buf())),
             Message::OpenSavesFolder(path) => Some(Effect::OpenPath(path)),
             Message::SaveDuplicateStart => {
                 // Prefill with the next free "<stem> (copy)" name so a
                 // plain Enter behaves like the old one-click duplicate.
-                let draft = loadout.save.as_deref().map(suggest_duplicate_stem).unwrap_or_default();
+                let draft = loadout
+                    .save()
+                    .map(|p| save::suggest_duplicate_stem(crate::library::storage(), p))
+                    .unwrap_or_default();
                 self.save_action = SaveAction::Duplicating { draft };
                 None
             }
@@ -85,8 +89,7 @@ impl State {
             }
             Message::SaveRenameStart => {
                 let draft = loadout
-                    .save
-                    .as_ref()
+                    .save()
                     .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
                     .unwrap_or_default();
                 self.save_action = SaveAction::Renaming { draft };
@@ -138,20 +141,24 @@ impl State {
                 } else {
                     (None, None)
                 };
+                let storage = crate::library::storage();
                 let draft = match game {
-                    Some(g) => {
-                        disambiguate_save_name(&saves_dir, &suggest_save_name(&config.language, g, template.as_deref()))
-                    }
+                    Some(g) => save::free_name(
+                        storage,
+                        &saves_dir,
+                        &suggest_save_name(&config.language, g, template.as_deref()),
+                    ),
                     // No single default yet — seed the field with the
                     // variant-neutral family name so it isn't empty (and
                     // doesn't presume a color) while the user picks a
                     // template.
                     None => loadout
-                        .family
+                        .family()
                         .map(|f| {
-                            disambiguate_save_name(
+                            save::free_name(
+                                storage,
                                 &saves_dir,
-                                &sanitize_filename(&game::family_display_name(&config.language, f)),
+                                &save::sanitize_filename(&game::family_display_name(&config.language, f)),
                             )
                         })
                         .unwrap_or_else(|| "new save".to_string()),
@@ -187,7 +194,8 @@ impl State {
                     *game = Some(sel_game);
                     *template = Some(name);
                     if auto_default.as_deref() == Some(draft.as_str()) {
-                        let new_draft = disambiguate_save_name(
+                        let new_draft = save::free_name(
+                            crate::library::storage(),
                             &config.saves_path(),
                             &suggest_save_name(&config.language, sel_game, template.as_deref()),
                         );
@@ -230,8 +238,8 @@ impl State {
     pub(super) fn save_action_row<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-        loadout: &'a Loadout,
+        scanners: &'a Catalog,
+        loadout: &'a Selection,
         save_picker: Element<'a, Message>,
     ) -> Element<'a, Message> {
         // The picker row fade-through morphs into whichever form
@@ -257,8 +265,8 @@ impl State {
     fn save_action_row_inner<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-        loadout: &'a Loadout,
+        scanners: &'a Catalog,
+        loadout: &'a Selection,
         save_picker: Element<'a, Message>,
         render_form: bool,
         action: &'a SaveAction,
@@ -331,8 +339,7 @@ impl State {
                 // decision; "Delete this save?" reads as a riddle
                 // about what's currently selected.
                 let name = loadout
-                    .save
-                    .as_ref()
+                    .save()
                     .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
                     .unwrap_or_default();
                 row![
@@ -409,12 +416,16 @@ impl State {
     fn new_save_button<'a>(
         &'a self,
         lang: &'a LanguageIdentifier,
-        scanners: &'a Scanners,
-        loadout: &'a Loadout,
+        scanners: &'a Catalog,
+        loadout: &'a Selection,
     ) -> Element<'a, Message> {
-        let can_new = creation_games(loadout, scanners).iter().any(|g| {
-            templates_for_game(g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners).is_some()
-        });
+        let games = creation_games(loadout, scanners);
+        let can_new = {
+            let patches = scanners.patches.read();
+            games
+                .into_iter()
+                .any(|g| !save::templates(g, &patches, loadout.patch()).is_empty())
+        };
         widgets::icon_button_maybe(
             Icon::FilePlus,
             t!(lang, "save-new"),
@@ -431,7 +442,7 @@ impl State {
 /// there isn't one. Each row wears the icon its standalone button
 /// used to, Delete in danger red — and its inline confirm still
 /// stands between the click and the file.
-fn save_actions_menu<'a>(lang: &LanguageIdentifier, loadout: &Loadout) -> Element<'a, Message> {
+fn save_actions_menu<'a>(lang: &LanguageIdentifier, loadout: &Selection) -> Element<'a, Message> {
     let items = vec![
         widgets::MenuItem::new(Icon::FolderOpen, t!(lang, "save-open-folder"), Message::SaveOpenFolder),
         widgets::MenuItem::new(Icon::Files, t!(lang, "save-duplicate"), Message::SaveDuplicateStart),
@@ -442,7 +453,7 @@ fn save_actions_menu<'a>(lang: &LanguageIdentifier, loadout: &Loadout) -> Elemen
         Icon::EllipsisVertical,
         t!(lang, "save-actions"),
         items,
-        loadout.save.is_some(),
+        loadout.save().is_some(),
         STANDARD_PADDING,
     )
 }
@@ -477,48 +488,15 @@ fn save_name_input<'a>(
 
 // ---------- New-save template helpers ----------
 
-/// Localized "<game-variant> <template-display>" (or just "<game-variant>"
-/// when no template is chosen yet), with filesystem-unsafe characters
-/// stripped so it can be dropped straight into the new-save text field.
-/// Uses the full variant-aware display name so multi-version games like
-/// BN6 Gregar/Falzar get disambiguated.
+/// Localized "<game-variant> - <template-display>" (or just
+/// "<game-variant>" when no template is chosen yet), safe to drop
+/// straight into the new-save text field. Uses the full variant-aware
+/// display name so multi-version games like BN6 Gregar/Falzar get
+/// disambiguated.
 fn suggest_save_name(lang: &unic_langid::LanguageIdentifier, game: rom::GameRef, template: Option<&str>) -> String {
     let game_name = crate::library::game::display_name(lang, game);
-    let family = game.family_and_variant().0;
-    let name = match template {
-        Some(raw) => {
-            let label = template_label(lang, family, raw);
-            format!("{game_name} - {label}")
-        }
-        None => game_name,
-    };
-    sanitize_filename(&name)
-}
-
-fn sanitize_filename(s: &str) -> String {
-    let cleaned: String = s
-        .chars()
-        .map(|c| match c {
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => ' ',
-            c if (c as u32) < 0x20 => ' ',
-            c => c,
-        })
-        .collect();
-    cleaned.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// Appends ` 2`, ` 3`, ... to `base` until the resulting `<name>.sav`
-/// doesn't already exist in `saves_dir`. Gives up at 99 to avoid an
-/// unbounded scan if the directory is somehow saturated.
-fn disambiguate_save_name(saves_dir: &std::path::Path, base: &str) -> String {
-    let mut draft = base.to_string();
-    for n in 2..100 {
-        if !saves_dir.join(format!("{draft}.sav")).exists() {
-            break;
-        }
-        draft = format!("{base} {n}");
-    }
-    draft
+    let label = template.map(|raw| template_label(lang, game.family_and_variant().0, raw));
+    save::suggest_name(&game_name, label.as_deref())
 }
 
 /// Owned-ROM games in the selected family, ascending variant order —
@@ -528,89 +506,36 @@ fn disambiguate_save_name(saves_dir: &std::path::Path, base: &str) -> String {
 /// When a patch is selected, variants it doesn't support are dropped
 /// (so their templates don't show) — creating a save under an active
 /// patch is a patch-specific flow.
-fn creation_games(loadout: &Loadout, scanners: &Scanners) -> Vec<rom::GameRef> {
-    let Some(family) = loadout.family else {
+fn creation_games(loadout: &Selection, scanners: &Catalog) -> Vec<rom::GameRef> {
+    let Some(family) = loadout.family() else {
         return Vec::new();
     };
+    let patch_supported = loadout.patch_supported_games(scanners);
     let roms = scanners.roms.read();
-    let patch_supported = loadout::patch_supported_games(loadout, scanners);
     game::games_in_family(family)
         .filter(|g| roms.contains_key(g))
         .filter(|g| patch_supported.as_ref().map(|s| s.contains(g)).unwrap_or(true))
         .collect()
 }
 
-/// Save templates for one specific game (patch-provided override the
-/// bundled ones), keyed by template name (empty string = default).
-/// None when that game ships no templates.
-fn templates_for_game(
-    game: rom::GameRef,
-    patch_name: Option<&str>,
-    patch_version: Option<&semver::Version>,
-    scanners: &Scanners,
-) -> Option<indexmap::IndexMap<String, tango_gamesupport::BoxedSave>> {
-    // IndexMap (not BTreeMap) so templates iterate in declaration order
-    // — patch-provided first, then the game's bundled order — instead
-    // of alphabetically by raw key.
-    let mut out = indexmap::IndexMap::new();
-    if let (Some(patch_name), Some(version)) = (patch_name, patch_version) {
-        let patches = scanners.patches.read();
-        if let Some(v) = patches.version(patch_name, version) {
-            if let Some(m) = v.save_templates.get(&game) {
-                for (name, save) in m.iter() {
-                    out.insert(name.clone(), save.clone_box());
-                }
-            }
-        }
-    }
-    // Fall back to bundled templates in the Game registration.
-    // Patch templates take precedence: if a patch ships a
-    // "heat-guts" template, it overrides the built-in of the same name.
-    for (name, save) in game.save_templates.iter().flat_map(|t| t.iter()) {
-        out.entry((*name).to_string()).or_insert_with(|| save.clone_box());
-    }
-    if out.is_empty() {
-        None
-    } else {
-        Some(out)
-    }
-}
-
 /// Picker entries for the new-save dialog: every (owned-ROM variant ×
-/// template) across the selected family. Each label is prefixed with the
-/// short variant tag (e.g. "Blue – Heat Guts") in all cases.
+/// template) across the selected family, patch-provided templates
+/// first. Each label is prefixed with the short variant tag (e.g.
+/// "Blue – Heat Guts") in all cases.
 fn creation_template_options(
     lang: &unic_langid::LanguageIdentifier,
-    loadout: &Loadout,
-    scanners: &Scanners,
+    loadout: &Selection,
+    scanners: &Catalog,
 ) -> Vec<widgets::Choice<(rom::GameRef, String)>> {
     let games = creation_games(loadout, scanners);
+    let patches = scanners.patches.read();
     let mut out = Vec::new();
     for g in games {
-        if let Some(tmpls) = templates_for_game(g, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners) {
-            for name in tmpls.keys() {
-                out.push(save_template_choice(lang, g, name));
-            }
+        for (name, _) in save::templates(g, &patches, loadout.patch()) {
+            out.push(save_template_choice(lang, g, &name));
         }
     }
     out
-}
-
-/// Resolve the actual template `Save` for a (game, template-name) pick —
-/// used by the App's SaveNew handler to materialize the file. Falls back
-/// to the default/first template if the exact name vanished.
-pub fn creation_template(
-    game: rom::GameRef,
-    template_name: &str,
-    loadout: &Loadout,
-    scanners: &Scanners,
-) -> Option<tango_gamesupport::BoxedSave> {
-    let tmpls = templates_for_game(game, loadout.patch.as_deref(), loadout.patch_version.as_ref(), scanners)?;
-    tmpls
-        .get(template_name)
-        .or_else(|| tmpls.get(""))
-        .or_else(|| tmpls.values().next())
-        .map(|s| s.clone_box())
 }
 
 /// Bare localized template label (e.g. "Heat Guts"), without any
@@ -618,8 +543,7 @@ pub fn creation_template(
 /// patches ship as `<rom>_<rev>.sav`; the `.save-megaman` attr usually
 /// carries the right label for it.
 fn template_label(lang: &unic_langid::LanguageIdentifier, family: &str, raw: &str) -> String {
-    let key_suffix = if raw.is_empty() { "megaman" } else { raw };
-    game::family_str(family, lang, &format!("save-{key_suffix}")).unwrap_or_else(|| {
+    save::template_label(lang, family, raw).unwrap_or_else(|| {
         if raw.is_empty() {
             t!(lang, "save-template-default")
         } else {
@@ -649,123 +573,6 @@ fn save_template_choice(
         label
     );
     widgets::Choice::new((game, raw.to_string()), display)
-}
-
-/// Next free "<stem> (copy)" / "<stem> (copy N)" stem for `src` —
-/// the prefill for the duplicate form, so a plain Enter behaves like
-/// the old one-click duplicate.
-fn suggest_duplicate_stem(src: &std::path::Path) -> String {
-    let stem = src
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let ext = src.extension().map(|e| e.to_string_lossy().into_owned());
-    for n in 1..1000 {
-        let suffix = if n == 1 {
-            " (copy)".to_string()
-        } else {
-            format!(" (copy {n})")
-        };
-        let candidate_stem = format!("{stem}{suffix}");
-        let filename = match &ext {
-            Some(ext) => format!("{candidate_stem}.{ext}"),
-            None => candidate_stem.clone(),
-        };
-        let taken = src.parent().map(|p| p.join(filename).exists()).unwrap_or(false);
-        if !taken {
-            return candidate_stem;
-        }
-    }
-    format!("{stem} (copy)")
-}
-
-/// Copy `src` to a sibling file named `new_stem` (extension
-/// preserved). Refuses path-traversal, empty names, and existing
-/// destinations — same rules as [`rename_save`].
-pub fn duplicate_save(src: &std::path::Path, new_stem: &str) -> anyhow::Result<std::path::PathBuf> {
-    if new_stem.is_empty() {
-        anyhow::bail!("empty save name");
-    }
-    if new_stem.contains('/') || new_stem.contains('\\') || new_stem.contains("..") {
-        anyhow::bail!("invalid save name");
-    }
-    let parent = src.parent().ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
-    let ext = src.extension().map(|e| e.to_string_lossy().into_owned());
-    let new_name = if let Some(ext) = ext {
-        format!("{new_stem}.{ext}")
-    } else {
-        new_stem.to_string()
-    };
-    let dst = parent.join(new_name);
-    if dst == src || dst.exists() {
-        anyhow::bail!("destination already exists");
-    }
-    std::fs::copy(src, &dst)?;
-    Ok(dst)
-}
-
-/// Rename `src` to use `new_stem` (extension preserved). Refuses
-/// path-traversal or empty names.
-pub fn rename_save(src: &std::path::Path, new_stem: &str) -> anyhow::Result<std::path::PathBuf> {
-    if new_stem.is_empty() {
-        anyhow::bail!("empty save name");
-    }
-    if new_stem.contains('/') || new_stem.contains('\\') || new_stem.contains("..") {
-        anyhow::bail!("invalid save name");
-    }
-    let parent = src.parent().ok_or_else(|| anyhow::anyhow!("save has no parent dir"))?;
-    let ext = src.extension().map(|e| e.to_string_lossy().into_owned());
-    let new_name = if let Some(ext) = ext {
-        format!("{new_stem}.{ext}")
-    } else {
-        new_stem.to_string()
-    };
-    let dst = parent.join(new_name);
-    if dst == src {
-        return Ok(dst);
-    }
-    if dst.exists() {
-        anyhow::bail!("destination already exists");
-    }
-    std::fs::rename(src, &dst)?;
-    Ok(dst)
-}
-
-/// Write a template's SRAM to `saves_dir/<name>.sav`. The filename is
-/// taken verbatim from `name` (trimmed); on collisions returns Err.
-///
-/// `rebuild_checksum()` is required before `to_sram_dump()` — without
-/// it the SRAM checksum is stale (computed at template-construction
-/// time, before this game-specific clone) and both the GBA game and
-/// Tango's `parse_save` reject the resulting file. The legacy app
-/// does the same in `gui/save_select_view.rs::create_new_save`.
-pub fn create_new_save(
-    saves_dir: &std::path::Path,
-    name: &str,
-    template: &dyn tango_gamesupport::SaveData,
-) -> anyhow::Result<std::path::PathBuf> {
-    let name = name.trim();
-    if name.is_empty() {
-        anyhow::bail!("empty save name");
-    }
-    if name.contains('/') || name.contains('\\') || name.contains("..") {
-        anyhow::bail!("invalid save name");
-    }
-    let filename = if name.ends_with(".sav") {
-        name.to_string()
-    } else {
-        format!("{name}.sav")
-    };
-    let dst = saves_dir.join(filename);
-    if dst.exists() {
-        anyhow::bail!("destination already exists");
-    }
-    std::fs::create_dir_all(saves_dir)?;
-    let mut save = template.clone_box();
-    save.rebuild_checksum();
-    let sram = save.to_sram_dump();
-    std::fs::write(&dst, sram)?;
-    Ok(dst)
 }
 
 // ---------- "Commit to a match" CTA chrome ----------

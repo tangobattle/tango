@@ -7,25 +7,11 @@ use fluent_templates::Loader;
 #[allow(unused_imports)]
 pub use crate::{t, t_opt};
 
-pub const FALLBACK_LANG: unic_langid::LanguageIdentifier = unic_langid::langid!("en-US");
-
-/// Locales the app exposes in the language picker. Strings the
-/// non-en locales don't translate (tango-specific keys like
-/// crash-*, tab-*, replays-incomplete, etc.) fall back to en-US
-/// via the fluent_templates static_loader's fallback_language.
-pub const SUPPORTED_LANGS: &[unic_langid::LanguageIdentifier] = &[
-    unic_langid::langid!("en-US"),
-    unic_langid::langid!("ja-JP"),
-    unic_langid::langid!("zh-CN"),
-    unic_langid::langid!("zh-TW"),
-    unic_langid::langid!("de-DE"),
-    unic_langid::langid!("es-419"),
-    unic_langid::langid!("fr-FR"),
-    unic_langid::langid!("nl-NL"),
-    unic_langid::langid!("pt-BR"),
-    unic_langid::langid!("ru-RU"),
-    unic_langid::langid!("vi-VN"),
-];
+/// The locale set is the library's, shared with the game-name bundles.
+/// Strings the non-en locales don't translate (tango-specific keys like
+/// crash-*, tab-*, replays-incomplete, etc.) fall back to en-US via the
+/// fluent_templates static_loader's fallback_language.
+pub use tango_library::lang::SUPPORTED_LANGS;
 
 fluent_templates::static_loader! {
     static LOCALES = {

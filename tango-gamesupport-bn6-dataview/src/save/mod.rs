@@ -64,11 +64,7 @@ fn convert_us_to_jp(buf: &mut [u8; SAVE_SIZE]) {
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, tango_gamesupport_common_dataview::save::Error> {
-        let mut buf: [u8; SAVE_SIZE] = buf
-            .get(SAVE_START_OFFSET..)
-            .and_then(|buf| buf.get(..SAVE_SIZE))
-            .and_then(|buf| buf.try_into().ok())
-            .ok_or(tango_gamesupport_common_dataview::save::Error::InvalidSize(buf.len()))?;
+        let mut buf: [u8; SAVE_SIZE] = tango_gamesupport_common_dataview::save::read_image(buf, SAVE_START_OFFSET)?;
 
         tango_gamesupport_common_dataview::save::mask(&mut buf[..], MASK_OFFSET);
 
@@ -103,14 +99,7 @@ impl Save {
 
         let mut save = Self { buf, game_info };
 
-        let computed_checksum = save.compute_checksum();
-        if save.checksum() != computed_checksum {
-            return Err(tango_gamesupport_common_dataview::save::Error::ChecksumMismatch {
-                actual: save.checksum(),
-                expected: vec![computed_checksum],
-                shift,
-            });
-        }
+        tango_gamesupport_common_dataview::save::verify_checksum(save.checksum(), save.compute_checksum(), shift)?;
 
         // Saves are canonicalized into US format. This will also cause a checksum rebuild, unfortunately.
         if save.game_info.region == Region::JP {
@@ -122,10 +111,7 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, tango_gamesupport_common_dataview::save::Error> {
-        let buf = buf
-            .get(..SAVE_SIZE)
-            .and_then(|buf| buf.try_into().ok())
-            .ok_or(tango_gamesupport_common_dataview::save::Error::InvalidSize(buf.len()))?;
+        let buf = tango_gamesupport_common_dataview::save::read_image(buf, 0)?;
 
         let mut save = Self { buf, game_info };
 
@@ -143,7 +129,7 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        bytemuck::pod_read_unaligned::<u32>(&self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()])
+        tango_gamesupport_common_dataview::save::read_checksum_u32(&self.buf, CHECKSUM_OFFSET)
     }
 
     pub fn as_us_wram(&self) -> std::borrow::Cow<'_, [u8]> {
@@ -342,15 +328,12 @@ impl tango_gamesupport_common_dataview::save::Save for Save {
     }
 
     fn to_sram_dump(&self) -> Vec<u8> {
-        let mut buf = vec![0; 65536];
-        buf[SAVE_START_OFFSET..][..SAVE_SIZE].copy_from_slice(&self.as_raw_wram());
-        tango_gamesupport_common_dataview::save::mask(&mut buf[SAVE_START_OFFSET..][..SAVE_SIZE], MASK_OFFSET);
-        buf
+        tango_gamesupport_common_dataview::save::sram_dump(&self.as_raw_wram(), SAVE_START_OFFSET, Some(MASK_OFFSET))
     }
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.buf[CHECKSUM_OFFSET..][..std::mem::size_of::<u32>()].copy_from_slice(bytemuck::bytes_of(&checksum));
+        tango_gamesupport_common_dataview::save::write_checksum_u32(&mut self.buf, CHECKSUM_OFFSET, checksum);
     }
 }
 

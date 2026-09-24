@@ -13,6 +13,8 @@ pub struct ScannedReplay {
     /// metadata's player-ordered sides.
     pub local_player_index: u8,
     pub metadata: tango_replay::Metadata,
+    /// File size in bytes, from the listing.
+    pub len: u64,
 }
 
 impl ScannedReplay {
@@ -173,6 +175,7 @@ pub fn scan_replays(storage: &dyn Storage, listing: &Listing) -> Vec<ScannedRepl
             path: entry.path.clone(),
             local_player_index,
             metadata,
+            len: entry.len,
         });
     }
     out.sort_by_key(|r| (std::cmp::Reverse(r.metadata.ts), r.metadata.link_code.clone()));
@@ -182,7 +185,7 @@ pub fn scan_replays(storage: &dyn Storage, listing: &Listing) -> Vec<ScannedRepl
 /// Heavy stats computation for a single replay — full decode
 /// (metadata, both WRAM zstd frames, every input tick). Spawn
 /// this on a worker thread, never from the UI path.
-pub fn compute_stats(storage: &dyn Storage, path: &std::path::Path) -> std::io::Result<ReplayStats> {
+pub fn compute_stats(storage: &dyn Storage, path: &std::path::Path) -> Result<ReplayStats, tango_replay::DecodeError> {
     let replay = tango_replay::Replay::decode(storage.open(path)?)?;
     Ok(ReplayStats {
         tick_count: replay.inputs.len() as u32,

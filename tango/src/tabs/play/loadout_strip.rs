@@ -1,41 +1,22 @@
-//! The local loadout — which game family, save, and (optionally)
-//! patch the user is bringing to a match — hoisted to App level so
-//! the netplay settings-resend machinery doesn't have to reach into
-//! the Play tab's private state.
+//! The loadout strip: the family, save, patch, and version pickers
+//! over the App-level [`Selection`], and the messages they emit.
 //!
-//! The *identity* of a loadout is `(family, game, save)`. The patch
-//! is deliberately not part of that identity: it's an overlay,
-//! dynamically selectable per loadout and remembered per save
-//! ([`crate::config::Config::last_patch_per_save`]). Picking a save
-//! restores the patch it was last used with; picking a patch sticks
-//! to the current save. Saves whose patch association is intrinsic
-//! (created from a patch's save template) keep it automatically;
-//! vanilla-compatible saves just remember whatever they last ran
-//! under.
+//! The selection policy — what each pick does to the rest of the
+//! selection, and what's remembered per family and per save — is
+//! [`tango_library::loadout::Selection`]'s, shared with the browser
+//! host. What's here is only the iced side: option lists, pickers, and
+//! the download strip that stands in for them.
 
 use crate::config;
 use crate::i18n::t;
-use crate::library::Scanners;
+use crate::library::Catalog;
 use crate::library::{game, rom};
 use crate::ui::style::TEXT_CAPTION;
 use crate::ui::widgets;
 use iced::widget::{container, row, text};
 use iced::{Alignment, Element, Length};
+use tango_library::loadout::Selection;
 use unic_langid::LanguageIdentifier;
-
-#[derive(Default)]
-pub struct Loadout {
-    /// Selected game *family* (region-specific gamedb family string).
-    /// The family picker drives the intermingled save list; the
-    /// concrete `game` below is resolved from whichever save is chosen.
-    pub family: Option<&'static str>,
-    pub game: Option<rom::GameRef>,
-    pub save: Option<std::path::PathBuf>,
-    /// Active patch overlay. NOT part of the loadout's identity —
-    /// see the module docs; persisted per save, not globally.
-    pub patch: Option<String>,
-    pub patch_version: Option<semver::Version>,
-}
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -51,7 +32,7 @@ pub enum Message {
 }
 
 /// Side-effects bubble-up, mirroring the tab modules' convention:
-/// pure state mutations happen inside [`Loadout::update`]; anything
+/// pure state mutations happen inside [`update`]; anything
 /// that needs App-level collaborators comes back as an `Effect`.
 #[derive(Debug, Clone, Copy)]
 pub enum Effect {
@@ -65,185 +46,35 @@ pub enum Effect {
     CancelDownload,
 }
 
-impl Loadout {
-    pub fn selection(&self) -> tango_library::loadout::LoadoutSelection {
-        tango_library::loadout::LoadoutSelection {
-            game: self.game,
-            save_path: self.save.clone(),
-            patch: self.patch.clone().zip(self.patch_version.clone()),
-        }
+/// Apply a strip message to the selection.
+pub fn update(selection: &mut Selection, msg: Message, scanners: &Catalog, config: &config::Config) -> Option<Effect> {
+    match msg {
+        Message::FamilySelected(f) => selection.pick_family(f.family, scanners, config),
+        Message::SaveSelected(s) => selection.pick_save(s.game, s.path, scanners, config),
+        // Empty string is the "no patch" sentinel.
+        Message::PatchSelected(name) => selection.pick_patch((!name.is_empty()).then_some(name), scanners, config),
+        Message::PatchVersionSelected(v) => selection.pick_patch_version(v),
+        Message::RetryPatchDownload(_) => return Some(Effect::RetryDownload),
+        Message::CancelPatchDownload(_) => return Some(Effect::CancelDownload),
     }
+    Some(Effect::SelectionChanged)
+}
 
-    pub fn update(&mut self, msg: Message, scanners: &Scanners, config: &config::Config) -> Option<Effect> {
-        match msg {
-            Message::FamilySelected(f) => {
-                self.family = Some(f.family);
-                // Auto-land on the family's remembered (or first
-                // available) save, which also fixes the concrete game.
-                match resolve_family_save(config, scanners, f.family) {
-                    Some((game, path)) => {
-                        self.game = Some(game);
-                        self.save = Some(path);
-                    }
-                    None => {
-                        self.game = None;
-                        self.save = None;
-                    }
-                }
-                // A family switch resets the overlay baseline; the
-                // landed save's own patch memory then has the last word.
-                self.patch = None;
-                self.patch_version = None;
-                self.restore_patch_memory(config, scanners);
-                Some(Effect::SelectionChanged)
-            }
-            Message::SaveSelected(s) => {
-                // The save carries the concrete game it resolves to;
-                // selecting it dynamically switches `game`. The patch
-                // follows the save: its remembered overlay applies, and
-                // only saves with no memory inherit the current patch
-                // (kept only if it supports the new variant).
-                self.game = Some(s.game);
-                self.family = Some(s.game.family_and_variant().0);
-                self.save = Some(s.path);
-                self.restore_patch_memory(config, scanners);
-                Some(Effect::SelectionChanged)
-            }
-            Message::PatchSelected(name) => {
-                if name.is_empty() {
-                    self.patch = None;
-                    self.patch_version = None;
-                } else {
-                    let mut version = newest_supporting_version(scanners, &name, self.game);
-                    // Patches are no longer hidden by the selected save, so
-                    // the user can pick one the current save can't run. The
-                    // actively-chosen patch wins: deselect the save (and the
-                    // game it resolved to) rather than the patch, then pick a
-                    // version unconstrained by the dropped game.
-                    if self.game.is_some() && version.is_none() {
-                        self.save = None;
-                        self.game = None;
-                        version = newest_supporting_version(scanners, &name, None);
-                    }
-                    self.patch_version = version;
-                    self.patch = Some(name);
-                }
-                // With no save selected yet, land on the game's
-                // remembered/first save (without applying that save's
-                // patch memory — the user just picked this patch
-                // explicitly; it'll be recorded for the save instead).
-                if self.save.is_none() {
-                    if let Some(g) = self.game {
-                        self.save = remembered_save_for_game(config, scanners, g);
-                    }
-                }
-                Some(Effect::SelectionChanged)
-            }
-            Message::RetryPatchDownload(_) => return Some(Effect::RetryDownload),
-            Message::CancelPatchDownload(_) => return Some(Effect::CancelDownload),
-            Message::PatchVersionSelected(v) => {
-                // The version list is filtered to versions supporting
-                // the current variant, so nothing else needs fixing up.
-                self.patch_version = Some(v);
-                Some(Effect::SelectionChanged)
-            }
-        }
-    }
-
-    /// Programmatic save selection (post-delete auto-pick, etc.) —
-    /// same semantics as the user picking the save in the strip,
-    /// including restoring the save's remembered patch overlay.
-    pub fn select_save(
-        &mut self,
-        game: rom::GameRef,
-        path: std::path::PathBuf,
-        config: &config::Config,
-        scanners: &Scanners,
-    ) {
-        self.game = Some(game);
-        self.family = Some(game.family_and_variant().0);
-        self.save = Some(path);
-        self.restore_patch_memory(config, scanners);
-    }
-
-    /// Apply the selected save's remembered patch overlay:
-    /// * recorded patch → restore it (if it still exists and supports
-    ///   the save's variant);
-    /// * recorded "explicitly unpatched" → clear the patch;
-    /// * no record (brand-new save) → keep the current patch if it
-    ///   supports the new variant, else clear it.
-    fn restore_patch_memory(&mut self, config: &config::Config, scanners: &Scanners) {
-        let rel = self.save.as_ref().and_then(|p| config.data_relative_string(p));
-        match rel.and_then(|r| config.last_patch_per_save.get(&r).cloned()) {
-            Some(Some((name, version))) => {
-                let supported = {
-                    let patches = scanners.patches.read();
-                    self.game
-                        .map(|g| patches.supported_games(&name, &version).contains(&g))
-                        .unwrap_or(false)
-                };
-                if supported {
-                    self.patch = Some(name);
-                    self.patch_version = Some(version);
-                } else {
-                    self.retain_patch_for_game(scanners);
-                }
-            }
-            Some(None) => {
-                self.patch = None;
-                self.patch_version = None;
-            }
-            None => self.retain_patch_for_game(scanners),
-        }
-    }
-
-    /// Keep the active patch only if it can run the current game:
-    /// prefer the already-selected version, fall back to the newest
-    /// version that supports the variant, clear the patch entirely
-    /// when none does.
-    fn retain_patch_for_game(&mut self, scanners: &Scanners) {
-        let Some(name) = self.patch.clone() else {
-            return;
-        };
-        let Some(g) = self.game else {
-            return;
-        };
-        let current_ok = {
-            let patches = scanners.patches.read();
-            self.patch_version
-                .as_ref()
-                .map(|v| patches.supported_games(&name, v).contains(&g))
-                .unwrap_or(false)
-        };
-        if current_ok {
-            return;
-        }
-        match newest_supporting_version(scanners, &name, Some(g)) {
-            Some(v) => self.patch_version = Some(v),
-            None => {
-                self.patch = None;
-                self.patch_version = None;
-            }
-        }
-    }
-
-    /// Single source of truth for the local side's
-    /// `protocol::Settings`. App calls this when actually sending
-    /// settings on the wire; the lobby view calls it as the "You"
-    /// slot fallback during Connecting/Negotiating (before
-    /// `lobby.local` has been populated by the netplay loop).
-    pub fn make_local_settings(
-        &self,
-        config: &config::Config,
-        lobby: &crate::netplay::LobbyState,
-    ) -> tango_net_protocol::control::Settings {
-        use tango_net_protocol::control::Settings;
-        Settings {
-            nickname: config.nickname.clone().unwrap_or_default(),
-            match_type: lobby.match_type,
-            game_info: self.selection().game_info(),
-            blind_setup: lobby.blind_setup,
-        }
+/// Single source of truth for the local side's `protocol::Settings`.
+/// App calls this when actually sending settings on the wire; the lobby
+/// view calls it as the "You" slot fallback during
+/// Connecting/Negotiating (before `lobby.local` has been populated by
+/// the netplay loop).
+pub fn local_settings(
+    selection: &Selection,
+    config: &config::Config,
+    lobby: &crate::netplay::LobbyState,
+) -> tango_net_protocol::control::Settings {
+    tango_net_protocol::control::Settings {
+        nickname: config.nickname.clone().unwrap_or_default(),
+        match_type: lobby.match_type,
+        game_info: selection.game_info(),
+        blind_setup: lobby.blind_setup,
     }
 }
 
@@ -374,7 +205,7 @@ impl std::fmt::Display for SaveOption {
 /// player already knows them by — alphabetical on the family string
 /// sorted BN1..BN6 by accident and would have sorted the next family
 /// wherever its letters happened to fall.
-pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<FamilyOption> {
+pub fn family_options(lang: &LanguageIdentifier, scanners: &Catalog) -> Vec<FamilyOption> {
     let roms = scanners.roms.read();
     let mut families: Vec<&'static str> = Vec::new();
     for g in crate::library::game::GAMES.iter() {
@@ -411,16 +242,16 @@ pub fn family_options(lang: &LanguageIdentifier, scanners: &Scanners) -> Vec<Fam
 /// the active patch can't run, so the set stays stable while the
 /// patch comes and goes.
 pub fn save_options(
-    loadout: &Loadout,
+    loadout: &Selection,
     lang: &LanguageIdentifier,
-    scanners: &Scanners,
+    scanners: &Catalog,
     config: &config::Config,
 ) -> Vec<SaveOption> {
     let saves_path = config.saves_path();
     let roms = scanners.roms.read();
     let saves = scanners.saves.read();
     let mut save_options: Vec<SaveOption> = Vec::new();
-    if let Some(family) = loadout.family {
+    if let Some(family) = loadout.family() {
         // Single-variant families (bn1, bn2, exe45) have nothing to tell
         // apart, so their rows carry no tag.
         let multi_variant = game::games_in_family(family).count() > 1;
@@ -443,39 +274,8 @@ pub fn save_options(
             }
         }
     }
-    // Variant first, so the list reads as one block per variant in the
-    // order the games themselves are numbered — matching the tag every
-    // row now carries. Within a variant, a folder-first recursive sort:
-    // at the first differing path component, whichever side still has
-    // components after it (i.e. is "inside a folder at this level")
-    // wins. Files at a given level sort below any subfolders at that
-    // level, and order among themselves by their extensionless name — so
-    // "Blue.sav" sits next to "Blue Moon.sav" instead of wherever the
-    // '.' happens to fall against spaces and digits — with the raw name
-    // breaking stem ties.
-    save_options.sort_by(|a, b| {
-        let variant = |o: &SaveOption| o.game.family_and_variant().1;
-        variant(a).cmp(&variant(b)).then_with(|| {
-            let av: Vec<&std::ffi::OsStr> = a.path.strip_prefix(&saves_path).unwrap_or(&a.path).iter().collect();
-            let bv: Vec<&std::ffi::OsStr> = b.path.strip_prefix(&saves_path).unwrap_or(&b.path).iter().collect();
-            for i in 0..av.len().min(bv.len()) {
-                if av[i] != bv[i] {
-                    let a_is_dir = i + 1 < av.len();
-                    let b_is_dir = i + 1 < bv.len();
-                    return match (a_is_dir, b_is_dir) {
-                        (true, false) => std::cmp::Ordering::Less,
-                        (false, true) => std::cmp::Ordering::Greater,
-                        (true, true) => av[i].cmp(bv[i]),
-                        (false, false) => std::path::Path::new(av[i])
-                            .file_stem()
-                            .cmp(&std::path::Path::new(bv[i]).file_stem())
-                            .then_with(|| av[i].cmp(bv[i])),
-                    };
-                }
-            }
-            av.len().cmp(&bv.len())
-        })
-    });
+    // One block per variant, folders first — see `save::picker_order`.
+    save_options.sort_by(|a, b| crate::library::save::picker_order(&saves_path, (a.game, &a.path), (b.game, &b.path)));
     save_options
 }
 
@@ -489,33 +289,17 @@ pub fn save_options(
 /// With no family selected, the list is empty. Favorites sort first
 /// (and get a "★ " label prefix), alphabetical within each group.
 pub fn patch_options(
-    loadout: &Loadout,
+    loadout: &Selection,
     lang: &LanguageIdentifier,
-    scanners: &Scanners,
+    scanners: &Catalog,
     config: &config::Config,
 ) -> (Vec<widgets::Choice<String>>, Option<widgets::Choice<String>>) {
     let patches = scanners.patches.read();
     let family_games: Vec<rom::GameRef> = loadout
-        .family
+        .family()
         .map(|f| game::games_in_family(f).collect())
         .unwrap_or_default();
-    let mut names: Vec<String> = patches
-        .names()
-        .into_iter()
-        .filter(|name| {
-            patches.versions(name).keys().any(|v| {
-                family_games
-                    .iter()
-                    .any(|g| patches.supported_games(name, v).contains(g))
-            })
-        })
-        .map(|n| n.to_owned())
-        .collect();
-    names.sort_by(|a, b| {
-        let fa = config.favorite_patches.contains(a);
-        let fb = config.favorite_patches.contains(b);
-        fb.cmp(&fa).then_with(|| a.cmp(b))
-    });
+    let names = tango_library::loadout::patch_names_for(&patches, &family_games, &config.favorite_patches);
     let no_patch_option = widgets::Choice::new(String::new(), t!(lang, "play-no-patch"));
     let patch_options: Vec<widgets::Choice<String>> = std::iter::once(no_patch_option.clone())
         .chain(names.into_iter().map(|n| {
@@ -532,8 +316,8 @@ pub fn patch_options(
             widgets::Choice::new(n, display)
         }))
         .collect();
-    let selected_patch = match loadout.patch.as_ref() {
-        Some(n) => patch_options.iter().find(|o| &o.value == n).cloned(),
+    let selected_patch = match loadout.patch_name() {
+        Some(n) => patch_options.iter().find(|o| o.value == n).cloned(),
         None => Some(no_patch_option),
     };
     (patch_options, selected_patch)
@@ -544,13 +328,12 @@ pub fn patch_options(
 /// downloaded — the repo keeps every release forever, and an old one is
 /// exactly what a replay or an opponent may need — marked with a ↓, same
 /// as the patch list.
-pub fn version_options(loadout: &Loadout, scanners: &Scanners) -> Vec<widgets::Choice<semver::Version>> {
+pub fn version_options(loadout: &Selection, scanners: &Catalog) -> Vec<widgets::Choice<semver::Version>> {
     let patches = scanners.patches.read();
     loadout
-        .patch
-        .as_ref()
+        .patch_name()
         .map(|name| {
-            let game = loadout.game;
+            let game = loadout.game();
             let mut vs: Vec<semver::Version> = patches
                 .versions(name)
                 .into_keys()
@@ -574,124 +357,6 @@ pub fn version_options(loadout: &Loadout, scanners: &Scanners) -> Vec<widgets::C
         .unwrap_or_default()
 }
 
-/// Whether the selected patch is actually on disk.
-///
-/// False while its package is downloading, after a failed download, and
-/// for a patch with no resolvable version — in every one of those the
-/// session would run unpatched, so the entry points stay shut until it
-/// lands. `true` when no patch is selected, which is a valid setup.
-pub fn patch_ready(loadout: &Loadout, scanners: &Scanners) -> bool {
-    match (&loadout.patch, &loadout.patch_version) {
-        (None, _) => true,
-        (Some(name), Some(version)) => scanners.patches.read().is_installed(name, version),
-        (Some(_), None) => false,
-    }
-}
-
-// ---------- Resolution helpers ----------
-
-/// Newest version of `patch_name` that supports `game` (any version
-/// when `game` is `None`).
-fn newest_supporting_version(
-    scanners: &Scanners,
-    patch_name: &str,
-    game: Option<rom::GameRef>,
-) -> Option<semver::Version> {
-    let patches = scanners.patches.read();
-    patches.newest_version(patch_name, game)
-}
-
-/// The remembered save for `game` if it's still in the scan,
-/// otherwise the first save listed for it.
-fn remembered_save_for_game(
-    config: &config::Config,
-    scanners: &Scanners,
-    game: rom::GameRef,
-) -> Option<std::path::PathBuf> {
-    let saves_map = scanners.saves.read();
-    let saves_for_game = saves_map.get(&game);
-    let remembered = config
-        .last_save_per_family
-        .get(game.family_and_variant().0)
-        .map(|rel| config.data_relative_to_absolute(rel))
-        .filter(|p| saves_for_game.map(|v| v.iter().any(|s| s.path == *p)).unwrap_or(false));
-    remembered.or_else(|| saves_for_game.and_then(|v| v.first().map(|s| s.path.clone())))
-}
-
-/// Pick the (game, save) to land on after a *family* selection.
-/// Prefers the remembered save of any owned-ROM game in the family;
-/// otherwise the first available save. Grayed (un-owned) saves are
-/// never auto-selected.
-fn resolve_family_save(
-    config: &config::Config,
-    scanners: &Scanners,
-    family: &str,
-) -> Option<(rom::GameRef, std::path::PathBuf)> {
-    // One remembered save for the family, and it names the version:
-    // whichever of the family's owned games actually has that save is
-    // the game to land on.
-    if let Some(rel) = config.last_save_per_family.get(family) {
-        let roms = scanners.roms.read();
-        let saves = scanners.saves.read();
-        let abs = config.data_relative_to_absolute(rel);
-        for g in game::games_in_family(family) {
-            if !roms.contains_key(&g) {
-                continue;
-            }
-            if saves.get(&g).map(|v| v.iter().any(|s| s.path == abs)).unwrap_or(false) {
-                return Some((g, abs));
-            }
-        }
-    }
-    first_available_family_save(scanners, family)
-}
-
-/// First owned-ROM save across every game in `family`, ordered by
-/// extensionless name like the picker. Used as the family auto-pick
-/// fallback (and by the App's post-delete auto-pick). Returns the
-/// concrete game alongside the path so callers can set `game` without
-/// re-sniffing the save.
-pub fn first_available_family_save(scanners: &Scanners, family: &str) -> Option<(rom::GameRef, std::path::PathBuf)> {
-    let roms = scanners.roms.read();
-    let saves = scanners.saves.read();
-    let mut candidates: Vec<(rom::GameRef, std::path::PathBuf)> = Vec::new();
-    for g in game::games_in_family(family) {
-        if !roms.contains_key(&g) {
-            continue;
-        }
-        if let Some(v) = saves.get(&g) {
-            for s in v {
-                candidates.push((g, s.path.clone()));
-            }
-        }
-    }
-    candidates.sort_by(|a, b| a.1.file_stem().cmp(&b.1.file_stem()).then_with(|| a.1.cmp(&b.1)));
-    candidates.into_iter().next()
-}
-
-/// The set of games the currently-selected patch+version supports, or
-/// None when no patch (or no version) is selected — meaning "don't
-/// filter". Used by the new-save template flow so patch-incompatible
-/// variants don't offer templates under an active patch.
-pub fn patch_supported_games(
-    loadout: &Loadout,
-    scanners: &Scanners,
-) -> Option<std::collections::HashSet<rom::GameRef>> {
-    let name = loadout.patch.as_ref()?;
-    let version = loadout.patch_version.as_ref()?;
-    let games = scanners.patches.read().supported_games(name, version);
-    (!games.is_empty()).then_some(games)
-}
-
-/// Whether the currently-selected patch+version supports `game`. True
-/// when no patch (or no version) is selected — there's nothing for the
-/// save to be incompatible with.
-pub fn patch_supports(loadout: &Loadout, scanners: &Scanners, game: rom::GameRef) -> bool {
-    patch_supported_games(loadout, scanners)
-        .map(|s| s.contains(&game))
-        .unwrap_or(true)
-}
-
 // ---------- Views ----------
 
 /// The full game row for the Play tab's selector strip: family
@@ -699,9 +364,9 @@ pub fn patch_supports(loadout: &Loadout, scanners: &Scanners, game: rom::GameRef
 /// visible. No rescan button — scans re-run on their own (tab
 /// entry, session close).
 pub fn game_row<'a>(
-    loadout: &'a Loadout,
+    loadout: &'a Selection,
     lang: &'a LanguageIdentifier,
-    scanners: &'a Scanners,
+    scanners: &'a Catalog,
     config: &'a config::Config,
     downloads: &'a crate::library::patch::Downloads,
 ) -> Element<'a, Message> {
@@ -755,11 +420,11 @@ const VERSION_PICKER_WIDTH: f32 = 100.0;
 /// The pieces carry exactly the width and height the pickers they
 /// stand in for lay out to, so nothing around them moves.
 fn patch_download<'a>(
-    loadout: &'a Loadout,
+    loadout: &'a Selection,
     lang: &'a LanguageIdentifier,
     downloads: &'a crate::library::patch::Downloads,
 ) -> Option<(Element<'a, Message>, Element<'a, Message>)> {
-    let key = (loadout.patch.clone()?, loadout.patch_version.clone()?);
+    let key = (loadout.patch_name()?.to_owned(), loadout.patch_version()?.clone());
     let piece = |content: Element<'a, Message>, width| {
         Element::from(
             container(content)
@@ -843,8 +508,8 @@ fn patch_download<'a>(
 /// replaces it while a download runs. `None` with nothing selected —
 /// then the picker itself (with its placeholder) is the better thing
 /// to show anyway.
-fn family_label(loadout: &Loadout, lang: &LanguageIdentifier, scanners: &Scanners) -> Option<String> {
-    let family = loadout.family?;
+fn family_label(loadout: &Selection, lang: &LanguageIdentifier, scanners: &Catalog) -> Option<String> {
+    let family = loadout.family()?;
     Some(
         family_options(lang, scanners)
             .into_iter()
@@ -854,13 +519,13 @@ fn family_label(loadout: &Loadout, lang: &LanguageIdentifier, scanners: &Scanner
 }
 
 fn family_picker<'a>(
-    loadout: &'a Loadout,
+    loadout: &'a Selection,
     lang: &'a LanguageIdentifier,
-    scanners: &'a Scanners,
+    scanners: &'a Catalog,
 ) -> sweeten::widget::PickList<'a, FamilyOption, Vec<FamilyOption>, FamilyOption, Message> {
     let options = family_options(lang, scanners);
     let selected = loadout
-        .family
+        .family()
         .and_then(|fam| options.iter().find(|opt| opt.family == fam).cloned());
     widgets::picker(options, selected, Message::FamilySelected)
         .disabled(|opts: &[FamilyOption]| opts.iter().map(|o| !o.available).collect())
@@ -871,21 +536,20 @@ fn family_picker<'a>(
 /// save-action row (next to the rename / delete / new buttons), which
 /// is that tab's own furniture.
 pub fn save_picker<'a>(
-    loadout: &'a Loadout,
+    loadout: &'a Selection,
     lang: &'a LanguageIdentifier,
-    scanners: &'a Scanners,
+    scanners: &'a Catalog,
     config: &'a config::Config,
 ) -> sweeten::widget::PickList<'a, SaveOption, Vec<SaveOption>, SaveOption, Message> {
     let options = save_options(loadout, lang, scanners, config);
     let selected = loadout
-        .save
-        .as_ref()
-        .and_then(|p| options.iter().find(|s| &s.path == p).cloned());
+        .save()
+        .and_then(|p| options.iter().find(|s| s.path == p).cloned());
     // Grey out saves the active patch can't run (alongside saves whose
     // ROM isn't owned) so an incompatible save can't be picked under a
     // patch — switch/clear the patch first. `None` (no patch) disables
     // nothing on this axis.
-    let patch_supported = patch_supported_games(loadout, scanners);
+    let patch_supported = loadout.patch_supported_games(scanners);
     widgets::picker(options, selected, Message::SaveSelected)
         .disabled(move |opts: &[SaveOption]| {
             opts.iter()
@@ -896,9 +560,9 @@ pub fn save_picker<'a>(
 }
 
 fn patch_picker<'a>(
-    loadout: &'a Loadout,
+    loadout: &'a Selection,
     lang: &'a LanguageIdentifier,
-    scanners: &'a Scanners,
+    scanners: &'a Catalog,
     config: &'a config::Config,
 ) -> sweeten::widget::PickList<
     'a,
@@ -917,9 +581,9 @@ fn patch_picker<'a>(
 /// shared disabled-dropdown placeholder so the version slot reads as
 /// locked-off instead of an empty picker users can still click.
 fn version_picker<'a>(
-    loadout: &'a Loadout,
+    loadout: &'a Selection,
     lang: &'a LanguageIdentifier,
-    scanners: &'a Scanners,
+    scanners: &'a Catalog,
 ) -> Element<'a, Message> {
     let options = version_options(loadout, scanners);
     if options.is_empty() {
@@ -930,8 +594,7 @@ fn version_picker<'a>(
 
     // Plain: the patch slot beside it reports any fetch.
     let selected = loadout
-        .patch_version
-        .as_ref()
+        .patch_version()
         .and_then(|version| options.iter().find(|o| &o.value == version).cloned());
     widgets::picker(options, selected, |c: widgets::Choice<semver::Version>| {
         Message::PatchVersionSelected(c.value)

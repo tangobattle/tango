@@ -1,10 +1,11 @@
 //! Live-PvP session view: the setup drawers and their edge handles,
 //! the telemetry deck (see [`telemetry`]), and the disconnect /
-//! reconnect modals — plus the [`Message`]s those controls emit and
-//! their [`update`] handler.
+//! reconnect modals. The [`Message`]s those controls emit are handled in
+//! [`crate::session::update::pvp`].
 
 use super::*;
 use crate::session::pvp::PvpSession;
+pub use crate::session::update::pvp::Message;
 use crate::session::Message as SessionMessage;
 use tango_gamesupport::OpaqueBuildWarnings;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
@@ -12,142 +13,6 @@ use sweeten::widget::{column, row};
 
 mod telemetry;
 use telemetry::{frame_delay_overlay, telemetry_panel};
-
-/// Messages the PvP view emits. Wrapped as [`SessionMessage::Pvp`] on
-/// the way out; inert unless a PvP session is active.
-#[derive(Debug, Clone)]
-pub enum Message {
-    /// The telemetry panel's frame-delay slider moved. Live-sets this
-    /// side's local frame delay on the running session; the App also
-    /// persists it to config. No peer coordination — it's purely a
-    /// local display lag.
-    SetFrameDelay(u32),
-    /// Open/close the compact frame-delay popover above the persistent
-    /// telemetry bar. The charts themselves never collapse.
-    ToggleFrameDelayControl,
-    /// Show the "really disconnect?" modal — the corner tear-down
-    /// button while the link is live. Disconnect tears the session
-    /// down mid-match (same as Close), so the confirm keeps a stray
-    /// click from costing the user a real game.
-    OpenDisconnectConfirm,
-    /// Dismiss the disconnect confirm without disconnecting (the
-    /// Cancel button + the modal backdrop both fire this).
-    CloseDisconnectConfirm,
-    /// Dismiss the advisory describing invalid committed builds. The match
-    /// continues either way; this only removes the warning card.
-    DismissBuildWarning,
-    /// Explicitly open/close the opponent build's violation list.
-    ToggleBuildWarningViolations,
-    /// Show/hide the opponent's setup side panel.
-    ToggleOpponentPanel,
-    /// Show/hide the local player's save-view panel.
-    ToggleSelfPanel,
-    /// User interacted with the opponent's save-view (tab swap,
-    /// folder-group toggle, hover, …).
-    OpponentSaveView(std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
-    /// Mirror of [`OpponentSaveView`](Self::OpponentSaveView) for the
-    /// local panel.
-    SelfSaveView(std::sync::Arc<dyn tango_gamesupport::SaveEditorMessage>),
-    /// A setup drawer's inner edge was grabbed to resize it. Carries
-    /// the side (0 = self, 1 = opponent) and that drawer's width at
-    /// the grab, which the drag then works in deltas off.
-    StartPaneResize(usize, f32),
-    /// Cursor moved during a drawer resize — window x, from the
-    /// full-window capture layer that's up for the drag's duration.
-    PaneResizeMoved(f32),
-    /// Drawer resize finished: button released, or the cursor left the
-    /// window mid-drag. The App also persists the new width here.
-    EndPaneResize,
-}
-
-/// Apply a PvP-view message. Takes the whole session [`State`] because the
-/// setup drawers and disconnect/build-warning overlays live beside the slot.
-pub(crate) fn update(state: &mut State, msg: Message, lang: &unic_langid::LanguageIdentifier) -> iced::Task<Message> {
-    match msg {
-        Message::SetFrameDelay(d) => {
-            // Purely local frame delay — apply straight to the running
-            // session. Config persistence happens in the App's wrapper
-            // (it owns config).
-            if let Some(s) = state.active_as::<PvpSession>() {
-                s.set_frame_delay(d);
-            }
-        }
-        Message::ToggleFrameDelayControl => {
-            if state.active_as::<PvpSession>().is_some() {
-                state.frame_delay_control.toggle();
-            }
-        }
-        Message::OpenDisconnectConfirm => {
-            state.disconnect.open();
-        }
-        Message::CloseDisconnectConfirm => {
-            state.disconnect.close();
-        }
-        Message::DismissBuildWarning => {
-            if let Some(panes) = state.pvp_panes.as_mut() {
-                panes.build_warning_dismissed = true;
-            }
-        }
-        Message::ToggleBuildWarningViolations => {
-            if let Some(panes) = state.pvp_panes.as_mut() {
-                panes.build_warning_violations_expanded = !panes.build_warning_violations_expanded;
-            }
-        }
-        Message::ToggleOpponentPanel => {
-            state.opponent_panel.toggle();
-        }
-        Message::ToggleSelfPanel => {
-            state.self_panel.toggle();
-        }
-        Message::OpponentSaveView(msg) => {
-            // View-local folds only in practice (tab swaps, hovers):
-            // the in-match drawers render read-only, so the editor can't
-            // mint an edit to stage into this side's loaded save.
-            if let Some(panes) = state.pvp_panes.as_mut() {
-                if let Some(data) = panes.opponent_loaded.as_mut() {
-                    let (task, _) = data.editor.update(lang, data, &*msg);
-                    return task.map(Message::OpponentSaveView);
-                }
-            }
-        }
-        Message::SelfSaveView(msg) => {
-            if let Some(panes) = state.pvp_panes.as_mut() {
-                if let Some(data) = panes.local_loaded.as_mut() {
-                    let (task, _) = data.editor.update(lang, data, &*msg);
-                    return task.map(Message::SelfSaveView);
-                }
-            }
-        }
-        Message::StartPaneResize(side, width) => {
-            if let Some(panes) = state.pvp_panes.as_mut() {
-                panes.pane_drag = Some(crate::session::PaneDrag {
-                    side,
-                    start_width: width,
-                    anchor_x: None,
-                });
-            }
-        }
-        Message::PaneResizeMoved(x) => {
-            if let Some(panes) = state.pvp_panes.as_mut() {
-                if let Some(drag) = panes.pane_drag.as_mut() {
-                    let anchor = *drag.anchor_x.get_or_insert(x);
-                    // Each drawer widens as the cursor pulls its inner
-                    // edge toward the middle of the window: rightward
-                    // for the left drawer, leftward for the right one.
-                    let delta = if drag.side == 0 { x - anchor } else { anchor - x };
-                    panes.pane_widths[drag.side] =
-                        (drag.start_width + delta).clamp(SETUP_PANE_MIN_WIDTH, SETUP_PANE_MAX_WIDTH);
-                }
-            }
-        }
-        Message::EndPaneResize => {
-            if let Some(panes) = state.pvp_panes.as_mut() {
-                panes.pane_drag = None;
-            }
-        }
-    }
-    iced::Task::none()
-}
 
 /// Docked sidebar surface for the PvP setup drawers — flush with
 /// its screen edge, full height, square corners, no border or
@@ -805,6 +670,7 @@ fn reconnecting_overlay<'a>(lang: &'a LanguageIdentifier, pvp: &'a PvpSession) -
 #[cfg(test)]
 mod build_warning_tests {
     use super::*;
+    use tango_library::lang::FALLBACK_LANG;
 
     #[derive(Debug)]
     struct TestBuildWarnings;
@@ -822,9 +688,9 @@ mod build_warning_tests {
     #[test]
     fn warning_chrome_is_translated_in_every_supported_language() {
         let english = [
-            t!(&crate::i18n::FALLBACK_LANG, "session-build-warning-title"),
-            t!(&crate::i18n::FALLBACK_LANG, "session-build-warning-show-violations"),
-            t!(&crate::i18n::FALLBACK_LANG, "session-build-warning-hide-violations"),
+            t!(&FALLBACK_LANG, "session-build-warning-title"),
+            t!(&FALLBACK_LANG, "session-build-warning-show-violations"),
+            t!(&FALLBACK_LANG, "session-build-warning-hide-violations"),
         ];
         for language in crate::i18n::SUPPORTED_LANGS.iter().skip(1) {
             assert_ne!(t!(language, "session-build-warning-title"), english[0]);
@@ -847,7 +713,7 @@ mod build_warning_tests {
             pane_drag: None,
         });
 
-        assert!(build_warning_overlay(&crate::i18n::FALLBACK_LANG, &state).is_some());
+        assert!(build_warning_overlay(&FALLBACK_LANG, &state).is_some());
         assert_eq!(
             state
                 .pvp_panes
@@ -856,7 +722,7 @@ mod build_warning_tests {
                 .opponent_build_warnings
                 .as_ref()
                 .unwrap()
-                .format(&crate::i18n::FALLBACK_LANG),
+                .format(&FALLBACK_LANG),
             ["SecretChip: illegal"]
         );
         assert_eq!(
@@ -872,11 +738,7 @@ mod build_warning_tests {
         );
 
         assert!(!state.pvp_panes.as_ref().unwrap().build_warning_violations_expanded);
-        let _ = update(
-            &mut state,
-            Message::ToggleBuildWarningViolations,
-            &crate::i18n::FALLBACK_LANG,
-        );
+        let _ = crate::session::update::pvp::update(&mut state, Message::ToggleBuildWarningViolations, &FALLBACK_LANG);
         assert!(state.pvp_panes.as_ref().unwrap().build_warning_violations_expanded);
     }
 }

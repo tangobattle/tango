@@ -1,8 +1,8 @@
 //! Library scans and reconstruction of the selected save.
 
 use super::{App, Message, RescanFollowup, Tab};
-use crate::library::{rom, Scanners};
-use crate::{loadout, selection};
+use crate::library::{rom, Catalog};
+use crate::selection;
 
 impl App {
     /// The startup scan, in two stages: first everything the play tab
@@ -22,9 +22,12 @@ impl App {
         // listing to the second rather than walking that tree twice.
         iced::Task::perform(
             async move {
-                let listings = Scanners::list(&config).await;
+                let listings = Catalog::list(crate::library::storage(), &config).await;
                 let replays = listings.replays.clone();
-                let _ = tokio::task::spawn_blocking(move || scanners.rescan_library(&config, &listings)).await;
+                let _ = tokio::task::spawn_blocking(move || {
+                    scanners.rescan_library(crate::library::storage(), &config, &listings)
+                })
+                .await;
                 replays
             },
             |listing| listing,
@@ -37,7 +40,10 @@ impl App {
                 // lands whenever it lands.
                 iced::Task::done(Message::Rescanned(RescanFollowup::Boot)).chain(iced::Task::perform(
                     async move {
-                        let _ = tokio::task::spawn_blocking(move || scanners.rescan_replays(&listing)).await;
+                        let _ = tokio::task::spawn_blocking(move || {
+                            scanners.rescan_replays(crate::library::storage(), &listing)
+                        })
+                        .await;
                     },
                     |()| Message::Rescanned(RescanFollowup::BootReplays),
                 ))
@@ -45,7 +51,7 @@ impl App {
         })
     }
 
-    /// Run a full `Scanners::rescan` on a tokio blocking worker so
+    /// Run a full [`Catalog::rescan`] on a tokio blocking worker so
     /// the disk walk + TOML parse for patches (the slowest of the
     /// four) doesn't stall iced's update loop. Returns a task that
     /// emits `Message::Rescanned(followup)` once the worker is
@@ -65,8 +71,10 @@ impl App {
                 // Enumerate here (cheap, metadata only), then read and
                 // parse on a blocking worker so the walk-and-parse of
                 // every ROM and save doesn't stall iced's update loop.
-                let listings = Scanners::list(&config).await;
-                let _ = tokio::task::spawn_blocking(move || scanners.rescan(&config, &listings)).await;
+                let listings = Catalog::list(crate::library::storage(), &config).await;
+                let _ =
+                    tokio::task::spawn_blocking(move || scanners.rescan(crate::library::storage(), &config, &listings))
+                        .await;
             },
             move |()| Message::Rescanned(followup),
         )
@@ -81,12 +89,9 @@ impl App {
 
     /// Inputs that determine `loaded`, used to skip unchanged rebuilds.
     fn loaded_key(&self) -> Option<(rom::GameRef, std::path::PathBuf, Option<(String, semver::Version)>)> {
-        let game = self.loadout.game?;
-        let save_path = self.loadout.save.clone()?;
-        let patch = match (&self.loadout.patch, &self.loadout.patch_version) {
-            (Some(n), Some(v)) => Some((n.clone(), v.clone())),
-            _ => None,
-        };
+        let game = self.loadout.game()?;
+        let save_path = self.loadout.save()?.to_path_buf();
+        let patch = self.loadout.patch().map(|(n, v)| (n.to_owned(), v.clone()));
         Some((game, save_path, patch))
     }
 
@@ -108,51 +113,50 @@ impl App {
             }
         }
 
-        let roms = self.scanners.roms.read();
-        let saves = self.scanners.saves.read();
-        let patches = self.scanners.patches.read();
-        let Some(rom) = roms.get(&game).cloned() else {
+        if !self.scanners.roms.read().contains_key(&game) {
             self.loaded = None;
             return;
+        }
+        let save = {
+            let saves = self.scanners.saves.read();
+            match saves.get(&game).and_then(|v| v.iter().find(|s| s.path == save_path)) {
+                Some(scanned) => scanned.save.clone_box(),
+                None => {
+                    // Save was deleted out from under us (e.g. user deleted
+                    // it on disk and a rescan noticed). Drop the stale
+                    // selection so the picker stops showing a missing entry.
+                    drop(saves);
+                    self.loaded = None;
+                    self.loadout.clear_save();
+                    return;
+                }
+            }
         };
-        let Some(scanned) = saves.get(&game).and_then(|v| v.iter().find(|s| s.path == save_path)) else {
-            // Save was deleted out from under us (e.g. user deleted
-            // it on disk and a rescan noticed). Drop the stale
-            // selection so the picker stops showing a missing entry.
-            self.loaded = None;
-            drop(saves);
-            drop(roms);
-            drop(patches);
-            self.loadout.save = None;
-            return;
-        };
-        let save = scanned.save.clone_box();
-        let patch_meta = patch.and_then(|(name, version)| {
-            patches
-                .version(&name, &version)
-                .map(|v| (name.clone(), version.clone(), v.clone()))
-        });
-        drop(patches);
-        drop(saves);
-        drop(roms);
 
         log::info!(
             "loading selection: {:?} {} {}",
             game.family_and_variant(),
             save_path.display(),
-            patch_meta
-                .as_ref()
-                .map(|(n, v, _)| format!("[{n} v{v}]"))
-                .unwrap_or_default(),
+            patch.as_ref().map(|(n, v)| format!("[{n} v{v}]")).unwrap_or_default(),
         );
-        let patches_path = self.config.patches_path();
         // The view state rides inside the LoadedSave, so swapping in a
         // freshly-built one drops any in-progress edit with the save it
         // was staged against — nothing to reset by hand.
         // A disk load carries no session payload — the editor opens on
         // the game's own default and the file picker takes it from
         // there.
-        self.loaded = Some(selection::build(game, rom, save_path, save, &patches_path, patch_meta));
+        self.loaded = self
+            .scanners
+            .resolver(crate::library::storage(), &self.config)
+            .preview(
+                game,
+                save_path,
+                save,
+                patch.as_ref().map(|(name, version)| (name.as_str(), version)),
+            )
+            .inspect_err(|e| log::warn!("save preview failed: {e}"))
+            .ok()
+            .map(selection::load);
     }
 
     pub(super) fn finish_rescan(&mut self, followup: RescanFollowup) -> iced::Task<Message> {
@@ -195,13 +199,7 @@ impl App {
                 // family (a sibling color variant is fine), not just
                 // the deleted save's own game, and fix the loadout's
                 // game to whatever that save resolves to.
-                if self.loadout.save.is_none() {
-                    if let Some(family) = self.loadout.family {
-                        if let Some((game, path)) = loadout::first_available_family_save(&self.scanners, family) {
-                            self.loadout.select_save(game, path, &self.config, &self.scanners);
-                        }
-                    }
-                }
+                self.loadout.pick_first_family_save(&self.scanners, &self.config);
                 self.refresh_loaded();
                 iced::Task::none()
             }

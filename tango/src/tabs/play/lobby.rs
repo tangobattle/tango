@@ -16,7 +16,7 @@
 use crate::i18n::t;
 use crate::library::game;
 use crate::library::rom;
-use crate::library::Scanners;
+use crate::library::Catalog;
 use crate::netplay::{self, Phase};
 use crate::session::pvp::suggest_frame_delay;
 use crate::ui::style::{self, STANDARD_PADDING, TEXT_BODY, TEXT_CAPTION, TEXT_HEADING, TEXT_TITLE};
@@ -59,7 +59,7 @@ pub(super) struct Lobby<'a> {
     pub(super) ready: netplay::ReadyView,
     pub(super) phase: &'a netplay::Phase,
     pub(super) local_game: Option<rom::GameRef>,
-    pub(super) scanners: &'a Scanners,
+    pub(super) scanners: &'a Catalog,
     pub(super) has_save: bool,
     /// Local-side Settings synthesized from the current loadout, used
     /// to fill the "You" card before `state.local` lands.
@@ -129,7 +129,8 @@ impl<'a> Lobby<'a> {
                 (Some(l), Some(r)) => {
                     let roms = self.scanners.roms.read();
                     let patches = self.scanners.patches.read();
-                    Status::Verdict(netplay::check_compatibility(l, r, &roms, &patches))
+                    let facts = tango_library::loadout::compatibility_facts(l, r, &roms, &patches);
+                    Status::Verdict(netplay::compat::check(l, r, facts))
                 }
                 _ => Status::Handshake,
             },
@@ -308,7 +309,15 @@ impl<'a> Lobby<'a> {
                     netplay::Error::NegotiateVersionTooOld => t!(lang, "play-status-negotiate-version-too-old"),
                     netplay::Error::NegotiateVersionTooNew => t!(lang, "play-status-negotiate-version-too-new"),
                     netplay::Error::Negotiate(e) => t!(lang, "play-status-negotiate-failed", error = e.clone()),
-                    netplay::Error::Other(e) => t!(lang, "play-status-failed", error = e.clone()),
+                    e @ (netplay::Error::Channels(_)
+                    | netplay::Error::Direct { .. }
+                    | netplay::Error::Transport { .. }
+                    | netplay::Error::EncodeState { .. }
+                    | netplay::Error::CommitmentMismatch
+                    | netplay::Error::DecodePeerState { .. }
+                    | netplay::Error::DuplicateChunkStart
+                    | netplay::Error::RevealOverrun { .. }
+                    | netplay::Error::SessionBuild(_)) => t!(lang, "play-status-failed", error = e.to_string()),
                 };
                 // The lobby is dead at this point but its chrome is
                 // still on screen — cue it with an alert icon next to
@@ -353,7 +362,7 @@ impl<'a> Lobby<'a> {
                         Some((
                             t!(lang, "patches-retry"),
                             // Same handler the play strip's retry uses.
-                            Message::Loadout(crate::loadout::Message::RetryPatchDownload(key)),
+                            Message::Loadout(super::loadout_strip::Message::RetryPatchDownload(key)),
                         )),
                         None,
                     ),

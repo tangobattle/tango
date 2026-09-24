@@ -183,10 +183,7 @@ impl Save {
 
     pub fn from_wram(buf: &[u8]) -> Result<Self, dv_save::Error> {
         Ok(Self {
-            buf: buf
-                .get(..SAVE_SIZE)
-                .and_then(|buf| buf.try_into().ok())
-                .ok_or(dv_save::Error::InvalidSize(buf.len()))?,
+            buf: dv_save::read_image(buf, 0)?,
         })
     }
 

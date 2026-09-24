@@ -12,8 +12,7 @@
 //! viewer swaps recordings, where the old session's teardown races the
 //! new session's priming.
 
-use num_traits::ToPrimitive;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 fn game_of(family: &str, variant: u32) -> &'static tango_gamesupport::Game {
     tango_library::game::FAMILIES
@@ -32,7 +31,7 @@ struct Opened {
     _stream: tango_session::audio::Stream,
 }
 
-fn open_session(arg: &str, tag: &str) -> Opened {
+fn open_session(arg: &str) -> Opened {
     // "replay:rom:nostats" opens the way the app does when the match
     // stats are already cached — the second open of the same file.
     let (arg, with_stats) = match arg.strip_suffix(":nostats") {
@@ -47,23 +46,14 @@ fn open_session(arg: &str, tag: &str) -> Opened {
         .and_then(|s| s.game_info.as_ref())
         .expect("replay carries no game info");
     let game = game_of(&gi.rom_family, gi.rom_variant);
-    let rom = Arc::new(std::fs::read(rom_path).expect("rom unreadable"));
-    let fps = game.pvp.tps().to_f32().unwrap();
-    let (partial_tx, partial_rx) = futures::channel::mpsc::unbounded();
-    std::mem::forget(partial_rx);
-    let stats_job = with_stats.then(|| tango_session::replay::PrefetchStatsJob {
-        partial_tx,
-        done: Arc::new(Mutex::new(None)),
-        stats_file: std::env::temp_dir().join(format!("replay_session_probe-{tag}.stats")),
-    });
+    let rom = std::fs::read(rom_path).expect("rom unreadable");
     let (session, workers, stream) = tango_session::replay::ReplaySession::new(
         [game, game],
-        [rom.clone(), rom.clone()],
+        [rom.clone(), rom],
         replay,
-        fps,
         48_000,
         true,
-        stats_job,
+        with_stats,
         // Nothing analyzed up front: the probe wants the prefetch pass to
         // find the round boundaries itself.
         vec![],
@@ -80,7 +70,7 @@ fn churn(a_arg: &str, b_arg: &str) {
     use tango_session::Drive;
     for stagger_ms in [0u64, 500, 1000, 2000, 3000, 4000] {
         println!("=== churn: teardown of A at +{stagger_ms}ms into B's boot");
-        let mut a = open_session(a_arg, "a");
+        let mut a = open_session(a_arg);
         // A plays on its own thread until told to die; the teardown
         // (session drop, pairs and all) happens on that thread, like a
         // worker unwinding.
@@ -100,7 +90,7 @@ fn churn(a_arg: &str, b_arg: &str) {
             let _ = die_tx.send(());
         });
 
-        let mut b = open_session(b_arg, "b");
+        let mut b = open_session(b_arg);
         let _ = b_tx.send(());
         let started = std::time::Instant::now();
         let mut alive = true;
@@ -136,7 +126,7 @@ fn churn(a_arg: &str, b_arg: &str) {
 fn after(a_arg: &str, b_arg: &str) {
     use tango_session::Drive;
     println!("=== after: playing A to completion");
-    let mut a = open_session(a_arg, "a");
+    let mut a = open_session(a_arg);
     let started = std::time::Instant::now();
     while a.driver.tick() && started.elapsed().as_secs() < 240 {
         a.driver.prefetch_step(256);
@@ -151,7 +141,7 @@ fn after(a_arg: &str, b_arg: &str) {
     );
 
     println!("=== after: booting B with A still standing");
-    let mut b = open_session(b_arg, "b");
+    let mut b = open_session(b_arg);
     let started = std::time::Instant::now();
     let mut alive = true;
     while alive && b.session.current_tick() < 400 && started.elapsed().as_secs() < 90 {
@@ -190,7 +180,7 @@ fn main() {
     }
     for (i, arg) in args.iter().enumerate() {
         println!("=== session {i}: {arg}");
-        let mut s = open_session(arg, &i.to_string());
+        let mut s = open_session(arg);
         let started = std::time::Instant::now();
 
         use tango_session::Drive;

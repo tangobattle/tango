@@ -13,7 +13,6 @@ license = "GPL-3.0-or-later"
 tango-gamesupport-common-dataview = { path = "../tango-gamesupport-common-dataview" }
 tango-gamesupport-common-ui = { path = "../tango-gamesupport-common-ui" }
 tango-gamesupport-bn4-dataview = { path = "../tango-gamesupport-bn4-dataview" }
-image = { workspace = true, features = ["png"] }
 iced.workspace = true
 unic-langid.workspace = true
 sweeten.workspace = true

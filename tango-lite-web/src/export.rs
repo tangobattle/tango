@@ -112,45 +112,11 @@ async fn render(
 ) -> Result<(), String> {
     let replay = crate::library::read_replay(library, path)?;
     let (games, roms) = crate::playback::resolve(library, &replay)?;
-    let local_player = replay.local_player_index as usize;
-
-    // The replay's input stream is already absolute pair order — just
-    // widen into the seam's vocabulary.
-    let inputs: Vec<[tango_match::HostInput; 2]> = replay
-        .inputs
-        .iter()
-        .map(|&row| {
-            row.map(|input| tango_match::HostInput {
-                keys: input.keys as u32,
-                touch: input.touch.map(|(x, y)| (x as u16, y as u16)),
-            })
-        })
-        .collect();
-    if inputs.is_empty() {
-        return Err("this recording has no frames".into());
-    }
-    let total_ticks = inputs.len() as u32;
-
     // The same boot the player uses, so the render reproduces the
-    // recorded match rather than a similar one — through the local
-    // seat's own engine door.
-    let backend = games[local_player].pvp;
-    let config = tango_match::ReplayConfig {
-        roms: [roms[0].to_vec(), roms[1].to_vec()],
-        saves: replay.srams.clone(),
-        inputs: std::sync::Arc::new(inputs),
-        rng_seed: replay.rng_seed,
-        rtc: replay.rtc_time(),
-        match_type: (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
-        local_player,
-        peer_rom: tango_match::PeerRom {
-            code: *games[1 - local_player].rom_code,
-            revision: games[1 - local_player].revision,
-        },
-        want_stats: false,
-        // The games' own audio is the point of a video.
-        disable_bgm: false,
-    };
+    // recorded match rather than a similar one — with the games' own
+    // audio, which is the point of a video.
+    let engine = tango_session::replay::EngineReplay::new(games, roms, &replay).map_err(|e| e.to_string())?;
+    let total_ticks = engine.total_ticks();
 
     // Whole replay, one chapter. The desktop's export form lets you pick
     // a clip and deselect rounds; on a phone the useful answer is "the
@@ -159,7 +125,7 @@ async fn render(
     // doesn't say.
     let clip = Clip {
         start: 0,
-        end: total_ticks - 1,
+        end: total_ticks,
         snapshot: None,
         round_marks: vec![],
     };
@@ -167,8 +133,8 @@ async fn render(
     let round_titles = vec!["Round 1".to_string()];
 
     let request = Request {
-        backend,
-        config,
+        backend: engine.backend,
+        config: engine.config,
         rounds_mask: &rounds_mask,
         round_titles: &round_titles,
         clip: &clip,
@@ -218,7 +184,7 @@ async fn yield_to_page() {
     let Ok(channel) = web_sys::MessageChannel::new() else {
         // No channel to bounce off: fall back to the timer, slow but
         // never wrong.
-        tango_session::platform::sleep(std::time::Duration::ZERO).await;
+        tango_platform::sleep(std::time::Duration::ZERO).await;
         return;
     };
     let (tx, rx) = futures::channel::oneshot::channel::<()>();

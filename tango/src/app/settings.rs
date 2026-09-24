@@ -1,38 +1,39 @@
 //! Settings and first-run actions.
 
+use super::desktop::open_url;
 use super::{App, Message, RescanFollowup};
-use crate::library::Scanners;
 use crate::platform::input;
 use crate::tabs;
 
 impl App {
-    pub(super) fn update_settings(&mut self, msg: tabs::settings::Message) -> iced::Task<tabs::settings::Message> {
-        // UpdateNow is a side effect (kicks the installer +
-        // exits the process) not a config change; intercept
-        // before delegating to settings::State::update.
-        if matches!(msg, tabs::settings::Message::UpdateNow) {
-            self.updater.finish_update();
-            return iced::Task::none();
-        }
-        // The data-folder "Change…" button opens a native folder picker. It's
-        // async, so intercept here and surface the result as DataFolderPicked.
-        if matches!(msg, tabs::settings::Message::OpenDataFolderPicker) {
-            let initial = self.config.data_path.clone();
-            return iced::Task::perform(
-                async move {
-                    rfd::AsyncFileDialog::new()
-                        .set_directory(&initial)
-                        .pick_folder()
-                        .await
-                        .map(|h| h.path().to_path_buf())
-                },
-                tabs::settings::Message::DataFolderPicked,
-            );
-        }
-        use tabs::settings::ConfigChange as C;
-        let Some(change) = self.settings.update(msg) else {
-            return iced::Task::none();
+    pub(super) fn update_settings(&mut self, msg: tabs::settings::Message) -> iced::Task<Message> {
+        use tabs::settings::Effect as E;
+        let change = match self.settings.update(msg) {
+            None => return iced::Task::none(),
+            Some(E::Change(change)) => change,
+            Some(E::OpenUrl(url)) => return open_url(&url),
+            // Kicks the installer and exits the process on success.
+            Some(E::InstallUpdate) => {
+                self.updater.finish_update();
+                return iced::Task::none();
+            }
+            // The data-folder "Change…" button opens a native folder
+            // picker, which answers asynchronously as DataFolderPicked.
+            Some(E::PickDataFolder) => {
+                let initial = self.config.data_path.clone();
+                return iced::Task::perform(
+                    async move {
+                        rfd::AsyncFileDialog::new()
+                            .set_directory(&initial)
+                            .pick_folder()
+                            .await
+                            .map(|h| h.path().to_path_buf())
+                    },
+                    |path| Message::Settings(tabs::settings::Message::DataFolderPicked(path)),
+                );
+            }
         };
+        use tabs::settings::ConfigChange as C;
         match change {
             C::Language(l) => self.config.language = l,
             C::Nickname(s) => self.config.nickname = if s.is_empty() { None } else { Some(s) },
@@ -53,12 +54,11 @@ impl App {
                 ] {
                     let _ = std::fs::create_dir_all(&dir);
                 }
-                // Re-scan so the new folder's contents show up immediately, and
-                // re-point the patch autoupdater at the new patches folder
-                // (it captured the old path at construction). The self-updater
-                // cache and log file follow the new path on next launch.
-                let listings = futures::executor::block_on(Scanners::list(&self.config));
-                self.scanners.rescan(&self.config, &listings);
+                // Re-point the patch autoupdater at the new patches folder
+                // (it captured the old path at construction), and re-scan
+                // off the UI thread so the new folder's contents show up.
+                // The self-updater cache and log file follow the new path
+                // on next launch.
                 self.patch_autoupdater = crate::library::autoupdate::Autoupdater::new(
                     self.config.patches_path(),
                     self.config.patch_repo.clone(),
@@ -67,6 +67,8 @@ impl App {
                 if self.config.enable_patch_autoupdate {
                     self.patch_autoupdater.start();
                 }
+                self.persist_config();
+                return self.rescan_off_thread(RescanFollowup::Refresh);
             }
             C::PatchAutoupdate(b) => {
                 self.config.enable_patch_autoupdate = b;

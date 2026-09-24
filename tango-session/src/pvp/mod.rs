@@ -49,6 +49,22 @@ pub fn suggest_frame_delay(rtt: std::time::Duration) -> u32 {
     (one_way_frames + 1).clamp(MIN_FRAME_DELAY as i32, MAX_FRAME_DELAY as i32) as u32
 }
 
+/// A stored or user-entered frame delay, clamped into the supported range.
+pub fn clamp_frame_delay(frame_delay: u32) -> u32 {
+    frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY)
+}
+
+/// The frame delay to start a match at when the user hasn't picked one:
+/// suggested from the lobby's median RTT, or `fallback` while no Pong
+/// has come back yet. A zero median is "we don't know", not a 0 ms link.
+pub fn initial_frame_delay(median_rtt: std::time::Duration, fallback: u32) -> u32 {
+    if median_rtt.is_zero() {
+        clamp_frame_delay(fallback)
+    } else {
+        suggest_frame_delay(median_rtt)
+    }
+}
+
 /// Upper bound on how long `is_ended` waits for the peer's
 /// `EndOfMatch` packet after local completion. Wide enough to
 /// cover slow networks + the typical match-end animation, tight
@@ -67,7 +83,7 @@ const PEER_END_GRACE: std::time::Duration = std::time::Duration::from_secs(5);
 struct EndState {
     /// Remote's in-game match-end handshake (the in-band `data::wire`
     /// `EndOfMatch` marker) arrived — raised by the net receive task
-    /// ([`crate::net::PvpReceiver`]).
+    /// ([`tango_net::PvpReceiver`]).
     /// `is_ended` honors it so the lagging side gets time to write its
     /// replay tail before we drop the data channel.
     remote_ended: Arc<AtomicBool>,
@@ -141,11 +157,11 @@ pub struct PvpSession {
     layout: tango_match::ScreenLayout,
     /// The peer link: owns the peer connection, both channels' halves, the
     /// latency readout, and the transparent mid-match reconnect (see
-    /// [`crate::net::link`]). The supervisor task holds its own `Arc`; the
+    /// [`tango_net::link`]). The supervisor task holds its own `Arc`; the
     /// session's keeps the transport alive for the match's lifetime, and its
     /// eventual drop closes the connection gracefully (DTLS close_notify → the
     /// peer's prompt EOF).
-    link: Arc<crate::net::link::Link>,
+    link: Arc<tango_net::link::Link>,
     /// The two halves of the ready gate, as the session's own readouts:
     /// `local_primed` is set when our pair reaches its link battle
     /// ([`is_booting`](Self::is_booting) until then), `peer_primed`
@@ -196,14 +212,21 @@ pub struct PvpSession {
 
 pub use tango_net::handoff::PreMatchData;
 
+/// One seat's prepared launch inputs, in local/remote terms: its game,
+/// its ROM with any patch already applied, and the SRAM image its
+/// console boots. The host builds these from its library's preparation
+/// of the committed saves; the session never parses a save itself.
+pub struct Seat {
+    pub game: &'static tango_gamesupport::Game,
+    pub rom: Arc<Vec<u8>>,
+    pub sram: Vec<u8>,
+}
+
 /// Everything [`PvpSession::new`] needs, as named fields. Assembled by
 /// the app's `spawn_pvp` glue.
 pub struct PvpSessionArgs<'a> {
-    /// Local/remote game impls; the roms must already have any patch applied.
-    pub local_game: &'static tango_gamesupport::Game,
-    pub local_rom: Arc<Vec<u8>>,
-    pub remote_game: &'static tango_gamesupport::Game,
-    pub remote_rom: Arc<Vec<u8>>,
+    pub local: Seat,
+    pub remote: Seat,
     /// The netplay handoff: negotiated terms + the transport bundle.
     pub pre_match: crate::pvp::PreMatchData,
     /// This side's frame delay — realized purely as local display lag (the
@@ -219,7 +242,6 @@ pub struct PvpSessionArgs<'a> {
     pub replays: Option<&'a dyn ReplayStore>,
     /// Optional host-owned destination for the finished recording's statistics.
     pub stats_sink: Option<Arc<dyn crate::stats::StatsSink>>,
-    pub expected_fps: f32,
     /// The host output rate the session's audio stream resamples to.
     pub sample_rate: u32,
 }
@@ -244,7 +266,7 @@ impl PvpSession {
     /// out-of-range caller.
     pub fn set_frame_delay(&self, frame_delay: u32) {
         self.frame_delay
-            .store(frame_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY), Ordering::Relaxed);
+            .store(clamp_frame_delay(frame_delay), Ordering::Relaxed);
     }
 
     /// Completion signal for an orderly process exit. Request the session's
@@ -284,7 +306,7 @@ impl PvpSession {
     /// rebuilding it (direct or matchmaking) — the drive loop is paused and the
     /// PvP view shows a "Reconnecting…" overlay.
     pub fn is_reconnecting(&self) -> bool {
-        matches!(self.link.health(), crate::net::link::LinkHealth::Reconnecting { .. })
+        matches!(self.link.health(), tango_net::link::LinkHealth::Reconnecting { .. })
     }
 
     /// Fraction of the reconnect give-up window still remaining — `1.0` when a
@@ -292,7 +314,7 @@ impl PvpSession {
     /// `None` when not reconnecting. Drives the overlay's depleting progress bar.
     pub fn reconnect_progress(&self) -> Option<f32> {
         match self.link.health() {
-            crate::net::link::LinkHealth::Reconnecting { started, give_up_at } => {
+            tango_net::link::LinkHealth::Reconnecting { started, give_up_at } => {
                 let total = give_up_at
                     .saturating_duration_since(started)
                     .as_secs_f32()

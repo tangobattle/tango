@@ -143,12 +143,11 @@ fn Lobby(snapshot: Snapshot, loadout: ReadSignal<Loadout>) -> Element {
     let compatible = snapshot.verdict == Some(Verdict::Compatible);
     let mine = loadout();
     let my_game = mine
-        .game
+        .game()
         .map(crate::ui::game_label)
         .unwrap_or_else(|| "No game".to_string());
     let my_patch = mine
-        .patch
-        .as_ref()
+        .patch()
         .map(|(name, version)| format!("{name} {version}"))
         .unwrap_or_else(|| "Unpatched".to_string());
 
@@ -264,7 +263,7 @@ fn VerdictLine(verdict: Verdict) -> Element {
 #[component]
 fn MatchTypes(loadout: ReadSignal<Loadout>, selected: (u8, u8)) -> Element {
     let host: crate::host::Context = use_context();
-    let Some(game) = loadout().game else {
+    let Some(game) = loadout().game() else {
         return rsx! {};
     };
     // Entry `i` is how many subtypes mode `i` has — e.g. BN6 is `[1, 1]`.

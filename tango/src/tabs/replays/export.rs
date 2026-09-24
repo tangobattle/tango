@@ -40,7 +40,7 @@ pub enum ExportMessage {
     /// [`Progress`](Self::Progress).
     Finished {
         replay: std::path::PathBuf,
-        result: Result<std::path::PathBuf, String>,
+        result: Result<std::path::PathBuf, ExportError>,
     },
     /// Dismiss a finished (or failed) export job from the per-replay
     /// job map. Path identifies which job to drop so the detail panel
@@ -110,7 +110,9 @@ impl ReplaysState {
                     // round on offer.
                     rounds = vec![true];
                 }
-                entry.job = Some(ExportJob::new(output.clone()));
+                let job = ExportJob::new(output.clone());
+                let canceller = job.canceller.clone();
+                entry.job = Some(job);
                 // Pin the panel open so it stays visible if the
                 // user navigates elsewhere mid-render. The Done
                 // state will collapse naturally on the next
@@ -125,6 +127,7 @@ impl ReplaysState {
                     has_setup,
                     clip: None,
                     swap_sides: false,
+                    canceller,
                 })
             }
             ExportMessage::StartClip {
@@ -146,7 +149,9 @@ impl ReplaysState {
                 // section — the chart's analysis can.
                 let has_setup = self.hp_charts.get(&replay).is_some_and(|c| c.has_setup);
                 let entry = self.per.entry(replay.clone()).or_default();
-                entry.job = Some(ExportJob::new(output.clone()));
+                let job = ExportJob::new(output.clone());
+                let canceller = job.canceller.clone();
+                entry.job = Some(job);
                 entry.panel_open = true;
                 Some(Effect::StartExport {
                     replay,
@@ -159,6 +164,7 @@ impl ReplaysState {
                     has_setup,
                     clip: Some(clip),
                     swap_sides,
+                    canceller,
                 })
             }
             ExportMessage::Progress {
@@ -247,6 +253,31 @@ impl ReplaysState {
     }
 }
 
+/// Why an export produced no file. Behind `Arc`s because messages
+/// clone.
+#[derive(Debug, Clone)]
+pub enum ExportError {
+    /// The recording couldn't be read, or its games and patches resolved.
+    Prepare(std::sync::Arc<anyhow::Error>),
+    /// A whole-replay export whose round mask selects nothing.
+    NoRoundsSelected,
+    /// The render failed, or was cancelled.
+    Render(std::sync::Arc<crate::replay_render::RenderError>),
+}
+
+impl ExportError {
+    /// The failure as the export panel shows it. The prepare and render
+    /// errors come from the library and the encoder, which describe
+    /// themselves.
+    pub fn describe(&self, lang: &LanguageIdentifier) -> String {
+        match self {
+            Self::Prepare(e) => format!("{e}"),
+            Self::NoRoundsSelected => t!(lang, "replays-export-no-rounds"),
+            Self::Render(e) => format!("{e}"),
+        }
+    }
+}
+
 /// Export status for a single replay. `result` flips to `Some`
 /// when the export task finishes; until the user dismisses it,
 /// the job stays in its `PerReplay` slot so the detail panel can
@@ -255,7 +286,7 @@ impl ReplaysState {
 pub struct ExportJob {
     pub completed: usize,
     pub total: usize,
-    pub result: Option<Result<std::path::PathBuf, String>>,
+    pub result: Option<Result<std::path::PathBuf, ExportError>>,
     /// Where the encoder is writing to. Surfaced under the in-flight
     /// caption so the user can see which file the render is going to.
     /// Empty for jobs created in an error state before a path was
@@ -307,7 +338,7 @@ pub struct PerReplay {
 }
 
 /// User-tunable settings the export form passes to
-/// `crate::replay_render::render(...)`. Defaults match the
+/// [`crate::replay_render::spawn`]. Defaults match the
 /// legacy replay-dump window.
 #[derive(Clone, Copy, Debug)]
 pub struct ExportSettings {
@@ -516,7 +547,7 @@ pub(super) fn export_popover<'a>(
                 .into()
             }
             Some(Err(e)) => column![
-                text(t!(lang, "replays-export-error", error = format!("{e}")))
+                text(t!(lang, "replays-export-error", error = e.describe(lang)))
                     .size(TEXT_CAPTION)
                     .style(widgets::danger_text_style),
                 widgets::labeled_icon_button(

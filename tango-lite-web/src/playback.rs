@@ -13,7 +13,6 @@
 //! pumps, slicing the seek chase and the prefetch pass so neither can
 //! monopolise the frame.
 
-use num_traits::ToPrimitive;
 use std::sync::Arc;
 
 use tango_library::rom::GameRef;
@@ -28,18 +27,15 @@ use tango_library::rom::GameRef;
 pub fn resolve(
     library: &crate::library::Handle,
     replay: &tango_replay::Replay,
-) -> Result<([GameRef; 2], [Arc<Vec<u8>>; 2]), String> {
+) -> Result<([GameRef; 2], [Vec<u8>; 2]), String> {
     let resolved = crate::library::with(library, |library| {
-        tango_library::replays::resolve_roms(
-            &library.files,
-            &library.roms,
-            &library.config.patches_path(),
-            &replay.metadata,
-        )
+        library
+            .catalog
+            .resolve_replay_roms(&library.files, &library.config.borrow(), &replay.metadata)
     })
     .ok_or_else(|| "library not open".to_owned())?
     .map_err(|e| e.to_string())?;
-    Ok((resolved.games, resolved.roms.map(Arc::new)))
+    Ok((resolved.games, resolved.roms))
 }
 
 /// Boot the recording at `path` and hand it to the pump.
@@ -53,9 +49,6 @@ pub async fn open(host: &crate::host::Host, path: std::path::PathBuf) -> Result<
         games,
         roms,
         replay,
-        // Both seats always share one engine, so either seat's rate is
-        // the session's.
-        games[0].pvp.tps().to_f32().unwrap(),
         crate::audio::sample_rate(),
         // No picture-in-picture: the inset is a second screen's worth
         // of pixels on a display that hasn't room for the first.
@@ -65,14 +58,14 @@ pub async fn open(host: &crate::host::Host, path: std::path::PathBuf) -> Result<
         // also means no round boundaries: this frontend caches no
         // analyses, so there is nothing to hand in and no pass to
         // discover them.
-        None,
+        false,
         vec![],
     )
     .map_err(|e| e.to_string())?;
 
     // Priming happens on the first ticks, so let the screen change
     // before the main thread goes away for a moment.
-    tango_session::platform::sleep(std::time::Duration::from_millis(32)).await;
+    tango_platform::sleep(std::time::Duration::from_millis(32)).await;
     crate::engine::start_replay(&host.engine, session, workers.into_driver(), stream, sink);
     Ok(())
 }

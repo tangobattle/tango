@@ -8,7 +8,7 @@
 /// a file under the replays directory on a desktop, a row in an object
 /// store in a browser. This is the one place the live match assumed a
 /// filesystem, and a browser is the host that doesn't have one.
-pub trait ReplayStore: crate::platform::WasmNotSend + crate::platform::WasmNotSync {
+pub trait ReplayStore: tango_platform::WasmNotSend + tango_platform::WasmNotSync {
     /// Open a recording. `name` carries no extension and no directory.
     fn create(&self, name: &str) -> std::io::Result<Recording>;
 }

@@ -88,9 +88,7 @@ pub fn match_type_name(game: GameRef, mode: u8, subtype: u8) -> String {
 /// `save-megaman`, which is the desktop's convention and the reason a
 /// bare `""` template still has something to be called.
 pub fn save_template_name(game: GameRef, template: &str) -> String {
-    let family = game.family_and_variant().0;
-    let key = if template.is_empty() { "megaman" } else { template };
-    game::family_str(family, lang(), &format!("save-{key}")).unwrap_or_else(|| {
+    tango_library::save::template_label(lang(), game.family_and_variant().0, template).unwrap_or_else(|| {
         if template.is_empty() {
             // A family that ships one unnamed template names no save
             // keys either (BN6), so there is nothing to look up. The

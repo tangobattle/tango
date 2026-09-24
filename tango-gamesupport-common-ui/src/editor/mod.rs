@@ -66,7 +66,11 @@ pub trait GameSaveEditor: Send + Sync {
     /// Called per frame — must stay cheap. Capability that genuinely
     /// varies at runtime (a BN6 link navi has no navicust) is this
     /// method's to probe; everything else should be declared statically.
-    fn tabs(&self, loaded: &OpenSave) -> Vec<Tab>;
+    /// The default is [`view::standard_tabs`], which probes the shared
+    /// views.
+    fn tabs(&self, loaded: &OpenSave) -> Vec<Tab> {
+        crate::editor::view::standard_tabs(loaded.save.as_ref())
+    }
 
     /// A control this game puts in the editor's top bar, left of Save /
     /// Cancel: a whole-save choice, bigger than any one section's body.
@@ -128,25 +132,33 @@ pub trait GameSaveEditor: Send + Sync {
     }
 
     /// Read-only body for `tab`. May borrow from `loaded` (most
-    /// components return owned `'static` trees, which coerce).
+    /// components return owned `'static` trees, which coerce). The
+    /// default routes the standard tabs ([`view::render_standard`]); a
+    /// game with tabs of its own matches those and falls back to it.
     fn render<'a>(
         &self,
         lang: &'a LanguageIdentifier,
         tab: Tab,
         loaded: &'a OpenSave,
         opts: RenderOpts,
-    ) -> Element<'a, Action>;
+    ) -> Element<'a, Action> {
+        crate::editor::view::render_standard(lang, tab, loaded, opts)
+    }
 
     /// Editor body for `tab`. Only called while the global edit session
     /// is open *and* the tab's section is editable on this save (per
-    /// [`crate::model::Editability`]).
+    /// [`crate::model::Editability`]). The default routes the standard
+    /// tabs ([`view::render_standard_edit`]); a game that keeps one of
+    /// them read-only (BN3's navicust) overrides this to leave it out.
     fn render_edit<'a>(
         &self,
         lang: &'a LanguageIdentifier,
         tab: Tab,
         loaded: &'a OpenSave,
         state: &'a State,
-    ) -> Element<'a, Action>;
+    ) -> Element<'a, Action> {
+        crate::editor::view::render_standard_edit(lang, tab, loaded, state)
+    }
 
     /// Whether `tab`'s section participates in the global edit session
     /// on this save. The default maps the shared
@@ -159,14 +171,17 @@ pub trait GameSaveEditor: Send + Sync {
 
     /// The tab as TSV-ish clipboard text, or `None` for tabs without a
     /// text form. Section headers localize through `lang`, the same
-    /// keys the rendered view uses.
-    fn tab_as_text(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String>;
+    /// keys the rendered view uses. The default covers the standard tabs
+    /// ([`view::standard_as_text`]).
+    fn tab_as_text(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
+        crate::editor::view::standard_as_text(lang, tab, loaded, opts)
+    }
 
     /// The tab as a raster image for the clipboard, or `None` for tabs
-    /// without an image form.
+    /// without an image form. The default covers the standard tabs
+    /// ([`view::standard_as_image`]).
     fn tab_as_image(&self, tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
-        let _ = (tab, loaded);
-        None
+        crate::editor::view::standard_as_image(tab, loaded)
     }
 
     /// Game-owned legality collapsed to shared UI metadata and opaque warning
@@ -229,6 +244,10 @@ impl GameSaveEditor for EmptyEditor {
         _loaded: &OpenSave,
         _opts: RenderOpts,
     ) -> Option<String> {
+        None
+    }
+
+    fn tab_as_image(&self, _tab: Tab, _loaded: &OpenSave) -> Option<image::RgbaImage> {
         None
     }
 }

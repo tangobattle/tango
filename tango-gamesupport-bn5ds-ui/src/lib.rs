@@ -1059,12 +1059,8 @@ impl GameSaveEditor for Ui {
         opts: RenderOpts,
     ) -> iced::Element<'a, Action> {
         match tab {
-            Tab::Cover => sv::cover::render_cover(lang, loaded),
-            Tab::Navicust => sv::navicust::render_navicust_tab(lang, loaded),
-            Tab::Folder => sv::folder::render_folder(lang, loaded, opts.folder_grouped),
             Tab::Party => render_party(lang, loaded),
-            Tab::AutoBattleData => sv::abd::render_auto_battle_data(lang, loaded),
-            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
+            tab => sv::render_standard(lang, tab, loaded, opts),
         }
     }
 
@@ -1076,28 +1072,15 @@ impl GameSaveEditor for Ui {
         state: &'a State,
     ) -> iced::Element<'a, Action> {
         match tab {
-            Tab::Navicust => sv::navicust::render_navicust_edit(lang, loaded, state),
-            Tab::Folder => sv::folder::render_folder_edit(lang, loaded, state),
             Tab::Party => render_party_edit(lang, loaded),
-            Tab::AutoBattleData => sv::abd::render_auto_battle_data_edit(lang, loaded, state),
-            _ => sv::placeholder(tango_gamesupport_common_ui::t!(lang, "save-empty")),
+            tab => sv::render_standard_edit(lang, tab, loaded, state),
         }
     }
 
     fn tab_as_text(&self, lang: &LanguageIdentifier, tab: Tab, loaded: &OpenSave, opts: RenderOpts) -> Option<String> {
         match tab {
-            Tab::Navicust => sv::navicust::navicust_as_text(loaded),
-            Tab::Folder => sv::folder::as_text(loaded, opts),
             Tab::Party => party_as_text(loaded),
-            Tab::AutoBattleData => sv::abd::as_text(lang, loaded),
-            _ => None,
-        }
-    }
-
-    fn tab_as_image(&self, tab: Tab, loaded: &OpenSave) -> Option<image::RgbaImage> {
-        match tab {
-            Tab::Navicust => sv::navicust::as_image(loaded),
-            _ => None,
+            tab => sv::standard_as_text(lang, tab, loaded, opts),
         }
     }
 

@@ -61,15 +61,18 @@ impl Capture {
     }
 }
 
-/// Take a keyframe at most once per this many ticks — same trade-off as
-/// the trap engine's `MID_ROUND_SNAPSHOT_INTERVAL`.
+/// Take a keyframe at most once per this many ticks: a seek re-simulates
+/// at most this far past its keyframe, traded against one whole-pair
+/// capture held per interval for the length of the recording.
 pub const KEYFRAME_INTERVAL: u32 = 60;
 
 /// Depth of the [`RewindRing`]'s per-tick window behind the playhead.
 pub const REWIND_FRAMES: u32 = 90;
 
-/// Hard cap on rewind-ring entries (see the trap engine's
-/// `REWIND_BUFFER_MAX_ENTRIES` for the sizing rationale).
+/// Hard cap on rewind-ring entries. The window proper spans
+/// `REWIND_FRAMES + KEYFRAME_INTERVAL + 1` ticks behind the anchor; the
+/// headroom covers captures a chase lays on either side of it, and the
+/// cap bounds the ring's memory whatever a chase does.
 const REWIND_MAX_ENTRIES: usize = 192;
 
 /// Sparse keyframe store covering the whole replay, shared between the
@@ -137,11 +140,12 @@ impl<T> SnapshotStore<T> {
     }
 }
 
-/// Rolling per-tick snapshot window trailing the playhead — the pair
-/// flavor of the trap engine's `RewindBuffer`: every tick the playback
-/// pair runs (normal playback and seek chases alike) is captured, so
-/// short backward steps land on exact snapshots. Anchor semantics and
-/// eviction mirror the trap implementation.
+/// Rolling per-tick snapshot window trailing the playhead: every tick the
+/// playback pair runs (normal playback and seek chases alike) is
+/// captured, so short backward steps land on exact snapshots. Forward
+/// playback drags the anchor along and a seek re-anchors it at its
+/// target; eviction drops captures that fall behind the window, then
+/// whichever end lies farthest from the anchor.
 pub struct RewindRing<T = Capture>(Arc<RewindRingInner<T>>);
 
 struct RewindRingInner<T> {
@@ -861,8 +865,8 @@ pub trait ReplayBoot: Send + Sync {
     /// flipped mid-walk, and no unserialized state the simulation can
     /// observe. Both engines needed work to be able to say it: melonDS
     /// rebuilds the raster state display capture turns into VRAM, and
-    /// runs one throwaway frame here, because a console that has never
-    /// run one is not equivalent to a console that has.
+    /// its savestates carry the timing state its JIT bakes into
+    /// compiled blocks.
     fn boot_unprimed(&self, observe: bool) -> Result<BootedReplay, crate::Error>;
 }
 
@@ -954,29 +958,6 @@ impl ReplaySet {
                 self.publish_first_capture(FirstCapture::Unavailable);
             }
         }
-        Ok(Replay::new(playback, self.store.clone()))
-    }
-
-    /// A display pair landed on [`Self::playback`]'s primed capture
-    /// instead of walking a prime of its own — the same bare-pair
-    /// landing [`Self::stats_reusing_playback`] performs, but handed
-    /// back as a [`Replay`] whose frames a caller can read.
-    ///
-    /// Only the determinism drills want this: a landed pair must play
-    /// the recording exactly as the pair that took the capture did, and
-    /// comparing the two front to back is how an engine's
-    /// [`ReplayBoot::boot_unprimed`] contract is actually held to
-    /// account (see bn5ds's and bn6's `landing_probe`). Blocks until
-    /// the display boot lands, exactly as the statistics flavor does.
-    #[doc(hidden)]
-    pub fn playback_landed(&self) -> Result<Replay, crate::Error> {
-        let bare = self.boot.boot_unprimed(false)?;
-        let capture = match self.wait_first_capture() {
-            FirstCapture::Available(capture) => capture,
-            _ => return Err(crate::Error::Unsupported("no primed capture to land on")),
-        };
-        let mut playback = Playback::new(bare.link, self.inputs.clone());
-        playback.load(&capture)?;
         Ok(Replay::new(playback, self.store.clone()))
     }
 

@@ -30,7 +30,7 @@
 ///
 /// Builds for wasm32: the transport rides a facade that is the
 /// browser's own WebRTC, signaling is the browser's own WebSocket, and
-/// the waiting goes through [`platform`] rather than a tokio runtime a
+/// the waiting goes through [`tango_platform`] rather than a tokio runtime a
 /// browser host doesn't have. A browser has played a real match over
 /// it; the reconnect path is the one part still unexercised there.
 #[cfg(feature = "netplay")]
@@ -44,11 +44,9 @@ pub mod training;
 
 // What they're built out of.
 pub mod audio;
-/// The netplay transport: two byte-pipe planes over one peer
-/// connection, and the signaling rendezvous that produces it.
-#[cfg(feature = "netplay")]
-pub use tango_net as net;
-pub use tango_platform as platform;
+mod local;
+/// Re-arranging a multi-screen composition for presentation.
+pub mod screens;
 /// Completion sink for host-owned statistics persistence.
 pub mod stats;
 
@@ -79,18 +77,10 @@ pub enum Error {
     /// The netplay handoff's transport bundle failed to assemble.
     #[error(transparent)]
     #[cfg(feature = "netplay")]
-    LinkBringUp(#[from] crate::net::link::BringUpError),
-    #[error("replay has a bad local player index")]
-    BadLocalPlayerIndex,
-    #[error("replay has no inputs")]
-    EmptyReplay,
-    /// A side's committed SRAM dump didn't parse as a save for its game.
-    #[error("parse {side} save: {source}")]
-    ParseSave {
-        side: &'static str,
-        #[source]
-        source: tango_gamesupport::Error,
-    },
+    LinkBringUp(#[from] tango_net::link::BringUpError),
+    /// A recording the engine can't be configured from.
+    #[error(transparent)]
+    Replay(#[from] replay::ConfigError),
     /// A side's negotiated settings arrived without game info.
     #[error("{side} settings missing game info")]
     MissingGameInfo { side: &'static str },
@@ -167,15 +157,6 @@ impl PauseGate {
             .wait_timeout_while(g, Self::DEFENSIVE_TICK, |paused| *paused)
             .unwrap();
     }
-}
-
-/// Fast-forward pacing target: `base_fps * factor`, clamped to
-/// `[1, 4×base_fps]`. Above ~4× one audio callback interval's production
-/// overshoots the [`Stream`](audio::Stream) discard cap and
-/// fast-forward turns into constant skips, so the clamp keeps it coherent.
-/// Shared by the single-player and training `set_speed`.
-pub fn clamp_speed(base_fps: f32, factor: f32) -> f32 {
-    (base_fps * factor).clamp(1.0, base_fps * 4.0)
 }
 
 /// A layout's screens side by side, as a host sizes one texture for
@@ -384,6 +365,57 @@ impl dyn Session {
     /// Mutable twin of [`downcast_ref`](Self::downcast_ref).
     pub fn downcast_mut<T: Session>(&mut self) -> Option<&mut T> {
         (self as &mut dyn std::any::Any).downcast_mut()
+    }
+
+    /// Where the session stands on its priming walk, or `None` once it
+    /// is simply running (or is a kind that never walks). A failure
+    /// comes first, since it outranks the wait it ended.
+    pub fn priming(&self) -> Option<Priming> {
+        #[cfg(feature = "netplay")]
+        if let Some(pvp) = self.downcast_ref::<pvp::PvpSession>() {
+            if let Some(error) = pvp.prime_error() {
+                return Some(Priming::Failed(error));
+            }
+            if pvp.is_booting() {
+                return Some(Priming::Match);
+            }
+            return pvp.waiting_for_peer().then_some(Priming::Peer);
+        }
+        let replay = self.downcast_ref::<replay::ReplaySession>()?;
+        if let Some(error) = replay.prime_error() {
+            return Some(Priming::Failed(error));
+        }
+        replay.is_booting().then_some(Priming::Playback)
+    }
+}
+
+/// Where a session is in its priming walk — the seconds of emulation
+/// that get a game from power-on to its link battle. Both kinds that
+/// walk come up before it runs and show nothing at all while it does,
+/// which on a DS-class game is long enough to read as a hang, so hosts
+/// draw a notice from this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Priming {
+    /// A match's own pair is being booted and primed
+    /// (`PvpSession::is_booting`).
+    Match,
+    /// Ours is primed and the drive loop is idling at the ready gate
+    /// for the peer's to get there (`PvpSession::waiting_for_peer`).
+    Peer,
+    /// A replay's pair is being booted and primed
+    /// ([`replay::ReplaySession::is_booting`]).
+    Playback,
+    /// The walk failed, carrying the engine's own reason. Terminal: the
+    /// session stays up with nothing to run until the user leaves it.
+    Failed(String),
+}
+
+impl Priming {
+    /// Whether this is a wait that is still going somewhere — which is
+    /// also what decides whether a host keeps redrawing for it. A
+    /// failure is over; it just hasn't been read yet.
+    pub fn in_progress(&self) -> bool {
+        !matches!(self, Priming::Failed(_))
     }
 }
 
