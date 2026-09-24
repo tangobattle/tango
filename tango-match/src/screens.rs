@@ -1,13 +1,15 @@
 //! Presenting a multi-screen composition in another arrangement.
 //!
-//! A session composes its screens side by side ([`composite_size`]),
-//! the shape replays, exports and the wire see. A host that shows them
-//! otherwise — stacked, reordered, or cut down to one screen — re-packs
-//! that frame at draw time with these helpers, and maps the stylus
-//! through the same geometry, so the picture and the touch target
-//! can't disagree about where a screen ended up.
-//!
-//! [`composite_size`]: crate::composite_size
+//! A console composes its screens side by side
+//! ([`ScreenLayout::composite_size`]), the shape replays, exports and the
+//! wire see. Anything that shows them otherwise — a host stacking,
+//! reordering, or cutting them down to one screen at draw time, or a
+//! video export stacking each seat — re-packs that frame with these
+//! helpers, and a host maps the stylus through the same geometry, so the
+//! picture and the touch target can't disagree about where a screen
+//! ended up.
+
+use crate::ScreenLayout;
 
 /// How the presented screens run.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -29,9 +31,15 @@ pub struct Arrangement {
 }
 
 impl Arrangement {
-    /// The session's own composition: side by side, canonical order.
+    /// The console's own composition: side by side, canonical order.
     pub const CANONICAL: Self = Self {
         stacking: Stacking::Horizontal,
+        touch_first: false,
+    };
+
+    /// Canonical order, one screen under the next.
+    pub const STACKED: Self = Self {
+        stacking: Stacking::Vertical,
         touch_first: false,
     };
 
@@ -47,7 +55,7 @@ impl Arrangement {
     /// pulled to the front when it leads. Shared by the placement and
     /// the re-pack below so the two can't disagree about where a screen
     /// ended up.
-    pub fn order(self, layout: &tango_match::ScreenLayout) -> Vec<usize> {
+    pub fn order(self, layout: &ScreenLayout) -> Vec<usize> {
         let mut order: Vec<usize> = (0..layout.screens.len()).collect();
         if self.touch_first {
             if let Some(touch) = layout.touch {
@@ -61,7 +69,7 @@ impl Arrangement {
     }
 
     /// The screens this arrangement actually shows, in order.
-    fn shown(self, layout: &tango_match::ScreenLayout) -> Vec<usize> {
+    fn shown(self, layout: &ScreenLayout) -> Vec<usize> {
         let mut order = self.order(layout);
         // Primary-only shows the leading screen and drops the rest.
         if self.stacking == Stacking::PrimaryOnly {
@@ -76,12 +84,12 @@ impl Arrangement {
     /// Handed to the session so the console can stop composing a screen
     /// nobody is shown - on the DS that is a whole 2D engine, and
     /// primary-only is exactly the arrangement that drops one.
-    pub fn presented_mask(self, layout: &tango_match::ScreenLayout) -> u8 {
+    pub fn presented_mask(self, layout: &ScreenLayout) -> u8 {
         self.shown(layout).iter().fold(0u8, |m, &i| m | 1 << i)
     }
 
     /// The presented frame's size in native pixels.
-    pub fn size(self, layout: &tango_match::ScreenLayout) -> (u32, u32) {
+    pub fn size(self, layout: &ScreenLayout) -> (u32, u32) {
         let shown = self.shown(layout);
         let screens = shown.iter().map(|&i| layout.screens[i]);
         match self.stacking {
@@ -107,10 +115,7 @@ impl Arrangement {
     /// frame, trail it, or not be in it at all — as in a primary-only
     /// arrangement led by the upper screen, or a game whose link battle
     /// never leaves that screen.
-    pub fn touch_screen_placement(
-        self,
-        layout: &tango_match::ScreenLayout,
-    ) -> Option<((f32, f32), tango_match::Screen)> {
+    pub fn touch_screen_placement(self, layout: &ScreenLayout) -> Option<((f32, f32), crate::Screen)> {
         let touch = layout.touch?;
         let shown = self.shown(layout);
         let at = shown.iter().position(|&i| i == touch)?;
@@ -136,66 +141,53 @@ impl Arrangement {
     }
 
     /// Re-pack a canonical RGBA8 composition (`layout`'s screens side by
-    /// side, [`composite_size`](crate::composite_size)) into this
-    /// arrangement: rows re-sliced into the presented order and axis, or
-    /// down to the primary screen alone. Returns the presented size and
-    /// pixels; [`size`](Self::size) gives the same size up front.
-    pub fn rearrange(self, pixels: &[u8], layout: &tango_match::ScreenLayout) -> (u32, u32, Vec<u8>) {
+    /// side, [`ScreenLayout::composite_size`]) into this arrangement: rows
+    /// re-sliced into the presented order and axis, or down to the primary
+    /// screen alone. Returns the presented size and pixels; [`size`](Self::size)
+    /// gives the same size up front. Screens shorter or narrower than the
+    /// presented frame pad with opaque black — never hit on a DS, whose
+    /// screens match.
+    pub fn rearrange(self, pixels: &[u8], layout: &ScreenLayout) -> (u32, u32, Vec<u8>) {
+        let (width, height) = self.size(layout);
+        let mut out = [0, 0, 0, 0xff].repeat(width as usize * height as usize);
+        self.blit(pixels, layout, &mut out, width as usize, 0);
+        (width, height, out)
+    }
+
+    /// [`rearrange`](Self::rearrange) in place: copy the arranged screens
+    /// into `dst`, a bitmap `dst_width` pixels wide, with the
+    /// arrangement's left edge at column `x`. Only the screens' own pixels
+    /// are written. Rows past the end of a short `pixels` — a console that
+    /// hasn't drawn yet — are skipped rather than smeared, leaving what
+    /// `dst` held.
+    pub fn blit(self, pixels: &[u8], layout: &ScreenLayout, dst: &mut [u8], dst_width: usize, x: usize) {
         const BPP: usize = 4;
-        let (width, height) = crate::composite_size(layout);
+        let src_stride = layout.composite_size().0 as usize * BPP;
         // Each screen's column offset in the canonical composition.
         let mut x0 = vec![0usize; layout.screens.len()];
         for i in 1..x0.len() {
             x0[i] = x0[i - 1] + layout.screens[i - 1].width as usize;
         }
-        let order = self.order(layout);
-        let src_stride = width as usize * BPP;
-        // A screen's row slice in the canonical frame, or `None` past its
-        // height (screens shorter than the composite pad with opaque
-        // black — never hit on a DS, whose screens match).
-        let row_of = |i: usize, row: usize| -> Option<&[u8]> {
-            let screen = &layout.screens[i];
-            (row < screen.height as usize).then(|| {
-                let start = row * src_stride + x0[i] * BPP;
-                &pixels[start..start + screen.width as usize * BPP]
-            })
-        };
-        let pad = |pixels: &mut Vec<u8>, px: usize| {
-            for _ in 0..px {
-                pixels.extend_from_slice(&[0, 0, 0, 0xff]);
+        let vertical = self.stacking == Stacking::Vertical;
+        // Where the next screen starts in the presented frame.
+        let (mut dx, mut dy) = (0usize, 0usize);
+        for i in self.shown(layout) {
+            let screen = layout.screens[i];
+            let row_bytes = screen.width as usize * BPP;
+            for row in 0..screen.height as usize {
+                let from = row * src_stride + x0[i] * BPP;
+                let Some(line) = pixels.get(from..from + row_bytes) else {
+                    continue;
+                };
+                let at = ((dy + row) * dst_width + x + dx) * BPP;
+                dst[at..at + row_bytes].copy_from_slice(line);
             }
-        };
-        let (out_w, out_h) = self.size(layout);
-        let mut out = Vec::with_capacity(out_w as usize * out_h as usize * BPP);
-        match self.stacking {
-            Stacking::Vertical => {
-                for &i in &order {
-                    for row in 0..layout.screens[i].height as usize {
-                        out.extend_from_slice(row_of(i, row).unwrap());
-                        pad(&mut out, out_w as usize - layout.screens[i].width as usize);
-                    }
-                }
-            }
-            Stacking::PrimaryOnly => {
-                let i = order[0];
-                for row in 0..out_h as usize {
-                    out.extend_from_slice(row_of(i, row).unwrap());
-                }
-            }
-            Stacking::Horizontal => {
-                // Same dimensions as the canonical frame, columns
-                // reordered within each row.
-                for row in 0..height as usize {
-                    for &i in &order {
-                        match row_of(i, row) {
-                            Some(slice) => out.extend_from_slice(slice),
-                            None => pad(&mut out, layout.screens[i].width as usize),
-                        }
-                    }
-                }
+            if vertical {
+                dy += screen.height as usize;
+            } else {
+                dx += screen.width as usize;
             }
         }
-        (out_w, out_h, out)
     }
 }
 
@@ -203,9 +195,22 @@ impl Arrangement {
 mod tests {
     use super::Stacking::{Horizontal, PrimaryOnly, Vertical};
     use super::{Arrangement, Stacking};
+    use crate::ScreenLayout;
 
-    fn screen() -> tango_match::Screen {
-        tango_match::Screen {
+    /// The DS's two screens compose side by side, not stacked. Pinned
+    /// because the stacked shape is the one that falls out for free —
+    /// concatenating equal-width screens *is* a vertical stack — so a
+    /// frame builder that stops interleaving rows regresses to it
+    /// silently, and only the aspect ratio ever says so.
+    #[test]
+    fn two_screens_compose_side_by_side() {
+        assert_eq!(ScreenLayout::new([screen(), screen()]).composite_size(), (512, 192));
+        // One screen is unaffected either way.
+        assert_eq!(ScreenLayout::single(240, 160).composite_size(), (240, 160));
+    }
+
+    fn screen() -> crate::Screen {
+        crate::Screen {
             width: 256,
             height: 192,
         }
@@ -213,15 +218,11 @@ mod tests {
 
     /// A DS composing its whole console: upper screen, then the touch
     /// screen it points at.
-    fn both() -> tango_match::ScreenLayout {
-        tango_match::ScreenLayout::new([screen(), screen()]).with_touch(1)
+    fn both() -> ScreenLayout {
+        ScreenLayout::new([screen(), screen()]).with_touch(1)
     }
 
-    fn place(
-        layout: &tango_match::ScreenLayout,
-        stacking: Stacking,
-        touch_first: bool,
-    ) -> Option<((f32, f32), tango_match::Screen)> {
+    fn place(layout: &ScreenLayout, stacking: Stacking, touch_first: bool) -> Option<((f32, f32), crate::Screen)> {
         Arrangement { stacking, touch_first }.touch_screen_placement(layout)
     }
 
@@ -247,7 +248,7 @@ mod tests {
     /// so no arrangement produces a stylus area.
     #[test]
     fn a_composition_without_the_touch_screen_has_no_stylus_area() {
-        let upper = tango_match::ScreenLayout::new([screen()]);
+        let upper = ScreenLayout::new([screen()]);
         for stacking in [Horizontal, Vertical, PrimaryOnly] {
             for touch_first in [false, true] {
                 assert!(place(&upper, stacking, touch_first).is_none());
@@ -260,7 +261,7 @@ mod tests {
     /// a composition of the touch screen alone is all stylus.
     #[test]
     fn a_touch_only_composition_is_all_stylus() {
-        let touch = tango_match::ScreenLayout::new([screen()]).with_touch(0);
+        let touch = ScreenLayout::new([screen()]).with_touch(0);
         for stacking in [Horizontal, Vertical, PrimaryOnly] {
             for touch_first in [false, true] {
                 let (origin, size) = place(&touch, stacking, touch_first).unwrap();
@@ -274,8 +275,8 @@ mod tests {
     /// screen is, and reports the size it promised.
     #[test]
     fn the_repack_moves_whole_screens() {
-        let small = tango_match::Screen { width: 2, height: 2 };
-        let layout = tango_match::ScreenLayout::new([small, small]).with_touch(1);
+        let small = crate::Screen { width: 2, height: 2 };
+        let layout = ScreenLayout::new([small, small]).with_touch(1);
         // Upper screen all 1s, touch screen all 2s.
         let canonical: Vec<u8> = (0..2).flat_map(|_| [[1u8; 8], [2u8; 8]].concat()).collect();
         for stacking in [Horizontal, Vertical, PrimaryOnly] {

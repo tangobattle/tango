@@ -282,6 +282,18 @@ pub fn family_display_name(lang: &unic_langid::LanguageIdentifier, family: &str)
     family_str(family, lang, "name").unwrap_or_else(|| family.to_string())
 }
 
+/// The family's display name for a `(family, variant)` pair off the wire
+/// or out of a recording, which may name a family this build has no
+/// support for: then the raw pair, rather than pretending not to know
+/// what the peer said.
+pub fn family_display_name_or_raw(
+    lang: &unic_langid::LanguageIdentifier,
+    family: &str,
+    variant: impl std::fmt::Display,
+) -> String {
+    family_str(family, lang, "name").unwrap_or_else(|| format!("{family} v{variant}"))
+}
+
 /// Resolve a (possibly persisted) family string to its `&'static`
 /// form, or None if no game uses it. Lets restored config — owned
 /// `String`s — drive the `&'static str` family state.

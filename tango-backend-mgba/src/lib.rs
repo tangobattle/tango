@@ -1,15 +1,14 @@
 //! The mgba engine: a pair of emulated GBAs on an emulated link cable.
 //!
-//! Everything here used to live in `tango-match`, which left that crate
-//! — the engine-neutral seam every game speaks — unable to build without
-//! an emulator. A DS game that pulls in `tango-match` should not compile
-//! mgba, so the engine moved out to sit beside `tango-match-melonds`.
+//! It lives outside `tango-match` so that crate — the engine-neutral seam
+//! every game speaks — builds without an emulator: a DS game that pulls
+//! in `tango-match` should not compile mgba. The melonDS engine sits
+//! beside it in `tango-backend-melonds`.
 //!
 //! The pieces:
 //!
 //! - [`link`]: the [`tango_match::Link`] implementation — the pair as
-//!   the seam's rollback unit, with audio revocation and telemetry
-//!   riding inside.
+//!   the seam's rollback unit, with telemetry riding inside.
 //! - [`solo`]: one GBA booted alone, as the seam's
 //!   [`Console`](tango_match::Console).
 //! - [`backend`]: the [`tango_match::Backend`] a game registration

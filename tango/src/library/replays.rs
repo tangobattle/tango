@@ -38,10 +38,7 @@ pub fn compute_and_cache_match_stats(
     // prefetcher takes over the same analysis.
     cancel: &std::sync::atomic::AtomicBool,
 ) -> anyhow::Result<tango_match::analysis::MatchStats> {
-    let storage = crate::library::storage();
-    let replay = tango_replay::Replay::decode(storage.open(&path)?)?;
-
-    let resolved = resolve_roms(storage, &scanners.roms, &patches_path, &replay.metadata)?;
+    let (replay, resolved) = open(crate::library::storage(), &scanners.roms, &patches_path, &path)?;
     let stats = tango_session::replay::analyze(resolved.games, resolved.roms, &replay, on_progress, cancel)?;
     write_match_stats(&stats_path(&cache_path, &replays_path, &path), &stats)?;
     Ok(stats)

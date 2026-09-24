@@ -331,11 +331,9 @@ impl App {
         // registrations + raw ROM bytes. Failures show up as a
         // finished job with an error — same as runtime errors.
         let prep = (|| -> anyhow::Result<session::replay::EngineReplay> {
-            let f = std::fs::File::open(&replay_path)?;
-            let replay = tango_replay::Replay::decode(f)?;
-            let resolved =
+            let (replay, resolved) =
                 self.scanners
-                    .resolve_replay_roms(crate::library::storage(), &self.config, &replay.metadata)?;
+                    .open_replay(crate::library::storage(), &self.config, &replay_path)?;
             Ok(session::replay::EngineReplay::new(
                 resolved.games,
                 resolved.roms,

@@ -15,40 +15,15 @@
 
 use std::sync::Arc;
 
-use tango_library::rom::GameRef;
-
-/// Both sides' games and the exact ROMs they were played on.
-///
-/// Absolute player order throughout — the file's one
-/// perspective-dependent byte is `local_player_index`, and it is
-/// deliberately not consulted here. Shared with the exporter, which
-/// re-simulates the same match through a different pipeline and so
-/// needs the identical pair.
-pub fn resolve(
-    library: &crate::library::Handle,
-    replay: &tango_replay::Replay,
-) -> Result<([GameRef; 2], [Vec<u8>; 2]), String> {
-    let resolved = crate::library::with(library, |library| {
-        library
-            .catalog
-            .resolve_replay_roms(&library.files, &library.config.borrow(), &replay.metadata)
-    })
-    .ok_or_else(|| "library not open".to_owned())?
-    .map_err(|e| e.to_string())?;
-    Ok((resolved.games, resolved.roms))
-}
-
 /// Boot the recording at `path` and hand it to the pump.
 pub async fn open(host: &crate::host::Host, path: std::path::PathBuf) -> Result<(), String> {
-    let library = &host.library;
-    let replay = Arc::new(crate::library::read_replay(library, &path)?);
-    let (games, roms) = resolve(library, &replay)?;
+    let (replay, resolved) = crate::library::open_replay(&host.library, &path)?;
 
     let sink = host.engine.audio_sink().await;
     let (session, workers, stream) = tango_session::replay::ReplaySession::new(
-        games,
-        roms,
-        replay,
+        resolved.games,
+        resolved.roms,
+        Arc::new(replay),
         crate::audio::sample_rate(),
         // No picture-in-picture: the inset is a second screen's worth
         // of pixels on a display that hasn't room for the first.

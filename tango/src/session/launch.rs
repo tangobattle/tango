@@ -1,7 +1,8 @@
 //! Prepare sessions from the desktop library and start their workers.
 
 use super::runtime::{run_prefetch_pass, Pacer, PrefetchStatsFeed, RunningSession};
-use super::{pvp, replay, singleplayer, training, PvpPanes};
+use super::update::pvp::PvpPanes;
+use super::{pvp, replay, singleplayer, training};
 use crate::library::Catalog;
 use crate::platform::audio;
 use crate::{config, selection};
@@ -12,6 +13,20 @@ pub struct Launch {
     pub(super) runtime: RunningSession,
     pub(super) pvp_panes: Option<PvpPanes>,
     pub(super) replay_path: Option<std::path::PathBuf>,
+    /// The game's background art, loaded with the session rather than
+    /// while drawing it.
+    pub(super) backdrop: Option<iced::widget::image::Handle>,
+}
+
+impl Launch {
+    fn new(runtime: RunningSession) -> Self {
+        Self {
+            backdrop: super::backdrop::load(runtime.local_game()),
+            runtime,
+            pvp_panes: None,
+            replay_path: None,
+        }
+    }
 }
 
 impl std::fmt::Debug for Launch {
@@ -36,9 +51,8 @@ pub fn build_playback(
     // cached, so the scrub bar draws them from the first frame.
     round_boundaries: Vec<u32>,
 ) -> anyhow::Result<Launch> {
-    let f = std::fs::File::open(path)?;
-    let replay = std::sync::Arc::new(tango_replay::Replay::decode(f)?);
-    let resolved = scanners.resolve_replay_roms(crate::library::storage(), config, &replay.metadata)?;
+    let (replay, resolved) = scanners.open_replay(crate::library::storage(), config, path)?;
+    let replay = std::sync::Arc::new(replay);
     let (session, workers, audio) = replay::ReplaySession::new(
         resolved.games,
         resolved.roms,
@@ -97,9 +111,8 @@ pub fn build_playback(
             .spawn(move || run_prefetch_pass(prefetch, stats))?,
     );
     Ok(Launch {
-        runtime,
-        pvp_panes: None,
         replay_path: Some(path.to_owned()),
+        ..Launch::new(runtime)
     })
 }
 
@@ -160,23 +173,13 @@ pub async fn spawn_pvp(
     let mut runtime = RunningSession::new(session, audio);
     runtime.spawn_driver("tango-sio-drive", boot)?;
     Ok(Launch {
-        runtime,
-        pvp_panes: Some(PvpPanes {
-            local_loaded: Some(local_loaded),
+        pvp_panes: Some(PvpPanes::new(
+            local_loaded,
             opponent_loaded,
             opponent_build_warnings,
-            build_warning_dismissed: false,
-            build_warning_violations_expanded: false,
-            // Clamped on the way in: the persisted pair predates the
-            // current bounds on an older config, or the window it was
-            // sized against is gone.
-            pane_widths: [0, 1].map(|i| {
-                config.pvp_setup_pane_widths[i]
-                    .clamp(super::view::SETUP_PANE_MIN_WIDTH, super::view::SETUP_PANE_MAX_WIDTH)
-            }),
-            pane_drag: None,
-        }),
-        replay_path: None,
+            config.pvp_setup_pane_widths,
+        )),
+        ..Launch::new(runtime)
     })
 }
 
@@ -203,11 +206,7 @@ pub fn spawn_singleplayer(
     let mut runtime = RunningSession::new(session, audio);
     runtime.spawn_driver("singleplayer", driver)?;
     runtime.save_to(resolved.prepared.save_path, save);
-    Ok(Launch {
-        runtime,
-        pvp_panes: None,
-        replay_path: None,
-    })
+    Ok(Launch::new(runtime))
 }
 
 /// Boot the supplied selection in training mode — a local link battle
@@ -236,9 +235,5 @@ pub fn spawn_training(
     session.set_opponent_visible(config.opponent_view != config::OpponentView::Off);
     let mut runtime = RunningSession::new(session, audio);
     runtime.spawn_driver("training", driver)?;
-    Ok(Launch {
-        runtime,
-        pvp_panes: None,
-        replay_path: None,
-    })
+    Ok(Launch::new(runtime))
 }

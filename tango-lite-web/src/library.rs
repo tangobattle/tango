@@ -338,12 +338,21 @@ pub fn replays(handle: &Handle) -> Vec<ReplayEntry> {
     .unwrap_or_default()
 }
 
-/// Decode a recording into something playable.
-pub fn read_replay(handle: &Handle, path: &Path) -> Result<tango_replay::Replay, String> {
-    let raw = with(handle, |library| library.files.read(path))
-        .ok_or_else(|| "library not open".to_string())?
-        .map_err(|e| e.to_string())?;
-    tango_replay::Replay::decode(std::io::Cursor::new(raw)).map_err(|e| e.to_string())
+/// Decode a recording with both sides' games and the exact ROMs they
+/// were played on — the same resolution the desktop runs, which
+/// playback and the exporter share so they re-simulate the identical
+/// pair.
+pub fn open_replay(
+    handle: &Handle,
+    path: &Path,
+) -> Result<(tango_replay::Replay, tango_library::replays::ResolvedRoms), String> {
+    with(handle, |library| {
+        library
+            .catalog
+            .open_replay(&library.files, &library.config.borrow(), path)
+    })
+    .ok_or_else(|| "library not open".to_owned())?
+    .map_err(|e| e.to_string())
 }
 
 /// Take in a `.tangoreplay` from the device — one recorded on a

@@ -69,10 +69,7 @@ struct Presentation {
 
 /// The stacked arrangement a multi-screen console is presented in:
 /// canonical order, one screen under the next.
-const STACKED: tango_session::screens::Arrangement = tango_session::screens::Arrangement {
-    stacking: tango_session::screens::Stacking::Vertical,
-    touch_first: false,
-};
+const STACKED: tango_match::screens::Arrangement = tango_match::screens::Arrangement::STACKED;
 
 impl Presentation {
     fn of(session: &dyn Session) -> Self {
@@ -80,7 +77,7 @@ impl Presentation {
         let (width, height) = if layout.screens.len() > 1 {
             STACKED.size(&layout)
         } else {
-            tango_session::composite_size(&layout)
+            layout.composite_size()
         };
         Presentation { layout, width, height }
     }

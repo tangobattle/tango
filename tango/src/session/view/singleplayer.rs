@@ -2,11 +2,10 @@
 //! corner commands — no messages of its own.
 
 use super::*;
-use crate::session::singleplayer::SinglePlayerSession;
 use crate::session::Message as SessionMessage;
 
 /// Single-player: just the emulator and the corner commands.
-pub(crate) fn view<'a>(s: &'a SinglePlayerSession, ctx: Ctx<'a>) -> Element<'a, SessionMessage> {
+pub(crate) fn view(ctx: Ctx<'_>) -> Element<'_, SessionMessage> {
     let Ctx { lang, state, .. } = ctx;
     let now = iced::time::Instant::now();
     let frame = framebuffer_view(
@@ -15,7 +14,7 @@ pub(crate) fn view<'a>(s: &'a SinglePlayerSession, ctx: Ctx<'a>) -> Element<'a, 
         iced::alignment::Horizontal::Center,
         iced::alignment::Vertical::Center,
     );
-    let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
+    let body = emulator_body(ctx, frame, [None, None]);
     let mut stacked = stack![body];
     if state.controls_anim.visible(now) {
         stacked = stacked.push(corner_commands_overlay(lang, state, SessionMessage::Close, false));

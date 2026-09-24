@@ -7555,7 +7555,6 @@ dependencies = [
  "tango-library",
  "tango-lobby",
  "tango-match",
- "tango-net",
  "tango-net-protocol",
  "tango-patch",
  "tango-replay",
@@ -8080,7 +8079,6 @@ dependencies = [
 name = "tango-lobby"
 version = "0.1.0"
 dependencies = [
- "datachannel-wrapper",
  "futures",
  "log",
  "rand 0.8.5",

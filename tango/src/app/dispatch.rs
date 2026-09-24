@@ -155,11 +155,11 @@ impl App {
             Message::Welcome(m) => self.update_welcome(m),
             Message::Session(m) => self.update_session(m),
             Message::Netplay(delivery) => self.update_netplay(delivery),
-            Message::PvpSessionBuilt(attempt, slot) => {
+            Message::PvpSessionBuilt(ticket, slot) => {
                 let Some(result) = slot.lock().unwrap().take() else {
                     return iced::Task::none();
                 };
-                self.finish_pvp_handoff(attempt, result)
+                self.finish_pvp_handoff(ticket, result)
             }
             Message::Rescanned(followup) => self.finish_rescan(followup),
         }

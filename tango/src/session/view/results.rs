@@ -22,7 +22,7 @@ use lucide_icons::Icon;
 use sweeten::widget::{column, row};
 use unic_langid::LanguageIdentifier;
 
-use super::super::{MatchEnd, MatchResults};
+use crate::session::results::{MatchEnd, MatchResults};
 
 /// Messages the results screen emits, wrapped as
 /// [`Results`](super::super::Message::Results) on the way out.

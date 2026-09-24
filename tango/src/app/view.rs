@@ -70,20 +70,20 @@ impl App {
                     result: j.result.as_ref().map(|r| r.as_ref().map(|_| ())),
                     cancelling: j.canceller.is_cancelled() && j.result.is_none(),
                 });
-            let session_view = session::view::view(
+            let session_view = session::view::view(session::view::Ctx {
                 lang,
-                &self.session,
-                self.config.fractional_scaling,
-                self.config.hide_emulator_border,
-                self.config.show_replay_inputs,
-                self.config.opponent_view,
-                self.config.ds_screen_stacking,
-                self.config.ds_primary_screen,
-                self.replays.export_settings.scale,
+                state: &self.session,
+                fractional_scaling: self.config.fractional_scaling,
+                hide_emulator_border: self.config.hide_emulator_border,
+                show_replay_inputs: self.config.show_replay_inputs,
+                opponent_view: self.config.opponent_view,
+                ds_screen_stacking: self.config.ds_screen_stacking,
+                ds_primary_screen: self.config.ds_primary_screen,
+                clip_export_scale: self.replays.export_settings.scale,
                 clip_job,
-                self.replays.queue.len(),
-                crate::platform::video::effects::effect_for(&self.config.video_filter),
-            )
+                queued: self.replays.queue.len(),
+                effect: crate::platform::video::effects::effect_for(&self.config.video_filter),
+            })
             .map(Message::Session);
             // In-session settings modal: floats centered over the
             // running session with a dimmed click-to-dismiss

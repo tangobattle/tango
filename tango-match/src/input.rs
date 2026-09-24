@@ -4,10 +4,9 @@
 ///
 /// This is the host-side vocabulary, distinct from a backend's own
 /// input type — each engine derives its own from it and ignores what
-/// its console has no word for (a GBA drops the stylus outright).
-/// The netplay wire is narrower still: it exchanges bare joyflag
-/// words, so a stylus only exists on the rides a host feeds directly
-/// ([`Solo`](crate::Solo) today).
+/// its console has no word for (a GBA drops the stylus outright). The
+/// netplay wire and replays carry the same pair, narrowed to the bytes
+/// a DS touch screen needs.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct HostInput {
     /// Held joypad bits (see [`keys`](crate::keys)).

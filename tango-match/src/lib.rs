@@ -16,23 +16,28 @@
 //! - [`engine`]: [`Match`], the rollback loop over any [`Link`] and the
 //!   unified session surface a host drives.
 //! - [`solo`]: [`Solo`], the single-console ride over any [`Console`].
-//! - [`replay`]: [`ReplaySet`], playback + seeking + the statistics
-//!   pass over any [`Link`] — an engine contributes only the boot.
-//! - [`battle`]: the per-tick stats sample encoding, which is just a
-//!   layout — no engine has an opinion about it.
-//! - [`input`]: the joyflags input type that lands in replays.
+//! - [`replay`]: [`ReplaySet`], playback + the statistics pass over any
+//!   [`Link`] — an engine contributes only the boot.
+//! - [`seek`]: requesting a seek and the chase that walks a playback
+//!   between its captures to get there.
+//! - [`analysis`]: folding per-tick samples and telemetry events into
+//!   match statistics, live or offline.
+//! - [`screens`]: re-arranging a multi-screen composition for display
+//!   or export.
+//! - [`input`]: [`HostInput`], the joypad word plus stylus a host
+//!   collects for its player.
 //! - [`throttler`]: the clock-sync governor both engines pace with.
 //! - [`keys`]: the joypad bit vocabulary.
 
 pub mod analysis;
 pub mod audio;
-pub mod battle;
 pub mod engine;
 #[cfg(target_arch = "wasm32")]
 pub mod hosting;
 pub mod input;
 pub mod link;
 pub mod replay;
+pub mod screens;
 pub mod seek;
 pub mod solo;
 pub mod telemetry;
@@ -42,9 +47,8 @@ pub use audio::{AudioIn, AudioOut};
 pub use engine::{Advance, Match};
 pub use input::HostInput;
 pub use link::{Backend, Link, PeerRom, Screen, ScreenLayout, SessionMode, Side, Snapshot, StartConfig};
-pub use replay::{
-    BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, SeekStep, StatsPass,
-};
+pub use replay::{BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, StatsPass};
+pub use seek::SeekStep;
 pub use solo::{Console, Solo, SoloConfig};
 
 /// The clock-sync governor: feed it `skew()` + `speculation_balance()`

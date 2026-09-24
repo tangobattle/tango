@@ -15,9 +15,10 @@ mod detail;
 mod export;
 mod format;
 mod list;
+use crate::library::game::family_display_name_or_raw;
 use detail::replay_detail;
 pub use export::{ExportError, ExportMessage, ExportSettings, PerReplay};
-use format::{family_display_name, format_ts, link_code_display};
+use format::{format_ts, link_code_display};
 pub use list::DateFilter;
 
 #[derive(Debug, Clone)]

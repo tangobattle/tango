@@ -26,7 +26,7 @@ pub struct Connected {
     pub(crate) in_match_receiver: tango_net::data::Receiver,
     /// The peer connection. Set by both transports; kept alive for the
     /// duration of the session.
-    pub(crate) peer_conn: datachannel_wrapper::PeerConnection,
+    pub(crate) peer_conn: tango_net::channel::PeerConnection,
     /// `true` iff we're the "offer side" for symmetry-breaking purposes —
     /// i.e. we wrote the SDP offer on the matchmaking path, or we're the
     /// host on the direct link. Drives `pick_local_player_index`.
@@ -97,25 +97,16 @@ pub async fn connect_direct(role: DirectRole, cancel: CancellationToken, progres
     report(work, cancel, reporter).await;
 }
 
-/// Bundle a negotiated connection for the lobby. `is_offerer` comes from
-/// the SDP on the matchmaking path; on the direct path the role decides
-/// it (host = true), which is what keeps `pick_local_player_index`'s
-/// symmetry break asymmetric.
+/// Bundle a negotiated connection for the lobby.
 fn bundle(channels: tango_net::channel::Channels, reconnect: Option<DirectRole>) -> Connected {
     let tango_net::channel::Channels {
         control: (sender, receiver),
         in_match: (in_match_sender, in_match_receiver),
         peer_conn,
+        is_offerer,
         local_dtls_fingerprint,
         peer_dtls_fingerprint,
     } = channels;
-    let is_offerer = match &reconnect {
-        Some(role) => matches!(role, DirectRole::Host { .. }),
-        None => peer_conn
-            .local_description()
-            .map(|d| matches!(d.sdp_type, datachannel_wrapper::SdpType::Offer))
-            .unwrap_or(false),
-    };
     Connected {
         sender: Arc::new(tokio::sync::Mutex::new(sender)),
         receiver,

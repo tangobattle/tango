@@ -70,6 +70,11 @@ def check(root: Path) -> list[str]:
     return errors
 
 
+# A game's registration crate (`tango-gamesupport-bn6`), as opposed to its
+# `-dataview`/`-ui` halves or the shared `-common*` crates.
+GAME_REGISTRATION = re.compile(r"tango-gamesupport-(?!common$)[a-z0-9]+")
+
+
 def check_boundaries(root: Path) -> list[str]:
     errors = []
     allowed = {
@@ -77,16 +82,29 @@ def check_boundaries(root: Path) -> list[str]:
         "tango-net-protocol": set(),
         "tango-platform": set(),
         "tango-replay": set(),
+        "tango-ui": set(),
         "tango-net": {"tango-platform", "tango-net-protocol"},
         "tango-lobby": {"tango-net", "tango-platform", "tango-net-protocol"},
+        "tango-backend-mgba": {"tango-match"},
+        "tango-backend-melonds": {"tango-match"},
+        "tango-replay-renderer": {"tango-match"},
         "tango-gamesupport": {"tango-match"},
         "tango-gamesupport-common-dataview": {"tango-gamesupport"},
+        "tango-session": {
+            "tango-gamesupport", "tango-match", "tango-net", "tango-net-protocol", "tango-platform", "tango-replay",
+        },
+        "tango-library": {
+            "tango-gamesupport", "tango-gamesupport-common-dataview", "tango-match", "tango-net-protocol",
+            "tango-replay", GAME_REGISTRATION,
+        },
     }
     for crate, permitted in allowed.items():
         manifest = tomllib.loads((root / crate / "Cargo.toml").read_text())
         for section in [manifest, *manifest.get("target", {}).values()]:
             for dependency, spec in section.get("dependencies", {}).items():
-                if isinstance(spec, dict) and "path" in spec and dependency not in permitted:
+                if not (isinstance(spec, dict) and "path" in spec):
+                    continue
+                if not any(dependency == p if isinstance(p, str) else p.fullmatch(dependency) for p in permitted):
                     errors.append(f"{crate}: forbidden layer dependency {dependency}")
     for path in (root / "tango-session/src").rglob("*.rs"):
         if "std::fs::" in path.read_text():

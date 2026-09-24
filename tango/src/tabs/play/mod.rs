@@ -323,7 +323,7 @@ impl State {
                 // an empty or submittable link code, so reaching this
                 // handler with a malformed one is a stale message +
                 // safe to ignore.
-                let ident = resolve_link_ident(generated.as_deref().unwrap_or(self.link_code.trim()))?;
+                let ident = crate::netplay::LinkIdent::parse(generated.as_deref().unwrap_or(self.link_code.trim()))?;
                 if let Some(code) = &generated {
                     self.pending_generated_code = Some(code.clone());
                     // Light the lobby copy button's "Copied!" flash as
@@ -680,7 +680,7 @@ impl State {
         const BOTTOM_PAD: [f32; 2] = [10.0, 16.0];
         const BOTTOM_CTA_PAD: [f32; 2] = [10.0, 22.0];
         let trimmed = self.link_code.trim();
-        let can_submit = patch_ready && (trimmed.is_empty() || resolve_link_ident(trimmed).is_some());
+        let can_submit = patch_ready && (trimmed.is_empty() || crate::netplay::LinkIdent::parse(trimmed).is_some());
         let fight_button: Element<'a, Message> = {
             // Same chrome as the lobby's Ready button — both are
             // "commit to a match" CTAs. ready_button_style for
@@ -774,7 +774,7 @@ fn empty_state_card(
         .into()
 }
 
-// ---------- File-level save helpers ----------
+// ---------- Commit-button styling (Fight + Ready) ----------
 
 /// Which ready-button state we're painting. Drives
 /// [`ready_button_style`]'s color choice.
@@ -876,67 +876,5 @@ fn ready_button_style(theme: &iced::Theme, status: button::Status, palette: Read
                 snap: false,
             }
         }
-    }
-}
-
-// ---------- Link-code parsing ----------
-
-/// Resolve a trimmed link-code input into a submittable
-/// [`crate::netplay::LinkIdent`], or `None` if the input isn't
-/// submittable (empty, or a malformed `/`-prefixed direct command).
-fn resolve_link_ident(input: &str) -> Option<crate::netplay::LinkIdent> {
-    if input.is_empty() {
-        return None;
-    }
-    if input.starts_with('/') {
-        parse_direct_command(input).map(crate::netplay::LinkIdent::Direct)
-    } else {
-        Some(crate::netplay::LinkIdent::Matchmaking(input.to_string()))
-    }
-}
-
-/// Recognise the direct-TCP link-code commands the user can type
-/// in place of a matchmaking code:
-///
-/// - `/host` — listen on [`tango_net::DEFAULT_LOCAL_PORT`]
-/// - `/host <port>` — listen on the given port
-/// - `/connect <addr>` — dial `<addr>`, appending the default port if
-///   the user didn't specify one
-fn parse_direct_command(input: &str) -> Option<crate::netplay::DirectRole> {
-    // The leading slash is the disambiguator — without it, any
-    // input is a matchmaking link code (which can legitimately
-    // contain letters, digits, and the random-code separators).
-    if !input.starts_with('/') {
-        return None;
-    }
-    let mut parts = input.splitn(2, char::is_whitespace);
-    let cmd = parts.next().unwrap_or("");
-    let arg = parts.next().map(str::trim).unwrap_or("");
-    match cmd {
-        "/host" => {
-            let port = if arg.is_empty() {
-                tango_net::DEFAULT_LOCAL_PORT
-            } else {
-                arg.parse::<u16>().ok()?
-            };
-            Some(crate::netplay::DirectRole::Host { port })
-        }
-        "/connect" => {
-            if arg.is_empty() {
-                return None;
-            }
-            // Heuristic: if the user gave no colon (bare IP) or
-            // their input ends with the IPv6 closing bracket
-            // without a trailing colon, append the default port.
-            // We deliberately don't try to validate the address
-            // itself — TcpStream::connect's error surfaces well.
-            let addr = if arg.contains(':') && !arg.ends_with(']') {
-                arg.to_string()
-            } else {
-                format!("{arg}:{}", tango_net::DEFAULT_LOCAL_PORT)
-            };
-            Some(crate::netplay::DirectRole::Connect { addr })
-        }
-        _ => None,
     }
 }

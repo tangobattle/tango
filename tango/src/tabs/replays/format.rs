@@ -2,13 +2,6 @@
 
 use super::*;
 
-/// "Mega Man Battle Network 6" — family-only i18n lookup, matching
-/// how the lobby renders the game line. Falls back to "{family}
-/// v{variant}" for unrecognized families.
-pub(super) fn family_display_name(lang: &LanguageIdentifier, family: &str, variant: u32) -> String {
-    crate::library::game::family_str(family, lang, "name").unwrap_or_else(|| format!("{family} v{variant}"))
-}
-
 /// A replay's millis-since-epoch timestamp, formatted per `fmt` in
 /// local time; `"(?)"` when the value is out of range.
 pub(super) fn format_ts(ms: u64, fmt: &str) -> String {

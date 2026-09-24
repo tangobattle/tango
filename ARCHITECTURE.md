@@ -9,10 +9,11 @@ pumps drivers from its event loop and supplies browser storage and audio.
 Arrows point from a consumer to the layer it uses. The frontends also use
 the replay renderer, which takes an engine replay configuration and emits
 video through `encoder-facade`. The library depends on
-`tango-net-protocol` only for the `compat::Facts` it returns to hosts. Both
-hosts build the lobby's `Settings` from `tango-net-protocol` directly; the
-desktop also uses `tango-net` for its direct-connect port, and the browser
-`tango-platform` for its timers.
+`tango-net-protocol` only for the wire game info and settings it reads and
+builds, and the `compat::Facts` it returns to hosts. Both hosts build the
+lobby's `Settings` from `tango-net-protocol` directly, and the browser uses
+`tango-platform` for its timers. Neither host touches `tango-net`: the
+lobby and the session drive the transport.
 
 ```mermaid
 flowchart TD
@@ -22,11 +23,10 @@ flowchart TD
     Browser --> Lobby
     Desktop --> Session[tango-session]
     Browser --> Session
-    Desktop --> Net[tango-net]
     Browser --> Platform[tango-platform]
     Desktop --> Protocol[tango-net-protocol]
     Browser --> Protocol
-    Lobby --> Net
+    Lobby --> Net[tango-net]
     Session --> Net
     Net --> Protocol
     Net --> Platform
@@ -81,7 +81,10 @@ application resources. The corresponding app feature module performs it.
 Tabs do no I/O: a replay's save previews, for instance, load off the UI
 thread from the replays tab's `LoadPreview` effect. The session screen
 follows the same rule (see [Session ownership](#session-ownership)).
-Window sizing policy lives in `window.rs`; `app/view.rs` renders the shell.
+`window.rs` holds the offered resolutions and the minimum size; `main.rs`
+restores the saved geometry within the largest surface the GPU device
+accepts, and `app/dispatch.rs` caps and persists it as the window changes.
+`app/view.rs` renders the shell.
 `main.rs` only boots iced (fonts, window geometry) after deciding whether
 this process is the crash supervisor: `platform/crash/supervisor.rs` owns
 log rotation and the out-of-process minidump server, and
@@ -133,21 +136,31 @@ screens and the active session, using the existing iced message flow.
 
 `session::State::update` applies a session message and returns an optional
 `session::update::Effect`, like a tab. `session/update/{pvp,replay,training}`
-hold the controls: what each message does to the live session and its
-presentation state. `session/view` only renders. The App performs the
+hold the controls: what each message does to the live session and the
+presentation state it acts on (the PvP setup drawers and telemetry history,
+the replay scrub bar). `session/results.rs` cooks a finished match into the
+results card, `stylus.rs` folds pointer events into a DS touch, and the
+launch loads the game's backdrop art (`backdrop.rs`) so drawing never reads
+a file. `session/view` only renders: `frame.rs` presents the frames,
+`hud.rs` the floating chrome every kind shares, `priming.rs` the priming
+notice, and one module per session kind composes them. The App performs the
 effects: it persists preferences the session changed (frame delay, pane
 widths, opponent view, replay input display, custom-screen speedup), starts
 or cancels clip exports, watches replays, and skips to the next queued one.
+Closing a session resets its presentation to the defaults in one step; only
+the install counter, the frame revisions, and the results card survive.
 
-`tango-session::screens::Arrangement` is the one geometry for presenting a
+`tango-match::screens::Arrangement` is the one geometry for presenting a
 multi-screen composition: the desktop maps its DS stacking and primary
 screen settings onto it, the browser always stacks vertically, and both
-re-pack frames and place the stylus area through it.
+re-pack frames and place the stylus area through it. The video exporter
+stacks each seat through the same `Arrangement::STACKED`, in place.
 
 A playback session that should double as its replay's analysis is built with
 `want_stats`; the desktop's prefetch thread reports the fold through its own
-`PrefetchStatsFeed` channel. Single-player and training share the session
-crate's `local::Pacing` speed dial, and training and replay share its
+`PrefetchStatsFeed` channel. Single-player, training, and replay share the
+session crate's `local::Pacing` speed dial (replay layers its transport
+preset and custom-screen speedup on top), and training and replay share its
 `local::Surfaces` display. Every session derives its native frame rate from
 its game.
 
@@ -170,15 +183,15 @@ without the desktop's preferences, and the shell records every selection
 change in that config. The engine owns its
 audio sink and scheduling callbacks. Weak callback captures and listener,
 worker, and audio guards release resources when the host goes away. Pending
-match builds carry an attempt identity so a disconnect cannot install an
-abandoned match. The browser uses the same portable session drivers.
+match builds carry the lobby's handoff ticket, so a disconnect cannot
+install an abandoned match. The browser uses the same portable session drivers.
 
 ## Netplay
 
 `tango-lobby` depends on `tango-net` and `tango-platform`, independently of
 library catalogs and emulator backends. Hosts resolve compatibility facts
 (ROM availability, patch availability, compatibility tags) with
-`tango-library::loadout::compatibility_facts`. The fact type,
+`tango-library::Catalog::compatibility_facts`. The fact type,
 `tango-net-protocol::compat::Facts`, sits below both crates, so the library
 returns it and the lobby consumes it unchanged.
 
@@ -190,20 +203,28 @@ not Compatible, and returns any patch the host should fetch.
 match-type policy. Hosts supply the per-family memory from the config's
 `last_match_type_per_family` and record each pick there.
 
+`tango_lobby::LinkIdent::parse` turns what the user typed into a
+matchmaking code or a `/host`/`/connect` direct role.
 `tango-net::open_channels` performs every bring-up: signaling rendezvous or
-direct host/connect, channel bundling, and version negotiation. It is used by
+direct host/connect, channel bundling (including which side offered, and
+whether ICE settled on a relay), and version negotiation. It is used by
 the lobby's `connect`/`connect_direct` and by `Link::reconnect`. Its typed
 `ConnectError` maps into `tango_lobby::Error`, a thiserror enum whose variants
 name each failure. Hosts map them to localized text; variants without their
 own text use their `Display` in the generic failure template.
 
 A ready handshake yields `tango-net::handoff::PreMatchData`: cloneable
-`MatchTerms` plus separately owned live `LinkParts`. Preparation consumes the
+`MatchTerms` plus separately owned live `LinkParts`. `State::take_pre_match`
+hands it over with a `HandoffTicket`, and the host settles its session build
+with `State::complete_handoff`: a build for a lobby the user has since left
+is dropped, a failure parks in the lobby's status line, and a success clears
+the lobby for the match. Preparation consumes the
 committed settings and saves; it does not need a network connection. Hosts
 build each `tango-session::pvp::Seat` (game, patched ROM, SRAM image) from
 the library's `ResolvedLoadout`, whose `match_sram` is the parsed save dumped
 in the game's own layout; the session never parses a save.
-`tango-session::pvp::setup` attaches the prepared seats to the live link.
+`tango-session::pvp::PvpSession::new` attaches the prepared seats to the
+live link.
 Disable the session crate's default `netplay` feature for offline drivers.
 
 - `pvp/driver.rs` boots the pair, advances rollback, publishes frames,
@@ -231,8 +252,9 @@ Simulation details and invariants are in
 
 `tango-library::Catalog` bundles the ROM, save, patch, and replay scanners.
 Both hosts rescan through it (`Catalog::list`, then `rescan`, `rescan_library`,
-or `rescan_replays`), and build preparation inputs with `Catalog::resolver` and
-`Catalog::resolve_replay_roms` rather than assembling them by hand.
+or `rescan_replays`), and build preparation inputs with `Catalog::resolver`,
+`Catalog::open_replay`, and `Catalog::compatibility_facts` rather than
+assembling them by hand.
 
 `tango-library::loadout::Selection` is the one selection policy. It holds the
 family, game, save, and patch overlay, and changes only through its pick
@@ -266,7 +288,9 @@ consume headless findings; they do not decide legality.
 ## Replay preparation
 
 A replay stores inputs, so viewing, analyzing, or exporting it runs the game
-again. Every consumer uses `tango-library::replays::resolve_roms` to:
+again. Every consumer opens one with `tango-library::Catalog::open_replay`
+(`replays::open`), which reads and decodes it through `Storage`, then
+resolves its ROMs with `replays::resolve_roms` to:
 
 1. Resolve both recorded seats against the game registry.
 2. Check each recorded simulation version against its backend.
@@ -287,7 +311,7 @@ recover from a missing patch; simulation input preparation cannot.
 
 ## Boundary checks
 
-`tools/check_workspace.py --resolved` checks allowed crate edges and resolved
-headless Cargo graphs. It also rejects direct filesystem persistence in
+`tools/check_workspace.py --resolved` checks the allowed direct crate edges
+of every shared layer and the resolved headless Cargo graphs. It also rejects direct filesystem persistence in
 session code and thread-local core state in the browser. CI exercises offline
 sessions, the standalone lobby/transport, and headless save preparation.

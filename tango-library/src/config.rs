@@ -9,12 +9,8 @@
 use crate::storage::{self, Storage};
 use serde::{Deserialize, Serialize};
 
-pub const DATA_DIR_NAME: &str = "Tango";
-
 pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
 pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";
-/// Local frame delay before the user (or a ping-based suggestion) picks one.
-pub const DEFAULT_FRAME_DELAY: u32 = 2;
 
 fn default_matchmaking_endpoint() -> String {
     DEFAULT_MATCHMAKING_ENDPOINT.to_string()
@@ -136,9 +132,6 @@ impl Config {
     pub fn replays_path(&self) -> std::path::PathBuf {
         self.data_path.join("replays")
     }
-    pub fn logs_path(&self) -> std::path::PathBuf {
-        self.data_path.join("logs")
-    }
     /// Where derived data the app can always recompute (replay match
     /// stats, …) lives — safe to delete wholesale. The frontend sets
     /// [`Self::cache_dir`] to the platform cache directory when it has
@@ -248,10 +241,6 @@ pub fn save_json<T: serde::Serialize>(storage: &dyn Storage, path: &std::path::P
     let s = serde_json::to_string_pretty(value).map_err(|e| std::io::Error::other(format!("serialize failed: {e}")))?;
     storage::write_atomic(storage, path, s.as_bytes())
 }
-
-/// File name of the config within whatever directory the frontend
-/// resolves for it.
-pub const FILE_NAME: &str = "config.json";
 
 #[cfg(test)]
 mod tests {

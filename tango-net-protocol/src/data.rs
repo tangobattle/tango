@@ -1,9 +1,8 @@
 //! tango's concrete in-match payload for the unreliable netplay datagram
 //! channel: the [`Element`] each seq slot carries, the [`Meta`] side-channel
 //! that rides on every frame, and the [`InMatch`] [`rennet::Codec`] descriptor
-//! that pairs them. Moved verbatim from the tango bin crate's
-//! `net/data/protocol.rs`, plus the queue-budget constants the horizon is
-//! sized from (previously `net/data/mod.rs`).
+//! that pairs them, plus the queue-budget constants the horizon is sized
+//! from.
 //!
 //! The envelope (per-tick seq `base`, the delta-encoded cumulative `ack`, and
 //! the per-frame [`Meta`]), the LEB128 codec, and the redundancy-window /

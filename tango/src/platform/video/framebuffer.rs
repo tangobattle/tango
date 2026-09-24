@@ -21,8 +21,8 @@
 //!
 //! ## What this does
 //!
-//! We keep ONE persistent GPU texture sized to the **native** 240×160
-//! framebuffer and `queue.write_texture` the new pixels into it once per
+//! We keep ONE persistent GPU texture sized to the **native** framebuffer
+//! (240×160 for a GBA, a DS's arranged screens for a DS) and `queue.write_texture` the new pixels into it once per
 //! frame — no atlas, no per-frame allocate/free, no worker detour. A
 //! `revision` counter lets `prepare` skip the upload entirely when the
 //! same frame is presented twice (e.g. a UI redraw with no new emu frame).
@@ -50,8 +50,8 @@ use iced::advanced::mouse;
 use iced::widget::shader::{self, Viewport};
 use iced::Rectangle;
 
-/// The native GBA framebuffer is 240×160; the uploaded texture is always
-/// native and the selected [`Effect`] magnifies it in the fragment shader.
+/// The uploaded texture is always the session's native frame, and the
+/// selected [`Effect`] magnifies it in the fragment shader.
 /// The pixels arrive already CPU-expanded to RGBA8 (sessions publish
 /// RGBA8 — see [`tango_session::Session::frame`]), so the shaders never
 /// touch the console-native format — the texture hands them ready-made RGB.
@@ -457,9 +457,9 @@ impl shader::Pipeline for Pipeline {
 
 impl Pipeline {
     /// Ensure a texture of the right size exists and holds `frame`'s pixels.
-    /// The framebuffer texture is always native (240×160) now — only a
-    /// resolution change (never, in practice) would resize it — and uploads
-    /// only when the resident revision differs from the frame's.
+    /// The framebuffer texture is always the native frame — only a new
+    /// session or screen arrangement resizes it — and uploads only when
+    /// the resident revision differs from the frame's.
     fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, frame: &Frame) {
         let needs_new = match &self.texture {
             Some(t) => t.width != frame.width || t.height != frame.height,

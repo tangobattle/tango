@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::link::Link;
-use crate::seek::SeekController;
+use crate::seek::{SeekChase, SeekController, SeekStep};
 use crate::telemetry::TelemetryHandle;
 
 /// Both seats' displays at one captured moment: per-seat RGBA8 frames,
@@ -401,193 +401,6 @@ impl Playback {
             // left in one opens the next span as a stale burst.
             None => crate::audio::drop_link_audio(&mut *self.link),
         }
-    }
-}
-
-/// What one slice of a seek did.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SeekStep {
-    /// No request was pending; nothing happened.
-    Idle,
-    /// Still walking — call again.
-    Working,
-    /// The chase landed (or gave up on a plan it couldn't make).
-    Landed,
-}
-
-/// One seek chase, walked a slice of ticks at a time.
-///
-/// A chase is a plan (find the best capture at or before the target and
-/// load it) followed by a walk (step to the target, capturing as it
-/// goes). Splitting it this way is what lets a host without threads run
-/// one: each step does a bounded amount of work and returns, so a
-/// browser can keep painting and a desktop can keep its dedicated
-/// worker thread.
-///
-/// A newer request landing mid-walk re-plans on the next step, and a
-/// cancelled controller ends the pass wherever it is.
-#[derive(Default)]
-struct SeekChase {
-    /// Where this chase is going, once it has planned a route. `None`
-    /// between chases and after a re-plan.
-    target: Option<u32>,
-    /// Newest capture taken on the way, published on landing.
-    landing: Option<Arc<Capture>>,
-}
-
-enum Plan {
-    /// Walk to this target.
-    Walk(u32),
-    /// Nothing left to do — landed on the plan, or couldn't make one.
-    Done,
-}
-
-impl SeekChase {
-    /// Advance a seek by at most `budget` ticks, planning one first if a
-    /// request is pending.
-    ///
-    /// `on_progress` reports the moving cursor, `publish_landing` shows
-    /// the landing capture, and `on_resume` unpauses a host whose seek
-    /// asked to resume playback when it lands.
-    #[allow(clippy::too_many_arguments)]
-    fn step(
-        &mut self,
-        ctrl: &SeekController,
-        playback: &Mutex<Playback>,
-        store: &SnapshotStore,
-        rewind: &RewindRing,
-        budget: u32,
-        on_progress: &mut dyn FnMut(u32),
-        publish_landing: &mut dyn FnMut(&Capture),
-        on_resume: &mut dyn FnMut(),
-    ) -> SeekStep {
-        if ctrl.is_cancelled() {
-            return self.finish(ctrl, on_resume);
-        }
-        if self.target.is_none() && !ctrl.is_dirty() {
-            return SeekStep::Idle;
-        }
-        // One lock for the whole slice: with an unbounded budget (a
-        // worker thread) that means the pair is held for the entire
-        // chase — nothing else may step it out from under a walk.
-        let mut guard = playback.lock().unwrap();
-        let pb = &mut *guard;
-        if self.target.is_none() {
-            match self.plan(ctrl, pb, store, rewind, on_progress, publish_landing) {
-                Plan::Walk(target) => self.target = Some(target),
-                Plan::Done => {
-                    drop(guard);
-                    return self.finish(ctrl, on_resume);
-                }
-            }
-        }
-        let target = self.target.expect("planned above");
-        for _ in 0..budget {
-            if pb.cursor() >= target {
-                break;
-            }
-            if ctrl.is_cancelled() {
-                drop(guard);
-                return self.finish(ctrl, on_resume);
-            }
-            if ctrl.is_dirty() {
-                // A newer target: abandon this walk and re-plan on the
-                // next step, with the pass still open.
-                self.target = None;
-                self.landing = None;
-                drop(guard);
-                return SeekStep::Working;
-            }
-            if !pb.step_muted() {
-                break;
-            }
-            on_progress(pb.cursor());
-            match pb.capture() {
-                Ok(snap) => {
-                    if store.snapshot_needed(snap.tick()) {
-                        store.push(snap.tick(), snap.clone());
-                    }
-                    rewind.insert(snap.tick(), snap.clone());
-                    self.landing = Some(snap);
-                }
-                Err(e) => log::warn!("replay seek: capture failed: {e:?}"),
-            }
-        }
-        if pb.cursor() < target && pb.cursor() < pb.total() {
-            drop(guard);
-            return SeekStep::Working;
-        }
-        // The walk discarded its sound per tick; this catches what a
-        // walk never stepped over — the pre-seek tail a zero-length
-        // chase leaves queued, which belongs to the position being left.
-        pb.discard_audio();
-        drop(guard);
-        if let Some(snap) = self.landing.take() {
-            publish_landing(&snap);
-        }
-        self.finish(ctrl, on_resume)
-    }
-
-    /// Plan a chase: consume the request, load the best capture at or
-    /// before it, and say whether there's a walk left to do.
-    fn plan(
-        &mut self,
-        ctrl: &SeekController,
-        pb: &mut Playback,
-        store: &SnapshotStore,
-        rewind: &RewindRing,
-        on_progress: &mut dyn FnMut(u32),
-        publish_landing: &mut dyn FnMut(&Capture),
-    ) -> Plan {
-        ctrl.begin_pass();
-        let target = ctrl.take_target();
-        rewind.set_anchor(target);
-
-        let cur = pb.cursor();
-        let start = if target < cur {
-            let best = [rewind.best_at_or_before(target), store.best_at_or_before(target)]
-                .into_iter()
-                .flatten()
-                .max_by_key(|s| s.tick());
-            match best {
-                Some(snap) => Some(snap),
-                None => return Plan::Done,
-            }
-        } else {
-            [
-                rewind.best_in_range(cur, target.max(cur)),
-                store.best_in_range(cur, target.max(cur)),
-            ]
-            .into_iter()
-            .flatten()
-            .max_by_key(|s| s.tick())
-        };
-
-        if let Some(snap) = &start {
-            rewind.insert(snap.tick(), snap.clone());
-            if let Err(e) = pb.load(snap) {
-                log::error!("replay seek: capture load failed: {e:?}");
-                return Plan::Done;
-            }
-            on_progress(pb.cursor());
-            if snap.tick() >= target {
-                publish_landing(snap);
-                return Plan::Done;
-            }
-        }
-        Plan::Walk(target)
-    }
-
-    /// End the pass: clear the chase, and run the resume the seek
-    /// scheduled unless a newer request has already superseded it.
-    fn finish(&mut self, ctrl: &SeekController, on_resume: &mut dyn FnMut()) -> SeekStep {
-        self.target = None;
-        self.landing = None;
-        ctrl.end_pass();
-        if !ctrl.is_dirty() && !ctrl.is_cancelled() && ctrl.take_resume() {
-            on_resume();
-        }
-        SeekStep::Landed
     }
 }
 
@@ -1110,6 +923,7 @@ impl ReplaySet {
     /// to park, so there it's a single look — its one event loop boots
     /// the display pair before it first pumps the stats pass anyway.
     fn wait_first_capture(&self) -> FirstCapture {
+        #[cfg_attr(target_arch = "wasm32", allow(unused_mut))]
         let mut state = self.first_capture.lock().unwrap();
         #[cfg(not(target_arch = "wasm32"))]
         while matches!(&*state, FirstCapture::Pending) && !self.cancel.load(Ordering::Relaxed) {

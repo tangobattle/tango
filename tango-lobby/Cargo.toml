@@ -15,10 +15,9 @@ publish = false
 # linear async fn and the lobby is a plain state machine, so a host
 # supplies a spawner and a pump rather than an architecture.
 #
-# Sits above tango-session, which owns the transports this drives
-# (`PacketSink` / `PacketStream`, the two data channels, the link
-# rebuild). tango-net-protocol therefore stays *below* session and is not
-# merged in here: doing so would be a dependency cycle.
+# Sits on tango-net, which owns the transports this drives (signaling,
+# the direct link, the two data channels, the link rebuild), and knows
+# nothing of the library, sessions, or emulator backends.
 #
 # Builds for wasm32 minus the direct (signaling-free) transport, which
 # needs a UDP socket the browser won't give us.
@@ -38,7 +37,6 @@ unic-langid.workspace = true
 web-time.workspace = true
 zstd.workspace = true
 
-datachannel-wrapper.workspace = true
 tango-net-protocol = { path = "../tango-net-protocol" }
 tango-net = { path = "../tango-net" }
 tango-platform = { path = "../tango-platform" }

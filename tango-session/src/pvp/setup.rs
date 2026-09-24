@@ -116,7 +116,7 @@ impl PvpSession {
         // start before the drive loop first publishes a target.
         metrics.fps_target.store(expected_fps.to_bits(), Ordering::Relaxed);
         let drive_paused = Arc::new(crate::PauseGate::new(false));
-        // ~1 s window at 60 Hz, matching the legacy emu_tps_counter.
+        // ~1 s window at 60 Hz.
         let tps_counter = Arc::new(Mutex::new(TpsCounter::new(60)));
         let layout = local_game.pvp.screen_layout(tango_match::SessionMode::PvP {
             match_type: pre_match.terms.match_type,

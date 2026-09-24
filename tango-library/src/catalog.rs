@@ -8,7 +8,8 @@
 
 use crate::config::Config;
 use crate::storage::{Listing, Storage};
-use crate::{loadout, patch, replays, rom, save};
+use crate::{game, loadout, patch, replays, rom, save};
+use tango_net_protocol::control as protocol;
 
 /// The scanned library. Cloning shares the same scanners.
 #[derive(Clone)]
@@ -106,14 +107,51 @@ impl Catalog {
         }
     }
 
-    /// The exact games and patched ROMs a recording ran; see
-    /// [`replays::resolve_roms`].
-    pub fn resolve_replay_roms(
+    /// The library facts the lobby's compatibility verdict needs for
+    /// `local` and `remote`'s settings: whether the opponent's game is
+    /// one we own a ROM for, whether both sides' patches carry the same
+    /// compatibility tag, and the first patch either side named that
+    /// isn't installed here.
+    pub fn compatibility_facts(
+        &self,
+        local: &protocol::Settings,
+        remote: &protocol::Settings,
+    ) -> tango_net_protocol::compat::Facts {
+        let patches = self.patches.read();
+        let resolve = |info: &protocol::GameInfo| {
+            game::find_by_family_and_variant(&info.family_and_variant.0, info.family_and_variant.1)
+        };
+        let tag = |info: &protocol::GameInfo| {
+            patches.tag(
+                resolve(info)?,
+                info.patch.as_ref().map(|p| (p.name.as_str(), &p.version)),
+            )
+        };
+        let local_tag = local.game_info.as_ref().and_then(tag);
+        let remote_tag = remote.game_info.as_ref().and_then(tag);
+        tango_net_protocol::compat::Facts {
+            remote_rom_available: remote
+                .game_info
+                .as_ref()
+                .and_then(resolve)
+                .is_some_and(|game| self.roms.read().contains_key(&game)),
+            matching_tags: local_tag.is_some() && local_tag == remote_tag,
+            missing_patch: [local, remote]
+                .into_iter()
+                .filter_map(|s| s.game_info.as_ref()?.patch.as_ref())
+                .find(|p| !patches.is_installed(&p.name, &p.version))
+                .map(|p| (p.name.clone(), p.version.clone())),
+        }
+    }
+
+    /// Open the recording at `path` with the exact games and patched
+    /// ROMs it ran; see [`replays::open`].
+    pub fn open_replay(
         &self,
         storage: &dyn Storage,
         config: &Config,
-        metadata: &tango_replay::Metadata,
-    ) -> Result<replays::ResolvedRoms, replays::ResolveError> {
-        replays::resolve_roms(storage, &self.roms, &config.patches_path(), metadata)
+        path: &std::path::Path,
+    ) -> Result<(tango_replay::Replay, replays::ResolvedRoms), replays::OpenError> {
+        replays::open(storage, &self.roms, &config.patches_path(), path)
     }
 }

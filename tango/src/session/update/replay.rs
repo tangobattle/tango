@@ -1,11 +1,11 @@
 //! Replay-playback controls: the transport, scrub and clip messages the
-//! replay view emits, what they do to the live session, and the keyboard
-//! shortcuts that map onto them.
+//! replay view emits, what they do to the live session, the scrub bar's
+//! interaction state, and the keyboard shortcuts that map onto them.
 
 use super::Effect;
 use crate::config;
 use crate::session::replay::ReplaySession;
-use crate::session::{scrubber, State};
+use crate::session::{scrubber, Session as _, State};
 
 /// The replay transport's discrete playback rates, shared by the speed
 /// menu and the keyboard stepper so both controls always land on the same
@@ -157,11 +157,137 @@ pub(crate) fn keyboard_shortcut(event: &iced::keyboard::Event, speed: f32) -> Op
     }
 }
 
+/// Scrub-bar interaction state for a replay session. Splits the
+/// drag/hover bookkeeping out of the game-mode-agnostic parts of
+/// [`State`]; the owning state holds one of these and the transport
+/// widget reads it to draw the playhead + the floating keyframe
+/// thumbnail, decoded only when the hovered keyframe changes.
+#[derive(Default)]
+pub struct Scrub {
+    /// `Some(tick)` while the user is dragging — the previewed
+    /// position. The transport draws the playhead here instead of at
+    /// the emulator's actual tick, and the first event of a drag
+    /// pauses playback.
+    pub preview: Option<u32>,
+    /// Whether playback was running when the drag started, so
+    /// [`end_drag`](Self::end_drag)'s commit can resume it once the
+    /// seek lands.
+    pub resume: bool,
+    /// Whether this drag has blitted a keyframe preview yet. Until it
+    /// has, the live frame is still on screen and beats a farther
+    /// keyframe; afterwards previews always blit (the live frame is
+    /// gone from the buffer).
+    pub blitted: bool,
+    /// Where the cursor is resting on the scrub bar, driving the
+    /// floating thumbnail card above it. `None` when the cursor is off
+    /// the bar — and during a drag, when the full-screen blit preview
+    /// supersedes it.
+    pub hover: Option<scrubber::HoverInfo>,
+    /// Image handle for the snapshot behind the hover thumbnail,
+    /// keyed by the snapshot's absolute tick so cursor moves within
+    /// the same keyframe reuse the handle instead of rebuilding it.
+    pub thumb: Option<(u32, iced::widget::image::Handle)>,
+    /// Whether the transport bar's clip strip is expanded (the
+    /// scissors toggle). The strip owns the mark/export controls so
+    /// the resting bar stays a transport.
+    pub tools_open: bool,
+    /// Clip-selection start mark (playhead tick), set by the clip
+    /// strip's mark-in chip. Setting a mark that would invert the
+    /// pair drops the other mark, so `mark_in < mark_out` always
+    /// holds when both are set.
+    pub mark_in: Option<u32>,
+    /// Clip-selection end mark — see [`mark_in`](Self::mark_in).
+    pub mark_out: Option<u32>,
+}
+
+impl Scrub {
+    /// Begin or continue a drag at `target`. The first event of a drag
+    /// freezes playback under the cursor (remembering whether to
+    /// resume) and starts blitting previews from the snapshot buffers.
+    fn drag(&mut self, target: u32, replay: &ReplaySession) {
+        let press = self.preview.is_none();
+        if press {
+            self.resume = !replay.is_paused();
+            replay.set_paused(true);
+        }
+        self.preview = Some(target);
+        // The press itself only previews an exact frame: a click seeks
+        // to the tick under the cursor, and blitting the *nearest*
+        // keyframe there would flash a wrong frame until the chase
+        // delivers the real one. Once the drag is actually moving,
+        // nearest-keyframe previews are the scrubbing feedback.
+        let blitted = if press {
+            replay.scrub_preview_exact(target)
+        } else {
+            replay.scrub_preview(target, self.blitted)
+        };
+        if blitted {
+            self.blitted = true;
+        }
+    }
+
+    /// Reset the per-drag fields once a drag is released. The actual
+    /// (asynchronous) seek is fired by the caller, which still owns the
+    /// `&ReplaySession` — this just clears the drag bookkeeping.
+    fn end_drag(&mut self) {
+        self.preview = None;
+        self.resume = false;
+        self.blitted = false;
+    }
+
+    /// Refresh the floating hover thumbnail for the current
+    /// [`hover`](Self::hover) position. Caches by the nearest
+    /// snapshot's absolute tick, so cursor moves within one keyframe
+    /// reuse the decoded handle.
+    fn refresh_thumb(&mut self, replay: &ReplaySession) {
+        let Some(h) = self.hover else { return };
+        if let Some(snap) = replay.nearest_snapshot(h.tick) {
+            let snap_tick = snap.frame_index();
+            if self.thumb.as_ref().map(|(t, _)| *t) != Some(snap_tick) {
+                let fb = snap.local_framebuffer();
+                // Length-checked rather than just non-empty: a capture
+                // that doesn't match the session's declared shape would
+                // otherwise upload as a sheared texture.
+                let (w, h) = replay.frame_size();
+                if fb.len() == (w * h * 4) as usize {
+                    self.thumb = Some((snap_tick, iced::widget::image::Handle::from_rgba(w, h, fb)));
+                }
+            }
+        }
+    }
+}
+
+/// Play/pause the active replay — the transport button's
+/// [`Message::TogglePlay`] and the spacebar keybind.
+fn toggle_play(state: &State) {
+    let Some(s) = state.active_as::<ReplaySession>() else {
+        return;
+    };
+    if s.seek_will_resume() {
+        // An in-flight seek is about to resume playback, so the
+        // button shows "Pause" — honor the press as one: land the
+        // seek, stay paused.
+        s.cancel_seek_resume();
+    } else {
+        // Play at end-of-replay: rewind to start and play through
+        // again. Mirrors any media player — "play" on a finished
+        // track restarts it. The seek is asynchronous, so resuming
+        // is deferred to the chase landing — unpausing here would
+        // run frames off the end before the rewind starts.
+        let paused = s.is_paused();
+        if paused && s.current_tick() >= s.total_ticks() {
+            s.seek_to(0, true);
+        } else {
+            s.set_paused(!paused);
+        }
+    }
+}
+
 /// Apply a replay-view message. Takes the whole session [`State`]:
 /// the scrub bookkeeping lives there, beside the session slot.
 pub(crate) fn update(state: &mut State, msg: Message, config: &config::Config) -> Option<Effect> {
     match msg {
-        Message::TogglePlay => state.toggle_replay_play(),
+        Message::TogglePlay => toggle_play(state),
         Message::SeekRelative(delta) => {
             if let Some(s) = state.active_as::<ReplaySession>() {
                 // Chain off the in-flight seek's target so a burst of

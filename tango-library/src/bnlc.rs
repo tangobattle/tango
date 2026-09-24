@@ -17,8 +17,8 @@ use std::sync::Mutex;
 
 /// Which BNLC volume — Vol 1 (BN1-3) or Vol 2 (BN4-6). Defined in
 /// `tango-gamesupport` so per-game `BackgroundRef`s can name their volume
-/// without depending on the GUI crate; re-exported here since the runtime
-/// discovery below is GUI-side.
+/// without depending on the library; re-exported here beside the runtime
+/// discovery.
 pub use tango_gamesupport::Volume;
 
 /// Open BNLC volume install + cached shared-archive handle. Held in

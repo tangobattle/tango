@@ -49,7 +49,7 @@ pub(super) enum LocalReady {
     StartMatchSent(LocalCommit),
     /// `take_pre_match` drained the commit into the PvP handoff. The
     /// lobby chrome keeps rendering its ready-state snapshot until
-    /// `finish_handoff` resets the ladder.
+    /// `complete_handoff` settles the build and resets the ladder.
     HandedOff,
 }
 
@@ -324,6 +324,73 @@ impl State {
 
     /// Both sides have sent + received StartMatch — the host's cue to spin
     /// up the live match. `None` until both halves are present.
+    /// Peer announced their reveal's total length. Chunks before it are
+    /// strays from a voided pairing and get dropped.
+    pub(super) fn on_remote_chunk_start(&mut self, len: u64) -> Option<Event> {
+        match &mut self.handshake.remote {
+            RemoteReady::Committed { expected, revealed, .. } if expected.is_none() => {
+                *expected = Some(len);
+                if len == 0 {
+                    // Degenerate but well-formed: a zero-length reveal is
+                    // complete on arrival (verification rejects it
+                    // downstream).
+                    *revealed = true;
+                    return self.maybe_finish_handshake();
+                }
+            }
+            RemoteReady::Committed { .. } => {
+                self.fail(Error::DuplicateChunkStart);
+            }
+            RemoteReady::NotReady => {
+                // No commitment on hand — a straggler from a voided pairing
+                // (the peer's reveal outliving its Uncommit); drop it like
+                // stray chunks.
+                log::warn!("netplay: ignoring ChunkStart received before Commit");
+            }
+        }
+        None
+    }
+
+    /// Chunk bytes accumulate into the remote ladder's reveal buffer until
+    /// the announced length is all here — there's no end-of-stream
+    /// sentinel on the wire.
+    pub(super) fn on_remote_chunk(&mut self, chunk: Vec<u8>) -> Option<Event> {
+        match &mut self.handshake.remote {
+            RemoteReady::Committed { revealed: true, .. } => {
+                // The reveal is already complete — anything more is a stray
+                // from a voided pairing; drop it.
+                log::warn!("netplay: ignoring chunk received after complete reveal");
+            }
+            RemoteReady::Committed {
+                expected: Some(expected),
+                chunks,
+                revealed,
+                ..
+            } => {
+                chunks.extend_from_slice(&chunk);
+                let (got, want) = (chunks.len() as u64, *expected);
+                if got > want {
+                    self.fail(Error::RevealOverrun { got, want });
+                } else if got == want {
+                    *revealed = true;
+                    return self.maybe_finish_handshake();
+                }
+            }
+            RemoteReady::Committed { expected: None, .. } => {
+                // On the ordered channel a reveal's ChunkStart always
+                // precedes its chunks, so these are strays from a voided
+                // pairing; drop them.
+                log::warn!("netplay: ignoring chunk received before ChunkStart");
+            }
+            RemoteReady::NotReady => {
+                // Chunks with no commitment to verify against — protocol
+                // violation; drop them.
+                log::warn!("netplay: ignoring chunk received before Commit");
+            }
+        }
+        None
+    }
+
     pub(super) fn match_ready_event(&self) -> Option<Event> {
         (self.handshake.local.match_ready() && self.handshake.remote.start_match()).then_some(Event::MatchReady)
     }

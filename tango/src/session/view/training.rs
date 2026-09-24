@@ -15,7 +15,7 @@ pub(crate) fn view<'a>(s: &'a TrainingSession, ctx: Ctx<'a>) -> Element<'a, Sess
     let (main_horizontal, main_vertical) = main_frame_alignment(ctx.opponent_view);
     let frame = framebuffer_view(ctx, None, main_horizontal, main_vertical);
     let frame = stacked_framebuffers(ctx, frame, None, ctx.opponent_view);
-    let body = emulator_body(s.local_game(), frame, ctx.hide_emulator_border, [None, None]);
+    let body = emulator_body(ctx, frame, [None, None]);
     let mut stacked = stack![body];
     // Opponent-screen PiP — outside the controls gate, so it doesn't tuck
     // away with the idle cursor (same treatment as replay).
@@ -35,15 +35,7 @@ pub(crate) fn view<'a>(s: &'a TrainingSession, ctx: Ctx<'a>) -> Element<'a, Sess
 /// the same chip treatment the replay transport uses for its display
 /// toggles.
 fn toggle_button<'a>(icon: Icon, active: bool, label: String, msg: Message) -> Element<'a, Message> {
-    let style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let mut st = telemetry_plate_button(theme, status);
-        if active {
-            let primary = theme.palette().primary;
-            st.text_color = primary;
-            st.border.color = iced::Color { a: 0.35, ..primary };
-        }
-        st
-    };
+    let style = lit_plate_button(active);
     iced::widget::tooltip(
         button(
             container(icon.widget().size(16.0))
@@ -74,15 +66,7 @@ fn bottom_bar<'a>(
     opponent_view: crate::config::OpponentView,
 ) -> Element<'a, SessionMessage> {
     let now = iced::time::Instant::now();
-    let opponent_view_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let mut st = telemetry_plate_button(theme, status);
-        if opponent_view != crate::config::OpponentView::Off {
-            let primary = theme.palette().primary;
-            st.text_color = primary;
-            st.border.color = iced::Color { a: 0.35, ..primary };
-        }
-        st
-    };
+    let opponent_view_style = lit_plate_button(opponent_view != crate::config::OpponentView::Off);
     let opponent_view_menu = iced::widget::tooltip(
         widgets::MenuButton::new(
             container(opponent_view_icon(opponent_view).widget().size(16.0))

@@ -215,6 +215,23 @@ impl ScreenLayout {
     pub fn buffer_len(&self) -> usize {
         self.screens.iter().map(Screen::len).sum()
     }
+
+    /// The screens side by side, as a host sizes one texture for them.
+    /// Screens of unequal height take the tallest, which is what leaves
+    /// a shorter one letterboxed rather than skewed.
+    ///
+    /// Side by side because a DS's two screens stacked are twice as tall
+    /// as they are wide, and every display a host draws into is wider
+    /// than it is tall: stacked, the pane fits to height and wastes most
+    /// of the width, leaving both screens small. Turned on their side the
+    /// pair is 4:3 and fills what is actually there. Other arrangements
+    /// are re-packed from this one ([`crate::screens`]).
+    pub fn composite_size(&self) -> (u32, u32) {
+        (
+            self.screens.iter().map(|s| s.width).sum(),
+            self.screens.iter().map(|s| s.height).max().unwrap_or(0),
+        )
+    }
 }
 
 /// Which session a console's shape is being asked for, described

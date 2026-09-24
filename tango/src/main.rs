@@ -3,15 +3,15 @@
 // Foundations.
 mod config;
 mod i18n;
-mod library; // the on-disk game library: registry + ROM/save/patch/replay scanning
+mod library; // tango-library bound to the native filesystem + HTTP, plus desktop-only jobs
 mod platform; // host-machine glue: SDL input, CPAL audio, video, crash capture
 mod ui; // look-and-feel toolkit: widgets, style, theme, animation
 
-// Netplay: `tango_net` owns the wire protocols, `netplay` the
-// connection lifecycle.
+// Netplay: `tango_lobby` owns the connection lifecycle; `netplay` bridges
+// it into iced.
 mod netplay;
 
-// App-level state the tabs share.
+// Attaching the save editor to a prepared save.
 mod selection;
 
 // Screens. Per-game save editors are embedded through tango-gamesupport.

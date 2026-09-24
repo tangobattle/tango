@@ -7,7 +7,7 @@ use crate::tabs::play::loadout_strip;
 use crate::{netplay, session, tabs};
 
 impl App {
-    /// Apply a loadout-strip message (from either tab) to the shared
+    /// Apply a loadout-strip message to the shared
     /// App-level selection and run the selection-change
     /// follow-ups. The caller batches a lobby settings-resend after
     /// this, so a mid-lobby save/patch switch reaches the peer.

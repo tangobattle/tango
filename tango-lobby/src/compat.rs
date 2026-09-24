@@ -26,7 +26,7 @@
 use tango_net_protocol::control as protocol;
 
 /// Resolved local availability. The host obtains these facts from its
-/// catalog (`tango_library::loadout::compatibility_facts`).
+/// catalog (`tango_library::Catalog::compatibility_facts`).
 pub use tango_net_protocol::compat::Facts;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

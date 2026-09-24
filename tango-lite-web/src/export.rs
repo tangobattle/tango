@@ -110,12 +110,12 @@ async fn render(
     name: &str,
     canceller: &Canceller,
 ) -> Result<(), String> {
-    let replay = crate::library::read_replay(library, path)?;
-    let (games, roms) = crate::playback::resolve(library, &replay)?;
+    let (replay, resolved) = crate::library::open_replay(library, path)?;
     // The same boot the player uses, so the render reproduces the
     // recorded match rather than a similar one — with the games' own
     // audio, which is the point of a video.
-    let engine = tango_session::replay::EngineReplay::new(games, roms, &replay).map_err(|e| e.to_string())?;
+    let engine =
+        tango_session::replay::EngineReplay::new(resolved.games, resolved.roms, &replay).map_err(|e| e.to_string())?;
     let total_ticks = engine.total_ticks();
 
     // Whole replay, one chapter. The desktop's export form lets you pick

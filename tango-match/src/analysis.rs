@@ -110,7 +110,22 @@ pub struct Round {
     pub outcome: Option<(u32, BattleOutcome)>,
 }
 
-pub use crate::battle::RoundSample;
+/// One simulated tick's level sample, oriented to this side of the match —
+/// everything the stats fold consumes: both navis' HP and the custom-screen
+/// flag. Chip uses are events, not samples — they arrive through the
+/// telemetry event stream. `tick` is the tick that was simulated (not the
+/// boundary it produced), so consecutive samples are dense except for ticks
+/// the per-game reporting skipped (battle intro, before the unit structs
+/// are live).
+#[derive(Clone, Copy)]
+pub struct RoundSample {
+    pub tick: u32,
+    pub local: u16,
+    pub remote: u16,
+    /// Whether the custom screen (chip select) was open this tick — false
+    /// on games that don't report it.
+    pub custom: bool,
+}
 
 /// One HP reading.
 #[derive(Clone, Copy, Debug)]

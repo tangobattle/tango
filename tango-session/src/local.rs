@@ -87,7 +87,11 @@ pub(crate) struct Pacing {
 
 impl Pacing {
     pub(crate) fn new(game: &tango_gamesupport::Game) -> Self {
-        let expected_fps = native_fps(game);
+        Self::at(native_fps(game))
+    }
+
+    /// A dial for an engine whose native rate is `expected_fps`.
+    pub(crate) fn at(expected_fps: f32) -> Self {
         Self {
             expected_fps,
             fps_bits: Arc::new(AtomicU32::new(expected_fps.to_bits())),

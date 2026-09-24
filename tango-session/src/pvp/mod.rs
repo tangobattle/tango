@@ -39,10 +39,12 @@ use web_time::Instant;
 /// local frame delay (how far the display trails the netcode frontier).
 /// Each side picks its own; there's no negotiation. The lobby slider and config
 /// clamp to this range. 0 presents the frontier itself — pure rollback, every
-/// misprediction visible immediately; the default (`default_frame_delay`, 2)
-/// stays above it, and the ping-based suggestion never lands below 1.
+/// misprediction visible immediately; [`DEFAULT_FRAME_DELAY`] stays above it,
+/// and the ping-based suggestion never lands below 1.
 pub const MIN_FRAME_DELAY: u32 = 0;
 pub const MAX_FRAME_DELAY: u32 = 10;
+/// Local frame delay before the user (or a ping-based suggestion) picks one.
+pub const DEFAULT_FRAME_DELAY: u32 = 2;
 
 pub fn suggest_frame_delay(rtt: std::time::Duration) -> u32 {
     let one_way_frames = (rtt.as_millis() * 60 / 2 / std::time::Duration::from_secs(1).as_millis()) as i32;

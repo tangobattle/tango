@@ -12,7 +12,11 @@
 
 use serde::{Deserialize, Serialize};
 
-pub use tango_library::config::{DATA_DIR_NAME, DEFAULT_FRAME_DELAY, FILE_NAME};
+/// The folder a fresh install keeps its data in, under the user's
+/// documents directory.
+const DATA_DIR_NAME: &str = "Tango";
+/// File name of the config within the platform config directory.
+const FILE_NAME: &str = "config.json";
 
 const QUALIFIER: &str = "net";
 const ORGANIZATION: &str = "n1gp";
@@ -27,7 +31,7 @@ fn default_volume() -> f32 {
 }
 
 fn default_frame_delay() -> u32 {
-    DEFAULT_FRAME_DELAY
+    crate::session::pvp::DEFAULT_FRAME_DELAY
 }
 
 fn default_ui_scale() -> f32 {
@@ -400,6 +404,11 @@ impl std::ops::DerefMut for Config {
 }
 
 impl Config {
+    /// Where the crash supervisor rotates its session logs.
+    pub fn logs_path(&self) -> std::path::PathBuf {
+        self.data_path.join("logs")
+    }
+
     pub fn load_or_create() -> Self {
         let Some(path) = config_path() else {
             log::warn!("could not resolve config dir, using defaults");

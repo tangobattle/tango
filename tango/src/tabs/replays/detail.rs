@@ -140,7 +140,7 @@ pub(super) fn replay_detail<'a>(
         let gi = side.and_then(|s| s.game_info.as_ref());
         let game_line = gi
             .map(|g| {
-                let mut s = family_display_name(lang, &g.rom_family, g.rom_variant);
+                let mut s = family_display_name_or_raw(lang, &g.rom_family, g.rom_variant);
                 if let Some(p) = g.patch.as_ref() {
                     s.push_str(&format!(" · {} v{}", p.name, p.version));
                 }

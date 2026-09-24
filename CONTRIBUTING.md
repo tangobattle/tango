@@ -68,8 +68,7 @@ feature forwarding enables editors only for games already selected.
 `tango-match` defines backend-independent simulation contracts.
 `tango-session` exposes drivers advanced by the host; desktop threads
 and browser event loops supply the pacing. Session code uses
-`tango-platform` (also re-exported as `tango-session::platform`) for waits
-that must also work in a browser. Transport lives in `tango-net`; the lobby
+`tango-platform` for waits that must also work in a browser. Transport lives in `tango-net`; the lobby
 must not depend on library catalogs, sessions, or game backends. Offline
 sessions must build with `--no-default-features` without transport code.
 Hosts supply recording and stats sinks; session code must not write files.
@@ -94,19 +93,33 @@ Within the larger modules:
 - `tango/src/session/launch.rs` constructs a `Launch` from library inputs.
   `State::install` is the only installation path. `runtime.rs` owns audio,
   save persistence, and worker teardown, including abandoned launches.
+  `update/` holds each session kind's controls and the presentation state
+  they act on; `view/` renders, with frame presentation (`frame.rs`), the
+  shared HUD (`hud.rs`), and the priming notice (`priming.rs`) split from
+  the per-kind screens.
 - `tango-session/src/pvp/` separates the public session controls from
   setup, frame driving, network supervision, and recording.
-- `tango-library::loadout::Resolver` prepares and validates exact launch
-  inputs for both hosts. `tango-gamesupport-common-dataview::model` owns
+  `replay.rs` holds the playback session; `replay/workers.rs` its three
+  loops and `replay/speed.rs` its speed dial.
+- `tango-library::loadout` holds the `Selection` policy; its `Resolver`
+  (`loadout/resolve.rs`) prepares and validates exact launch inputs for
+  both hosts. `tango-gamesupport-common-dataview::model` owns
   save edits and snapshots; UI code formats its validation findings.
+- `tango-lobby/src/state.rs` is the lobby state machine; the ready
+  handshake (`handshake.rs`), the handoff into a match
+  (`state/handoff.rs`), and the reconcile policy (`reconcile.rs`) extend
+  it.
 - `tango/src/app/downloads.rs` owns download attempts and cancellation;
   `replay_controller.rs` owns deferred playback and analysis jobs.
 - `tango-lite-web/src/host.rs` composes explicit state handles. Core
   browser operations take a handle instead of using global state.
 - `tango-library::rom::load` prepares a clean or patched ROM;
-  `tango-library::replays::resolve_roms` applies recorded versions and
-  checks simulation compatibility for playback, analysis, and export
-  in both frontends.
+  `tango-library::replays::open` decodes a recording and applies its
+  recorded versions, checking simulation compatibility, for playback,
+  analysis, and export in both frontends.
+- `tango-match/src/screens.rs` is the multi-screen geometry the hosts
+  and the video exporter present frames through; `seek.rs` holds the
+  seek controller and the chase that serves it.
 - `tango-library/src/patch/mod.rs` exposes the patch API and ROM patching.
   `catalog.rs` merges and scans metadata; `download.rs` fetches and
   validates packages. The public `patch::*` entry points remain stable.

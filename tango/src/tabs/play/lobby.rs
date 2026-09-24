@@ -51,8 +51,8 @@ pub(super) const LINK_CODE_FLASH_KEY: &str = "lobby-link-code";
 pub(super) struct Lobby<'a> {
     pub(super) lang: &'a LanguageIdentifier,
     /// May be the App's exit snapshot rather than the live state while
-    /// the lobby body is animating out — see `lobby_exit_snapshot` in
-    /// [`super::State::view`]. Same goes for `phase`.
+    /// the lobby body is animating out — see `exit_snapshot` on
+    /// [`super::LobbyBandCtx`]. Same goes for `phase`.
     pub(super) state: &'a netplay::LobbyState,
     /// Ready-ladder projection matching `state`'s vintage (live or
     /// exit-snapshot).
@@ -127,10 +127,7 @@ impl<'a> Lobby<'a> {
             Phase::Negotiating { .. } => Status::Negotiating,
             _ => match (self.state.local.as_ref(), self.state.remote.as_ref()) {
                 (Some(l), Some(r)) => {
-                    let roms = self.scanners.roms.read();
-                    let patches = self.scanners.patches.read();
-                    let facts = tango_library::loadout::compatibility_facts(l, r, &roms, &patches);
-                    Status::Verdict(netplay::compat::check(l, r, facts))
+                    Status::Verdict(netplay::compat::check(l, r, self.scanners.compatibility_facts(l, r)))
                 }
                 _ => Status::Handshake,
             },
@@ -910,12 +907,7 @@ fn side_card_subline(lang: &LanguageIdentifier, settings: &Settings) -> String {
     let mut subline = settings
         .game_info
         .as_ref()
-        .map(|gi| {
-            let family = gi.family_and_variant.0.as_str();
-            // Game-name localization goes through the per-family path.
-            game::family_str(family, lang, "name")
-                .unwrap_or_else(|| format!("{} v{}", gi.family_and_variant.0, gi.family_and_variant.1))
-        })
+        .map(|gi| game::family_display_name_or_raw(lang, &gi.family_and_variant.0, gi.family_and_variant.1))
         .unwrap_or_else(|| t!(lang, "lobby-no-game"));
     if let Some(p) = settings.game_info.as_ref().and_then(|gi| gi.patch.as_ref()) {
         subline.push_str(&format!(" · {} v{}", p.name, p.version));

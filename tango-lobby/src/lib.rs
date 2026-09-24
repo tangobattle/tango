@@ -36,17 +36,13 @@ mod state;
 pub use connect::connect;
 #[cfg(not(target_arch = "wasm32"))]
 pub use connect::connect_direct;
-pub use connect::Connected;
-pub use tango_net::link::{DirectRole, LinkParts, ReconnectRecipe};
+use connect::Connected;
+pub use tango_net::link::DirectRole;
+use tango_net::link::{LinkParts, ReconnectRecipe};
 
 pub use handshake::ReadyView;
 use lobby::Command;
-pub use state::{ConnectionKind, LobbyState, State};
-
-// The protocol version and its version-history changelog live in the
-// shared tango-net-protocol crate (every client implementation bumps
-// and documents them there).
-pub use tango_net_protocol::PROTOCOL_VERSION;
+pub use state::{ConnectionKind, HandoffTicket, LobbyState, State};
 
 /// Why a netplay session failed — typed so the UI can route each
 /// failure mode to its own localized copy instead of string-matching
@@ -175,12 +171,25 @@ pub enum LinkIdent {
 }
 
 impl LinkIdent {
-    /// Discord join-secret for the rich-presence "Ask to Join" /
-    /// "Join Party" affordances. Only matchmaking codes are
-    /// joinable across the internet via Discord's deep-link;
-    /// direct codes wouldn't reach anyone else, so we surface
-    /// `None` and Discord hides the button.
-    pub fn discord_join_secret(&self) -> Option<&str> {
+    /// Resolve trimmed link-code input into something to dial: a
+    /// `/`-prefixed direct command (see [`DirectRole::parse_command`]) or
+    /// a matchmaking code. `None` when the input isn't submittable: empty,
+    /// or a malformed direct command.
+    pub fn parse(input: &str) -> Option<Self> {
+        if input.is_empty() {
+            None
+        } else if input.starts_with('/') {
+            DirectRole::parse_command(input).map(LinkIdent::Direct)
+        } else {
+            Some(LinkIdent::Matchmaking(input.to_string()))
+        }
+    }
+
+    /// The code another player can dial to reach the same rendezvous.
+    /// Only matchmaking codes have one: a direct command names this
+    /// machine's own role and wouldn't reach anyone else. Hosts show it
+    /// and offer it as a Discord join secret.
+    pub fn matchmaking_code(&self) -> Option<&str> {
         match self {
             LinkIdent::Matchmaking(code) => Some(code.as_str()),
             LinkIdent::Direct(_) => None,
@@ -265,3 +274,40 @@ pub enum Event {
 // The transport owns the handoff contract shared by lobby and session.
 // Re-exported so hosts can consume a completed lobby directly.
 pub use tango_net::handoff::PreMatchData;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_ident_parses_codes_and_direct_commands() {
+        assert!(LinkIdent::parse("").is_none());
+        assert!(matches!(
+            LinkIdent::parse("abc-def"),
+            Some(LinkIdent::Matchmaking(code)) if code == "abc-def"
+        ));
+        assert!(matches!(
+            LinkIdent::parse("/host"),
+            Some(LinkIdent::Direct(DirectRole::Host { port })) if port == tango_net::DEFAULT_LOCAL_PORT
+        ));
+        assert!(matches!(
+            LinkIdent::parse("/host 1234"),
+            Some(LinkIdent::Direct(DirectRole::Host { port: 1234 }))
+        ));
+        assert!(LinkIdent::parse("/host nope").is_none());
+        assert!(matches!(
+            LinkIdent::parse("/connect 10.0.0.2"),
+            Some(LinkIdent::Direct(DirectRole::Connect { addr })) if addr == "10.0.0.2:24680"
+        ));
+        assert!(matches!(
+            LinkIdent::parse("/connect [::1]"),
+            Some(LinkIdent::Direct(DirectRole::Connect { addr })) if addr == "[::1]:24680"
+        ));
+        assert!(matches!(
+            LinkIdent::parse("/connect 10.0.0.2:99"),
+            Some(LinkIdent::Direct(DirectRole::Connect { addr })) if addr == "10.0.0.2:99"
+        ));
+        assert!(LinkIdent::parse("/connect").is_none());
+        assert!(LinkIdent::parse("/dance").is_none());
+    }
+}

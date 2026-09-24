@@ -28,8 +28,8 @@ impl Tab {
 }
 
 /// Top-level Message. Tab-specific messages live in each tab module
-/// and are wrapped here; the dispatch in `App::update` routes them to
-/// per-tab `update_*` methods below.
+/// and are wrapped here; `dispatch.rs` routes them to the `update_*`
+/// methods of the app's feature modules.
 #[derive(Debug, Clone)]
 pub enum Message {
     Download(super::downloads::Event),
@@ -51,10 +51,11 @@ pub enum Message {
     Session(session::Message),
     Netplay(netplay::Delivery),
     /// A launch owns the session and its workers until it is installed or
-    /// discarded. The attempt id rejects results from a lobby already left.
-    /// The once-taken slot lets iced clone messages without cloning a session.
+    /// discarded. The handoff ticket rejects results from a lobby already
+    /// left. The once-taken slot lets iced clone messages without cloning a
+    /// session.
     PvpSessionBuilt(
-        u64,
+        netplay::HandoffTicket,
         std::sync::Arc<std::sync::Mutex<Option<anyhow::Result<session::Launch>>>>,
     ),
     /// 1 Hz tick: refresh Discord rich-presence + drain any

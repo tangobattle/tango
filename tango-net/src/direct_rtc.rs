@@ -86,7 +86,7 @@ fn fabricate_sdp(sdp_type: SdpType, setup: &str, ufrag: &str, candidate: Option<
 /// reliable control channel + the unreliable in-match channel) and split each
 /// into our transport-agnostic Sender/Receiver, returning the peer connection
 /// so the caller can keep it alive.
-fn open_channels(mut pc: PeerConnection) -> Channels {
+fn open_channels(mut pc: PeerConnection, is_offerer: bool) -> Channels {
     let (label, init) = super::channel::control_channel();
     let control_dc = pc
         .create_data_channel(label, init)
@@ -99,6 +99,7 @@ fn open_channels(mut pc: PeerConnection) -> Channels {
         control: super::channel::control_pair(control_dc),
         in_match: super::channel::data_pair(in_match_dc),
         peer_conn: pc,
+        is_offerer,
         // Fabricated SDP with fingerprint verification disabled, so the dummy
         // fingerprint is meaningless; the direct path rebuilds via re-run, not a
         // derived session_id. Leave the pair empty.
@@ -137,7 +138,7 @@ pub async fn host(port: u16) -> std::io::Result<Channels> {
     })?;
     spawn_state_logger(events);
 
-    let mut channels = open_channels(pc);
+    let mut channels = open_channels(pc, true);
 
     channels.peer_conn.set_local_description(
         SdpType::Offer,
@@ -175,7 +176,7 @@ pub async fn connect(addr: &str) -> std::io::Result<Channels> {
     })?;
     spawn_state_logger(events);
 
-    let mut channels = open_channels(pc);
+    let mut channels = open_channels(pc, false);
 
     // The host offers as `actpass`; we become the DTLS client by answering
     // `active`. Set the remote offer first, then generate our answer.
@@ -206,8 +207,8 @@ fn host_candidate(sock: &std::net::SocketAddr) -> String {
 
 /// Synthetic skew A/B measurement, transport-stack-agnostic: everything it
 /// touches (`direct_rtc::{host,connect}` → [`Channels`] → the raw in-match
-/// byte pipe) exists identically on the libdatachannel and tango-rtc trees, so
-/// the same test compiled on each gives directly comparable numbers.
+/// byte pipe) is what any transport stack has to provide, so the same test
+/// compiled against another one gives directly comparable numbers.
 ///
 /// It models exactly what tango's in-match skew telemetry computes: two peers
 /// tick at 60Hz through a loss/delay/jitter-injecting UDP proxy; each tick a
@@ -216,7 +217,7 @@ fn host_candidate(sock: &std::net::SocketAddr) -> String {
 /// remote tick frontier it has seen. Wobble = how much that skew series
 /// swings.
 ///
-/// Run by hand: `cargo test -p tango --release skew_wobble -- --ignored --nocapture`
+/// Run by hand: `cargo test -p tango-net --release skew_wobble -- --ignored --nocapture`
 #[cfg(test)]
 mod skew_ab {
     use super::*;

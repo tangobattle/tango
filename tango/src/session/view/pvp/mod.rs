@@ -77,7 +77,7 @@ pub(crate) fn view<'a>(p: &'a PvpSession, ctx: Ctx<'a>) -> Element<'a, SessionMe
             .filter(|p| p.opponent_loaded.is_some() && state.opponent_panel.shown())
             .map(|p| p.pane_widths[1]),
     ];
-    let body = emulator_body(p.local_game(), frame, ctx.hide_emulator_border, slots);
+    let body = emulator_body(ctx, frame, slots);
     let mut game_stack = stack![body];
     // A drawer pane mid-animation draws in iced's floating layer, above every
     // base stack layer. The build warning is hoisted alongside it so the
@@ -702,7 +702,7 @@ mod build_warning_tests {
     #[test]
     fn blinded_opponent_still_gets_an_exact_warning() {
         let mut state = State::new();
-        state.pvp_panes = Some(crate::session::PvpPanes {
+        state.pvp_panes = Some(crate::session::update::pvp::PvpPanes {
             local_loaded: None,
             // `None` is exactly how a blinded opponent is represented.
             opponent_loaded: None,

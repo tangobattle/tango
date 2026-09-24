@@ -209,7 +209,7 @@ impl ReplaysState {
                 .collect();
             seen.sort();
             for family in seen {
-                let display = family_display_name(lang, &family, 0);
+                let display = family_display_name_or_raw(lang, &family, 0);
                 game_options.push(widgets::Choice::new(Some(family), display));
             }
         }
@@ -481,7 +481,7 @@ pub(super) fn search_haystack(
         parts.push(side.nickname.clone());
         if let Some(gi) = side.game_info.as_ref() {
             parts.push(gi.rom_family.clone());
-            parts.push(family_display_name(lang, &gi.rom_family, gi.rom_variant));
+            parts.push(family_display_name_or_raw(lang, &gi.rom_family, gi.rom_variant));
             if let Some(g) = u8::try_from(gi.rom_variant)
                 .ok()
                 .and_then(|v| crate::library::game::find_by_family_and_variant(&gi.rom_family, v))

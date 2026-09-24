@@ -1,9 +1,6 @@
 //! Link-code generator. Builds memorable `<adjective>-<word>-<noun>`
 //! handles per locale so users can dictate a code to a friend out
-//! loud. Word lists ported verbatim from
-//! `tango/src/randomcode.rs`; cross-locale sampling simplified
-//! (legacy used reservoir sampling for a one-of-N pick, which is
-//! overkill when N is tiny).
+//! loud.
 
 use rand::Rng;
 use std::sync::LazyLock;

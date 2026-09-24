@@ -21,7 +21,8 @@
 //! both sides just create them with matching ids — no DCEP open handshake.
 
 use super::{control, data, PacketSink, PacketStream};
-use datachannel_wrapper::{DataChannelInit, PeerConnection, Reliability};
+pub use datachannel_wrapper::PeerConnection;
+use datachannel_wrapper::{DataChannelInit, Reliability};
 
 /// The two netplay channels (reliable control + unreliable in-match) plus the
 /// peer connection that owns them, as one bundle. Produced by every transport's
@@ -35,6 +36,10 @@ pub struct Channels {
     /// Unreliable, unordered — the in-match `data::wire` datagrams.
     pub in_match: (data::Sender, data::Receiver),
     pub peer_conn: PeerConnection,
+    /// Whether this side is the "offer side" for symmetry-breaking
+    /// purposes: it wrote the SDP offer on the matchmaking path, or it's
+    /// the host on the direct link.
+    pub is_offerer: bool,
     /// This connection's two DTLS certificate fingerprints (raw SHA-256 bytes),
     /// parsed from the offer/answer SDP, used to seed the matchmaking reconnect
     /// `session_id` (see `netplay::derive_reconnect_session_id`). Empty on a
@@ -60,13 +65,26 @@ impl Channels {
         } = connected;
         let [control_dc, in_match_dc] = <[_; 2]>::try_from(dcs)
             .map_err(|dcs: Vec<_>| std::io::Error::other(format!("expected 2 data channels, got {}", dcs.len())))?;
+        let is_offerer = peer_conn
+            .local_description()
+            .is_some_and(|d| matches!(d.sdp_type, datachannel_wrapper::SdpType::Offer));
         Ok(Self {
             control: control_pair(control_dc),
             in_match: data_pair(in_match_dc),
             peer_conn,
+            is_offerer,
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
         })
+    }
+
+    /// Whether the connection's selected ICE pair runs through a TURN
+    /// relay — a `typ relay` candidate on either end — or `None` when the
+    /// pair can't be read. The signaling-free direct path only ever forms
+    /// host candidate pairs, so it reads as not relayed.
+    pub fn relayed(peer_conn: &PeerConnection) -> Option<bool> {
+        let (local, remote) = peer_conn.selected_candidate_pair().ok()?;
+        Some(local.contains("typ relay") || remote.contains("typ relay"))
     }
 }
 

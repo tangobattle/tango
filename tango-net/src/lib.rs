@@ -80,9 +80,8 @@ pub const DEFAULT_LOCAL_PORT: u16 = 24680;
 /// a dropped peer.
 pub const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// Median-of-window latency tracker. Identical to the legacy
-/// `tango/src/stats.rs::LatencyCounter` — used by the PvP loop
-/// to report ping in the running match.
+/// Median-of-window latency tracker: the lobby's ping line and the PvP
+/// loop's in-match ping both read one.
 #[derive(Clone)]
 pub struct LatencyCounter {
     marks: std::collections::VecDeque<std::time::Duration>,

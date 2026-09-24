@@ -151,10 +151,7 @@ pub fn snapshot(handle: &Handle) -> Snapshot {
 }
 
 fn ident_code(ident: &LinkIdent) -> String {
-    match ident {
-        LinkIdent::Matchmaking(code) => code.clone(),
-        LinkIdent::Direct(_) => String::new(),
-    }
+    ident.matchmaking_code().unwrap_or_default().to_owned()
 }
 
 fn describe(error: &tango_lobby::Error) -> String {
@@ -201,7 +198,7 @@ fn describe_game_info(info: &protocol::GameInfo) -> String {
 fn verdict(handle: &Handle, link: &Link) -> Option<Verdict> {
     let verdict = crate::library::with(&handle.library, |library| {
         link.net
-            .verdict(|local, remote| compatibility_facts(library, local, remote))
+            .verdict(|local, remote| library.catalog.compatibility_facts(local, remote))
     })??;
     Some(match verdict {
         compat::Verdict::Compatible => Verdict::Compatible,
@@ -360,7 +357,7 @@ fn after_state_change(handle: &Handle) {
                     // to blind, so there is nothing for the flag to hide.
                     blind_setup: false,
                 },
-                |local, remote| compatibility_facts(library, local, remote),
+                |local, remote| library.catalog.compatibility_facts(local, remote),
             )
         })
     })
@@ -383,29 +380,26 @@ fn after_state_change(handle: &Handle) {
 /// build the live match from it.
 async fn start_match(handle: &Handle) {
     let pending = handle.update(|link| {
-        let pre_match = link.net.take_pre_match()?;
+        let handoff = link.net.take_pre_match()?;
         link.starting = true;
-        Some((link.net.session_id(), pre_match))
+        Some(handoff)
     });
-    let Some((attempt, pre_match)) = pending else { return };
+    let Some((ticket, pre_match)) = pending else { return };
 
-    let outcome = build(handle, attempt, pre_match).await;
+    let outcome = build(handle, ticket, pre_match).await;
     handle.update(|link| {
-        if link.net.session_id() != attempt {
-            return;
+        if link.net.is_current(ticket) {
+            link.starting = false;
         }
-        link.starting = false;
-        match outcome {
-            Ok(()) => link.net.finish_handoff(),
-            Err(e) => {
-                log::error!("netplay: building the match failed: {e}");
-                link.net.fail_session_build(tango_lobby::Error::SessionBuild(e));
-            }
-        }
+        link.net.complete_handoff(ticket, outcome);
     });
 }
 
-async fn build(handle: &Handle, attempt: u64, pre_match: tango_lobby::PreMatchData) -> Result<(), String> {
+async fn build(
+    handle: &Handle,
+    ticket: tango_lobby::HandoffTicket,
+    pre_match: tango_lobby::PreMatchData,
+) -> Result<(), String> {
     let prepared = crate::library::with(&handle.library, |library| {
         library
             .catalog
@@ -429,7 +423,7 @@ async fn build(handle: &Handle, attempt: u64, pre_match: tango_lobby::PreMatchDa
         rom: prepared.remote.rom,
     };
     let sink = handle.engine.audio_sink().await;
-    if handle.read(|link| link.net.session_id()) != attempt {
+    if !handle.read(|link| link.net.is_current(ticket)) {
         return Ok(());
     }
     let (session, driver, stream) = tango_session::pvp::PvpSession::new(tango_session::pvp::PvpSessionArgs {
@@ -447,7 +441,7 @@ async fn build(handle: &Handle, attempt: u64, pre_match: tango_lobby::PreMatchDa
     .await
     .map_err(|e| e.to_string())?;
 
-    if handle.read(|link| link.net.session_id()) != attempt {
+    if !handle.read(|link| link.net.is_current(ticket)) {
         return Ok(());
     }
     // Priming the pair to a live link battle is seconds of emulation
@@ -467,27 +461,11 @@ fn frame_delay(handle: &Handle) -> u32 {
     // whole match's display lag. It reads `ZERO` when no Pong has come
     // back yet, which is the "we don't know" case, not a 0 ms link.
     let median = handle.read(|link| link.net.lobby.latency_counter.median());
-    tango_session::pvp::initial_frame_delay(median, tango_library::config::DEFAULT_FRAME_DELAY)
+    tango_session::pvp::initial_frame_delay(median, tango_session::pvp::DEFAULT_FRAME_DELAY)
 }
 
 /// A fresh random link code, in the user's language, for the "make me
 /// one" button.
 pub fn random_code() -> String {
     tango_lobby::randomcode::generate(&tango_library::lang::FALLBACK_LANG)
-}
-
-/// The library's side of the compatibility verdict, over the same ROM
-/// map and patch catalog the desktop resolves it from. Doing it any
-/// other way is how a matchup that can't work reaches the ready button.
-fn compatibility_facts(
-    library: &crate::library::Library,
-    local: &protocol::Settings,
-    remote: &protocol::Settings,
-) -> compat::Facts {
-    tango_library::loadout::compatibility_facts(
-        local,
-        remote,
-        &library.catalog.roms.read(),
-        &library.catalog.patches.read(),
-    )
 }

@@ -124,6 +124,31 @@ pub fn resolve_roms(
     })
 }
 
+/// Why a recording couldn't be opened for simulation.
+#[derive(Debug, thiserror::Error)]
+pub enum OpenError {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Decode(#[from] tango_replay::DecodeError),
+    #[error(transparent)]
+    Resolve(#[from] ResolveError),
+}
+
+/// Read and decode the recording at `path`, then resolve the exact games
+/// and ROMs it ran ([`resolve_roms`]). The one entry point playback,
+/// analysis, and video export open a recording through.
+pub fn open(
+    storage: &dyn Storage,
+    roms: &crate::rom::Scanner,
+    patches_path: &std::path::Path,
+    path: &std::path::Path,
+) -> Result<(tango_replay::Replay, ResolvedRoms), OpenError> {
+    let replay = tango_replay::Replay::decode(storage.open(path)?)?;
+    let resolved = resolve_roms(storage, roms, patches_path, &replay.metadata)?;
+    Ok((replay, resolved))
+}
+
 /// Whether the replay's local-side game resolves for re-simulation
 /// ([`crate::game::find_for_replay_side`]). A replay with no recorded
 /// local game info can't be filtered on, so it's kept; one that names a

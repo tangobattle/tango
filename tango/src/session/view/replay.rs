@@ -12,6 +12,11 @@ use crate::session::Message as SessionMessage;
 // Explicit so these win over iced's prelude `column!`/`row!` macros (see mod.rs).
 use sweeten::widget::{column, row};
 
+mod clip;
+mod inputs;
+use clip::{clip_lift, clip_strip};
+use inputs::input_display_overlay;
+
 /// Vertical clearance that floats a bottom-anchored popover just
 /// above the replay transport bar (bottom margin + strip padding
 /// + control height + row spacing to the collapsed clip-strip slot
@@ -40,7 +45,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
     let (main_horizontal, main_vertical) = main_frame_alignment(ctx.opponent_view);
     let frame = framebuffer_view(ctx, touch_spot, main_horizontal, main_vertical);
     let frame = stacked_framebuffers(ctx, frame, pip_touch_spot, ctx.opponent_view);
-    let body = emulator_body(r.local_game(), frame, ctx.hide_emulator_border, [None, None]);
+    let body = emulator_body(ctx, frame, [None, None]);
     // Clicking the screen itself plays/pauses, like any video player.
     // This is the stack's bottom layer, and iced dispatches presses
     // topmost-first with capture — so the transport bar's controls
@@ -220,9 +225,9 @@ fn replay_controls<'a>(
 }
 
 /// The replay bar's strip: full transport (play/pause + scrubber +
-/// tick readouts) plus the options trigger, at the chunky
-/// BAR_CONTROL_HEIGHT sizing. SP/PvP don't use this — their few
-/// controls live in compact corner chips ([`corner_chips`]).
+/// tick readouts), the clip strip when it's open, and the speed and
+/// display toggles. Other session kinds have no transport; their few
+/// controls live in the corner commands ([`corner_commands_overlay`]).
 fn replay_bar<'a>(
     lang: &'a LanguageIdentifier,
     r: &'a ReplaySession,
@@ -254,15 +259,7 @@ fn replay_bar<'a>(
     };
     let custom_screen_speedup = r.custom_screen_speedup();
     let speed_engaged = speed_idx != 1 || custom_screen_speedup;
-    let speed_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let mut st = telemetry_plate_button(theme, status);
-        if speed_engaged {
-            let primary = theme.palette().primary;
-            st.text_color = primary;
-            st.border.color = iced::Color { a: 0.35, ..primary };
-        }
-        st
-    };
+    let speed_style = lit_plate_button(speed_engaged);
     let mut speed_items: Vec<widgets::MenuItem<Message>> = SPEED_STEPS
         .iter()
         .enumerate()
@@ -316,15 +313,7 @@ fn replay_bar<'a>(
     // Input display toggle: quiet plate at rest, lit glyph + tinted
     // hairline while the overlay is on — the setup handles'
     // "identity in the glyph" treatment, not a full CTA fill.
-    let input_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let mut st = telemetry_plate_button(theme, status);
-        if show_replay_inputs {
-            let primary = theme.palette().primary;
-            st.text_color = primary;
-            st.border.color = iced::Color { a: 0.35, ..primary };
-        }
-        st
-    };
+    let input_toggle_style = lit_plate_button(show_replay_inputs);
     let input_toggle = iced::widget::tooltip(
         button(
             container(Icon::Gamepad2.widget().size(16.0))
@@ -346,15 +335,7 @@ fn replay_bar<'a>(
     // selected row owns both whether the auxiliary renderer runs and how its
     // surface is laid out; non-Off choices light the trigger like the other
     // display controls.
-    let opponent_view_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let mut st = telemetry_plate_button(theme, status);
-        if opponent_view != crate::config::OpponentView::Off {
-            let primary = theme.palette().primary;
-            st.text_color = primary;
-            st.border.color = iced::Color { a: 0.35, ..primary };
-        }
-        st
-    };
+    let opponent_view_style = lit_plate_button(opponent_view != crate::config::OpponentView::Off);
     let opponent_view_menu = iced::widget::tooltip(
         widgets::MenuButton::new(
             container(opponent_view_icon(opponent_view).widget().size(16.0))
@@ -382,15 +363,7 @@ fn replay_bar<'a>(
     // Perspective swap: the main screen shows the opponent's re-simulated
     // view; the PiP (if on) carries the local screen. Same chip recipe.
     let swapped = r.swap_perspective();
-    let swap_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let mut st = telemetry_plate_button(theme, status);
-        if swapped {
-            let primary = theme.palette().primary;
-            st.text_color = primary;
-            st.border.color = iced::Color { a: 0.35, ..primary };
-        }
-        st
-    };
+    let swap_toggle_style = lit_plate_button(swapped);
     let swap_toggle = iced::widget::tooltip(
         button(
             container(Icon::ArrowLeftRight.widget().size(16.0))
@@ -413,15 +386,7 @@ fn replay_bar<'a>(
     // strip (see [`clip_strip`]) between the scrubber and this row.
     let tools_open = state.scrub.tools_open;
     let (mark_in, mark_out) = (state.scrub.mark_in, state.scrub.mark_out);
-    let clip_toggle_style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-        let mut st = telemetry_plate_button(theme, status);
-        if tools_open {
-            let primary = theme.palette().primary;
-            st.text_color = primary;
-            st.border.color = iced::Color { a: 0.35, ..primary };
-        }
-        st
-    };
+    let clip_toggle_style = lit_plate_button(tools_open);
     let clip_toggle = iced::widget::tooltip(
         button(
             container(Icon::Scissors.widget().size(16.0))
@@ -480,201 +445,6 @@ fn replay_bar<'a>(
         .push(scrub)
         .push(clip_row)
         .push(controls)
-        .into()
-}
-
-/// Fixed height of the expanded clip strip (chips + the row spacing
-/// above it come out of [`clip_lift`] too, so the floats above the
-/// bar ride up in step).
-const CLIP_ROW_H: f32 = 28.0;
-
-/// How much the expanded clip strip grows the bar — added to the
-/// bottom-anchored floats' resting lift ([`POPOVER_LIFT`]).
-fn clip_lift(state: &State) -> f32 {
-    if state.scrub.tools_open {
-        CLIP_ROW_H
-    } else {
-        0.0
-    }
-}
-
-/// The clip strip: mark-in/mark-out stamps, the marked span's
-/// wallclock readout, export quality, clear, and the export CTA —
-/// swapped wholesale for a progress line while an export job is
-/// running. Lives between the scrubber and the transport row, only
-/// while the bar's scissors toggle is on.
-fn clip_strip<'a>(
-    lang: &'a LanguageIdentifier,
-    state: &'a State,
-    export_scale: u8,
-    job: Option<ClipJob<'a>>,
-) -> Element<'a, Message> {
-    let chip = |icon: Icon, lit: bool, tip: String, msg: Option<Message>| -> Element<'a, Message> {
-        let style = move |theme: &iced::Theme, status: iced::widget::button::Status| {
-            let mut st = telemetry_plate_button(theme, status);
-            if lit {
-                let primary = theme.palette().primary;
-                st.text_color = primary;
-                st.border.color = iced::Color { a: 0.35, ..primary };
-            }
-            st
-        };
-        iced::widget::tooltip(
-            button(
-                container(icon.widget().size(14.0))
-                    .width(iced::Length::Fixed(16.0))
-                    .height(iced::Length::Fixed(16.0))
-                    .center(Fill),
-            )
-            .padding(0)
-            .width(iced::Length::Fixed(26.0))
-            .height(iced::Length::Fixed(26.0))
-            .style(style)
-            .on_press_maybe(msg),
-            widgets::tooltip_bubble(tip),
-            iced::widget::tooltip::Position::Top,
-        )
-        .gap(4)
-        .into()
-    };
-
-    // A running export replaces the tools with its progress — the
-    // strip is the player-side face of the same per-replay job the
-    // replays tab shows, so there's exactly one of these at a time.
-    if let Some(job) = job.filter(|j| j.result.is_none()) {
-        let pct = if job.total > 0 {
-            (job.completed as f32 / job.total as f32).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let caption = if job.cancelling {
-            t!(lang, "replays-export-cancelling")
-        } else {
-            format!(
-                "{} {}%",
-                t!(lang, "replays-export-progress"),
-                (pct * 100.0).round() as u32
-            )
-        };
-        let cancel = chip(
-            Icon::X,
-            false,
-            t!(lang, "replays-export-cancel"),
-            (!job.cancelling).then_some(Message::CancelClipExport),
-        );
-        return container(
-            row![
-                text(caption).size(TEXT_CAPTION).style(widgets::muted_text_style),
-                iced::widget::progress_bar(0.0..=1.0, pct)
-                    .girth(Length::Fixed(4.0))
-                    .style(widgets::slim_progress_bar),
-                cancel,
-            ]
-            .spacing(10)
-            .align_y(Alignment::Center),
-        )
-        .height(iced::Length::Fixed(CLIP_ROW_H))
-        .align_y(iced::alignment::Vertical::Center)
-        .into();
-    }
-
-    let (mark_in, mark_out) = (state.scrub.mark_in, state.scrub.mark_out);
-    // Mark stamps ride beside their chips in the transport's numeral
-    // treatment; an unset mark shows a muted placeholder so setting
-    // one never reflows the row.
-    let stamp = |mark: Option<u32>| {
-        let (label, style): (String, fn(&iced::Theme) -> iced::widget::text::Style) = match mark {
-            Some(m) => (crate::session::format_tick(m), |theme: &iced::Theme| {
-                iced::widget::text::Style {
-                    color: Some(theme.palette().primary),
-                }
-            }),
-            None => ("–:––".to_string(), widgets::muted_text_style),
-        };
-        text(label).size(12).font(iced::Font::MONOSPACE).style(style)
-    };
-    let mut strip = row![
-        chip(
-            Icon::ArrowRightFromLine,
-            mark_in.is_some(),
-            t!(lang, "playback-clip-start"),
-            Some(Message::SetClipStart),
-        ),
-        stamp(mark_in),
-        chip(
-            Icon::ArrowRightToLine,
-            mark_out.is_some(),
-            t!(lang, "playback-clip-end"),
-            Some(Message::SetClipEnd),
-        ),
-        stamp(mark_out),
-        chip(
-            Icon::Eraser,
-            false,
-            t!(lang, "playback-clip-clear"),
-            (mark_in.is_some() || mark_out.is_some()).then_some(Message::ClearClipMarks),
-        ),
-    ]
-    .spacing(8)
-    .align_y(Alignment::Center);
-    // The marked span's length, once it exists.
-    if let (Some(a), Some(b)) = (mark_in, mark_out) {
-        strip = strip.push(
-            text(format!("({})", crate::session::format_tick(b - a)))
-                .size(12)
-                .style(widgets::muted_text_style),
-        );
-    }
-    strip = strip.push(iced::widget::space::horizontal());
-    // The last job's outcome, quietly, with the full line in a
-    // tooltip when it failed.
-    if let Some(job) = job {
-        match job.result {
-            Some(Ok(())) => {
-                strip = strip.push(
-                    text(t!(lang, "replays-export-success"))
-                        .size(TEXT_CAPTION)
-                        .style(widgets::muted_text_style),
-                );
-            }
-            Some(Err(e)) => {
-                strip = strip.push(
-                    iced::widget::tooltip(
-                        text(t!(lang, "replays-export-error", error = "…"))
-                            .size(TEXT_CAPTION)
-                            .style(widgets::muted_text_style),
-                        widgets::tooltip_bubble(e.describe(lang)),
-                        iced::widget::tooltip::Position::Top,
-                    )
-                    .gap(4),
-                );
-            }
-            None => {}
-        }
-    }
-    // Full replay exports use this exact picker and state too.
-    let quality_menu = widgets::replay_export_scale_picker(
-        lang,
-        export_scale,
-        Message::SetClipExportScale,
-        Some(Message::BarMenuToggled),
-    );
-    strip = strip.push(quality_menu);
-    // The one CTA in the strip: primary once a valid span exists.
-    let export_msg = match (mark_in, mark_out) {
-        (Some(start), Some(end)) if start < end => Some(Message::ExportClip { start, end }),
-        _ => None,
-    };
-    strip = strip.push(
-        button(text(t!(lang, "playback-clip-export")).size(12))
-            .padding([4, 10])
-            .height(iced::Length::Fixed(26.0))
-            .style(widgets::primary_button)
-            .on_press_maybe(export_msg),
-    );
-    container(strip)
-        .height(iced::Length::Fixed(CLIP_ROW_H))
-        .align_y(iced::alignment::Vertical::Center)
         .into()
 }
 
@@ -850,208 +620,6 @@ fn scrub_thumbnail_overlay(state: &State) -> Option<Element<'_, Message>> {
                     left,
                 })
                 .into()
-        })
-        .into(),
-    )
-}
-
-/// Width of one input-display pad: the D-pad cross (three 24px cells
-/// + 2px seams) plus the B/A cluster, spread to the edges by the
-/// shoulders' `horizontal_space`.
-const PAD_W: f32 = 160.0;
-
-/// One side's recorded pad state, drawn as the settings input pane's
-/// console face ([`crate::tabs::settings`]) at ~0.7 scale, minus the
-/// screen: chevron D-pad cross left with the Start/Select pills below
-/// it, B/A round keys on the console's diagonal right, L/R shoulder
-/// pills capping the top corners. Non-interactive twin of that pane's
-/// `key_btn`/`gba_key`: every key is always drawn on the shared
-/// molded plate, and a pressed key mixes toward palette primary —
-/// the same lit chrome as the settings' live binding test — so the
-/// chip never changes size or layout as inputs flip.
-fn input_pad<'a>(joyflags: u16, ds: bool) -> Element<'a, Message> {
-    use tango_session::keys;
-    let cell = 24.0;
-    let key = move |content: Element<'a, Message>, bit: u32, w: f32, h: f32, radius: iced::border::Radius| {
-        let lit = joyflags as u32 & bit != 0;
-        container(container(content).center(Fill))
-            .width(Length::Fixed(w))
-            .height(Length::Fixed(h))
-            .style(move |theme: &iced::Theme| {
-                let plate = widgets::gba_key_plate(theme);
-                iced::widget::container::Style {
-                    background: Some(iced::Background::Color(if lit {
-                        widgets::mix(plate, theme.palette().primary, 0.55)
-                    } else {
-                        plate
-                    })),
-                    text_color: Some(theme.palette().text),
-                    border: iced::Border {
-                        radius,
-                        width: 1.0,
-                        color: theme.extended_palette().background.strong.color,
-                    },
-                    ..Default::default()
-                }
-            })
-    };
-
-    let arm = |icon: Icon, bit: u32, corners: [f32; 4]| {
-        key(
-            icon.widget().size(11.0).into(),
-            bit,
-            cell,
-            cell,
-            iced::border::Radius {
-                top_left: corners[0],
-                top_right: corners[1],
-                bottom_right: corners[2],
-                bottom_left: corners[3],
-            },
-        )
-    };
-    let corner = || iced::widget::Space::new().width(cell).height(cell);
-    // Inert hub: `bit` 0 is never held, which is exactly the
-    // settings hub's always-plate look.
-    let hub = key(iced::widget::Space::new().into(), 0, cell, cell, 3.0.into());
-    let (ro, ri) = (7.0, 3.0);
-    let dpad = column![
-        row![corner(), arm(Icon::ChevronUp, keys::UP, [ro, ro, ri, ri]), corner()].spacing(2),
-        row![
-            arm(Icon::ChevronLeft, keys::LEFT, [ro, ri, ri, ro]),
-            hub,
-            arm(Icon::ChevronRight, keys::RIGHT, [ri, ro, ro, ri]),
-        ]
-        .spacing(2),
-        row![corner(), arm(Icon::ChevronDown, keys::DOWN, [ri, ri, ro, ro]), corner()].spacing(2),
-    ]
-    .spacing(2);
-
-    let pill = |label: &'static str, bit: u32| key(text(label).size(8.0).into(), bit, 44.0, 14.0, 999.0.into());
-    // Start/Select below the face cluster, plainly stacked — the DS
-    // face arrangement, same as the settings shell draws.
-    let start_select = column![pill("START", keys::START), pill("SELECT", keys::SELECT)].spacing(4);
-
-    let ab_d = 32.0;
-    let face_key =
-        |label: &'static str, bit: u32| key(text(label).size(TEXT_BODY).into(), bit, ab_d, ab_d, 999.0.into());
-    // The face cluster shows the recorded console's keys: a DS pad
-    // gets the full diamond (the settings shell's, at chip scale), a
-    // GBA pad keeps its two-key diagonal.
-    let cluster: Element<'a, Message> = if ds {
-        use iced::alignment::{Horizontal as Ax, Vertical as Ay};
-        let diamond_box = 90.0;
-        let place = |el, ax, ay| {
-            container(el)
-                .width(Length::Fixed(diamond_box))
-                .height(Length::Fixed(diamond_box))
-                .align_x(ax)
-                .align_y(ay)
-        };
-        iced::widget::stack![
-            place(face_key("X", keys::X), Ax::Center, Ay::Top),
-            place(face_key("Y", keys::Y), Ax::Left, Ay::Center),
-            place(face_key("A", keys::A), Ax::Right, Ay::Center),
-            place(face_key("B", keys::B), Ax::Center, Ay::Bottom),
-        ]
-        .into()
-    } else {
-        row![
-            column![iced::widget::Space::new().height(14.0), face_key("B", keys::B)],
-            column![face_key("A", keys::A), iced::widget::Space::new().height(14.0)],
-        ]
-        .spacing(6)
-        .into()
-    };
-    let right_col = column![cluster, start_select].spacing(10).align_x(Alignment::Center);
-
-    let shoulder = |label: &'static str, bit: u32| key(text(label).size(9.0).into(), bit, 56.0, 15.0, 999.0.into());
-    // A DS recording carries the mic, so the chip shows when the
-    // recorder was blowing into it, on the hinge between the shoulders
-    // where the console's own hole is. It is drawn whether or not it
-    // was held, like every other key here.
-    let shoulders = if ds {
-        row![
-            shoulder("L", keys::L),
-            horizontal_space(),
-            key(text("BLOW").size(9.0).into(), keys::MIC, 44.0, 15.0, 999.0.into()),
-            horizontal_space(),
-            shoulder("R", keys::R),
-        ]
-    } else {
-        row![shoulder("L", keys::L), horizontal_space(), shoulder("R", keys::R)]
-    };
-    let face = row![dpad, horizontal_space(), right_col].align_y(Alignment::Center);
-    // The diamond needs more shell than the GBA diagonal.
-    let pad_w = if ds { 176.0 } else { PAD_W };
-    column![shoulders, face].spacing(8).width(Length::Fixed(pad_w)).into()
-}
-
-/// Replay-only: the input display overlay — one pad chip per side,
-/// the recorder bottom-left and their opponent bottom-right (matching
-/// the battle screen, which renders the recording side's navi on the
-/// left), each captioned with the side's nickname and lit with the
-/// recorded buttons at the playhead. Sampled through [`playhead_tick`]
-/// so scrubbing previews inputs along with the readout. Anchored at
-/// the transport bar's popover lift so it never moves — the bar
-/// auto-hides beneath it, the chips stay. Pure presentation: no mouse
-/// handlers anywhere in the chain.
-fn input_display_overlay<'a>(
-    r: &'a ReplaySession,
-    state: &'a State,
-    show_replay_inputs: bool,
-) -> Option<Element<'a, Message>> {
-    if !show_replay_inputs {
-        return None;
-    }
-    let (mut local, mut remote) = r.input_at(playhead_tick(r, state));
-    let (mut local_nick, mut remote_nick) = r.nicknames();
-    // While the perspective is swapped, the main screen is the opponent's
-    // — the pads follow it, so the left chip always belongs to whoever is
-    // on the big screen.
-    if r.swap_perspective() {
-        std::mem::swap(&mut local, &mut remote);
-        std::mem::swap(&mut local_nick, &mut remote_nick);
-    }
-    // X and Y mean a DS, and the pads draw the full face diamond for
-    // one. Asked of the console rather than counted off the screens:
-    // a session composes only the screens its mode uses, so a DS can
-    // present one.
-    let ds = {
-        use tango_session::keys;
-        r.local_game().pvp.keys_mask() & (keys::X | keys::Y) != 0
-    };
-    let chip = |joyflags: u16, nick: &str| -> Element<'a, Message> {
-        // The caption renders even when the nickname is empty so the
-        // two chips always match heights.
-        let name = text(nick.to_string())
-            .size(TEXT_CAPTION)
-            .style(widgets::muted_text_style);
-        container(
-            column![input_pad(joyflags, ds), name]
-                .spacing(4)
-                .align_x(Alignment::Center),
-        )
-        .padding([8, 10])
-        .style(hud_chip_plate)
-        .into()
-    };
-    Some(
-        container(row![
-            chip(local, local_nick),
-            horizontal_space(),
-            chip(remote, remote_nick)
-        ])
-        .width(Fill)
-        .height(Fill)
-        .align_y(iced::alignment::Vertical::Bottom)
-        .padding(iced::Padding {
-            top: 0.0,
-            right: 12.0,
-            // Rides up with the clip strip so the expanded bar's
-            // taller plate never slides underneath the pads.
-            bottom: POPOVER_LIFT + clip_lift(state),
-            left: 12.0,
         })
         .into(),
     )

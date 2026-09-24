@@ -56,7 +56,7 @@ pub fn make_looking_activity(
         state: Some(i18n::t!(lang, "discord-presence-looking")),
         // Only matchmaking codes carry a join secret — direct-TCP
         // sessions aren't joinable via Discord deep-link.
-        secrets: ident.discord_join_secret().map(|s| rpc::activity::Secrets {
+        secrets: ident.matchmaking_code().map(|s| rpc::activity::Secrets {
             join: Some(s.to_string()),
             ..Default::default()
         }),

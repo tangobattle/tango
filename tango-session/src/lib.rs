@@ -45,8 +45,6 @@ pub mod training;
 // What they're built out of.
 pub mod audio;
 mod local;
-/// Re-arranging a multi-screen composition for presentation.
-pub mod screens;
 /// Completion sink for host-owned statistics persistence.
 pub mod stats;
 
@@ -159,22 +157,6 @@ impl PauseGate {
     }
 }
 
-/// A layout's screens side by side, as a host sizes one texture for
-/// them. Screens of unequal height take the tallest, which is what
-/// leaves a shorter one letterboxed rather than skewed.
-///
-/// Side by side because a DS's two screens stacked are twice as tall as
-/// they are wide, and every display a host draws into is wider than it
-/// is tall: stacked, the pane fits to height and wastes most of the
-/// width, leaving both screens small. Turned on their side the pair is
-/// 4:3 and fills what is actually there.
-pub fn composite_size(layout: &tango_match::ScreenLayout) -> (u32, u32) {
-    (
-        layout.screens.iter().map(|s| s.width).sum(),
-        layout.screens.iter().map(|s| s.height).max().unwrap_or(0),
-    )
-}
-
 /// One shared console screen, RGBA8 — a session's emu side writing it
 /// and the session reading it back out for the host.
 ///
@@ -265,10 +247,12 @@ pub trait Session: std::any::Any {
     fn local_game(&self) -> &'static tango_gamesupport::Game;
 
     /// The pixel dimensions of [`frame`](Self::frame)'s buffer — the
-    /// console's screens laid out ([`composite_size`]), so a host sizes
-    /// its texture from the session instead of assuming a shape.
+    /// console's screens laid out
+    /// ([`composite_size`](tango_match::ScreenLayout::composite_size)), so
+    /// a host sizes its texture from the session instead of assuming a
+    /// shape.
     fn frame_size(&self) -> (u32, u32) {
-        composite_size(&self.screen_layout())
+        self.screen_layout().composite_size()
     }
 
     /// The screens this session's console presents, which is what
@@ -416,33 +400,5 @@ impl Priming {
     /// failure is over; it just hasn't been read yet.
     pub fn in_progress(&self) -> bool {
         !matches!(self, Priming::Failed(_))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    /// The DS's two screens compose side by side, not stacked. Pinned
-    /// because the stacked shape is the one that falls out for free —
-    /// concatenating equal-width screens *is* a vertical stack — so a
-    /// frame builder that stops interleaving rows regresses to it
-    /// silently, and only the aspect ratio ever says so.
-    #[test]
-    fn two_screens_compose_side_by_side() {
-        let ds = tango_match::ScreenLayout::new([
-            tango_match::Screen {
-                width: 256,
-                height: 192,
-            },
-            tango_match::Screen {
-                width: 256,
-                height: 192,
-            },
-        ]);
-        assert_eq!(super::composite_size(&ds), (512, 192));
-        // One screen is unaffected either way.
-        assert_eq!(
-            super::composite_size(&tango_match::ScreenLayout::single(240, 160)),
-            (240, 160)
-        );
     }
 }

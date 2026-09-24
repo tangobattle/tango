@@ -76,13 +76,6 @@ pub fn copy_icon_button<'a, M: Clone + 'a>(
 pub const SELECT_YELLOW: iced::Color =
     iced::Color::from_rgb(0xff as f32 / 255.0, 0xd2 as f32 / 255.0, 0x3d as f32 / 255.0);
 
-/// List-item button style for selectable rows (patches list,
-/// replays list). Zebra-striped at rest, lit-up primary plate
-/// when selected (gradient + glow shadow + chunky border, the
-/// same visual register as primary_button so the active row reads
-/// as a console widget, not a flat highlight). Hover gets a
-/// primary-tinted wash plus a left-edge accent stripe — a tiny
-/// "chevron" cue the eye can pick out before the click.
 /// Selectable list/palette row. Square corners + a zebra base so a
 /// scrollable list reads as a flush table rather than a stack of
 /// separated pills; selected rows get a lit gradient plate, hovered
@@ -955,17 +948,10 @@ pub fn tooltip_chrome(theme: &Theme) -> iced::widget::container::Style {
     }
 }
 
-// ---------- HUD chrome ----------
+// ---------- Shared plate geometry and form controls ----------
 //
-// Style helpers below are passed to `container.style(...)` so the
-// app's top-level shell (nav bar, body surface, separator rules)
-// and the inline empty-state cards all share a single look.
-//
-// The dark palette is tuned to look like a Battle Network "PET"
-// screen: navy base, neon-green accents, cyan-tinted text. The
-// light palette is its warm-cream cousin so users who prefer
-// daylight still get tango-shaped chrome rather than a generic
-// gray rectangle.
+// The app shell's own chrome (nav bar, body surface, separator
+// rules) lives with the app, in `tango::ui::widgets::chrome`.
 
 /// The signature "tech frame" corner treatment, after the Legacy
 /// Collection's PET panels: one diagonal pair of corners gets a

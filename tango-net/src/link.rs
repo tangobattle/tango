@@ -76,6 +76,55 @@ pub enum DirectRole {
     Connect { addr: String },
 }
 
+impl DirectRole {
+    /// Recognise the direct link-code commands a user can type in place
+    /// of a matchmaking code:
+    ///
+    /// - `/host` — listen on [`DEFAULT_LOCAL_PORT`](crate::DEFAULT_LOCAL_PORT)
+    /// - `/host <port>` — listen on the given port
+    /// - `/connect <addr>` — dial `<addr>`, appending the default port if
+    ///   the user didn't specify one
+    ///
+    /// `None` for anything else, including input without the leading
+    /// slash: that is a matchmaking code, which can legitimately contain
+    /// letters, digits, and the random-code separators.
+    pub fn parse_command(input: &str) -> Option<Self> {
+        if !input.starts_with('/') {
+            return None;
+        }
+        let mut parts = input.splitn(2, char::is_whitespace);
+        let cmd = parts.next().unwrap_or("");
+        let arg = parts.next().map(str::trim).unwrap_or("");
+        match cmd {
+            "/host" => {
+                let port = if arg.is_empty() {
+                    crate::DEFAULT_LOCAL_PORT
+                } else {
+                    arg.parse::<u16>().ok()?
+                };
+                Some(Self::Host { port })
+            }
+            "/connect" => {
+                if arg.is_empty() {
+                    return None;
+                }
+                // Heuristic: if the user gave no colon (bare IP) or
+                // their input ends with the IPv6 closing bracket
+                // without a trailing colon, append the default port.
+                // The address itself isn't validated here — the dial's
+                // own error surfaces well.
+                let addr = if arg.contains(':') && !arg.ends_with(']') {
+                    arg.to_string()
+                } else {
+                    format!("{arg}:{}", crate::DEFAULT_LOCAL_PORT)
+                };
+                Some(Self::Connect { addr })
+            }
+            _ => None,
+        }
+    }
+}
+
 /// How to rebuild a dropped connection mid-match. Assembled by
 /// `netplay::State::take_pre_match` and consumed by [`Link::reconnect`];
 /// a link without one can't be transparently rebuilt.
@@ -432,6 +481,9 @@ impl Link {
             control: (new_control_sender, new_control_receiver),
             in_match: (new_in_match_sender, new_in_match_receiver),
             peer_conn: new_peer_conn,
+            // Fixed from the original match: the player index it decided
+            // must not flip because a rebuild re-rolled the SDP roles.
+            is_offerer: _,
             local_dtls_fingerprint,
             peer_dtls_fingerprint,
         } = channels;
