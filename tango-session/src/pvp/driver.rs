@@ -350,7 +350,28 @@ impl PvpDriver {
 
         let mut local = self.ctx.local_input.load();
         local.keys &= tango_match::keys::MASK;
-        let advanced = match self.match_.advance(local) {
+        let input = self.match_.prepare(local);
+
+        // Ship this tick's local input before simulating it: the packet
+        // needs nothing the advance produces, and every millisecond it
+        // waited behind one — a whole re-simulation on a rollback frame —
+        // would be latency the peer's prediction has to cover.
+        // Push-before-send semantics live in the pump; a transport error
+        // is non-terminal (the heartbeat retransmits once the reconnect
+        // swaps a live channel back in).
+        if self
+            .ctx
+            .sender
+            .send(&wire_input_of(input.input(), input.tick_advantage()))
+            .is_err()
+        {
+            log::warn!("pvp: send pump terminated; ending match");
+            self.ctx.end.remote_disconnected.store(true, Ordering::Release);
+            self.ctx.cancel.cancel();
+            return false;
+        }
+
+        let advanced = match self.match_.advance(input) {
             Ok(r) => r,
             Err(e) => {
                 log::error!("pvp: sio advance failed: {e}");
@@ -366,12 +387,7 @@ impl PvpDriver {
         // A successful advance returns every row it settled. Nothing else
         // settles the engine, so every early return below is already consumed
         // and teardown has no tail path.
-        let tango_match::Advance {
-            outgoing,
-            tick_advantage,
-            confirmed_inputs,
-            ..
-        } = advanced;
+        let tango_match::Advance { confirmed_inputs } = advanced;
         self.confirmed_through += confirmed_inputs.len() as u32;
         let (samples, events) = match self.match_.telemetry() {
             Some(telemetry) => telemetry.lock().unwrap().take_through(self.confirmed_through),
@@ -391,16 +407,6 @@ impl PvpDriver {
         }
         if !samples.is_empty() || !events.is_empty() {
             self.ctx.fold_confirmed_telemetry(samples, events);
-        }
-
-        // Ship this tick's local input. Push-before-send semantics live
-        // in the pump; a transport error is non-terminal (the heartbeat
-        // retransmits once the reconnect swaps a live channel back in).
-        if self.ctx.sender.send(&wire_input_of(outgoing, tick_advantage)).is_err() {
-            log::warn!("pvp: send pump terminated; ending match");
-            self.ctx.end.remote_disconnected.store(true, Ordering::Release);
-            self.ctx.cancel.cancel();
-            return false;
         }
 
         // The players abandoned the match in-game before any battle

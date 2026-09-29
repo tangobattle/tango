@@ -275,7 +275,8 @@ impl Driver {
             let core0 = if controlled == 0 { player } else { dummy };
             let core1 = if controlled == 0 { dummy } else { player };
             self.match_.add_remote_input(tango_match::HostInput::keys(core1), 0);
-            let advanced = match self.match_.advance(tango_match::HostInput::keys(core0)) {
+            let input = self.match_.prepare(tango_match::HostInput::keys(core0));
+            let advanced = match self.match_.advance(input) {
                 Ok(r) => r,
                 Err(e) => {
                     log::error!("training: advance failed: {e}");

@@ -143,14 +143,36 @@ impl getgud::World for World {
     }
 }
 
+/// One tick's local input, ready for the wire before the simulation
+/// runs: [`Match::prepare`] makes it, the host ships it to the peer, and
+/// [`Match::advance`] applies it. Only `prepare` builds one, so what the
+/// peer receives is always what this side simulates.
+pub struct TickInput {
+    tick: u32,
+    input: HostInput,
+    tick_advantage: i16,
+}
+
+impl TickInput {
+    /// Sequence number of this input on the transport.
+    pub fn tick(&self) -> u32 {
+        self.tick
+    }
+
+    /// The input as the engine applies it — sanitized through the link,
+    /// so both peers feed their consoles identical values.
+    pub fn input(&self) -> HostInput {
+        self.input
+    }
+
+    /// This side's clock-sync hint to send beside the input.
+    pub fn tick_advantage(&self) -> i16 {
+        self.tick_advantage
+    }
+}
+
 /// Everything produced by one [`Match::advance`] call.
 pub struct Advance {
-    /// Sequence number of `outgoing` on the transport.
-    pub tick: u32,
-    /// Sanitized local input to forward to the peer.
-    pub outgoing: HostInput,
-    /// This side's clock-sync hint to send beside `outgoing`.
-    pub tick_advantage: i16,
     /// Input rows that joined the authoritative settled state during this
     /// advance, in absolute player order and tick order.
     pub confirmed_inputs: Vec<[HostInput; 2]>,
@@ -250,23 +272,36 @@ impl Match {
         self.telemetry = Some(telemetry);
     }
 
-    /// Advance one frame with the local console's input: settle what
-    /// the peer's arrivals confirm, rolling back on a misprediction,
-    /// then speculate to the present target. Returns the tick this
-    /// input belongs to (a sequence number for the transport), the
-    /// input as the engine actually applied it — sanitized through the
-    /// link, so both peers feed their consoles identical values — this
-    /// side's tick advantage for the peer's clock sync, and every input
-    /// row this advance settled for replay/telemetry consumers.
-    pub fn advance(&mut self, local: HostInput) -> Result<Advance, crate::Error> {
-        let local = self.link.lock().unwrap().sanitize(local);
-        // Both halves of the outgoing packet are read before the
-        // advance enqueues this tick's local input: the tick is this
-        // input's own index, and the advantage must match the skew the
-        // peer will read against it (afterward the just-enqueued input
-        // biases it up by one).
-        let tick = self.inner.local_frontier();
-        let tick_advantage = self.inner.local_tick_advantage();
+    /// Ready this tick's local input for the wire. No simulation runs,
+    /// so a host can send it before [`advance`](Self::advance) spends
+    /// the tick simulating — time the packet waits behind the advance
+    /// is latency the peer's prediction has to cover.
+    ///
+    /// Call it after this tick's remote input has been fed in. Both
+    /// halves of the packet are read before the advance enqueues the
+    /// input: the tick is this input's own index, and the advantage must
+    /// match the skew the peer will read against it (afterward the
+    /// just-enqueued input biases it up by one).
+    pub fn prepare(&self, local: HostInput) -> TickInput {
+        TickInput {
+            tick: self.inner.local_frontier(),
+            input: self.link.lock().unwrap().sanitize(local),
+            tick_advantage: self.inner.local_tick_advantage(),
+        }
+    }
+
+    /// Advance one frame with the local input [`prepare`](Self::prepare)
+    /// readied: settle what the peer's arrivals confirm, rolling back on
+    /// a misprediction, then speculate to the present target. Returns
+    /// every input row this advance settled for replay/telemetry
+    /// consumers.
+    pub fn advance(&mut self, input: TickInput) -> Result<Advance, crate::Error> {
+        assert_eq!(
+            input.tick,
+            self.inner.local_frontier(),
+            "a TickInput belongs to the tick it was prepared on"
+        );
+        let tick = input.tick;
         // The simulation only ever reaches the present target — the
         // frontier is the *input* frontier, `present_delay` ticks
         // ahead of it. Everything this advance re-simulates below the
@@ -275,18 +310,13 @@ impl Match {
         // presents is drawn.
         self.render_from
             .store(tick.saturating_sub(self.inner.present_delay()), Ordering::Relaxed);
-        let getgud::Advance { confirmed, .. } = self.inner.advance(local)?;
+        let getgud::Advance { confirmed, .. } = self.inner.advance(input.input)?;
         self.last_rollback_depth = self.inner.last_misprediction_depth();
         let confirmed_inputs = confirmed
             .into_iter()
             .map(|(local, remotes)| player_inputs(self.local_player, local, &remotes))
             .collect();
-        Ok(Advance {
-            tick,
-            outgoing: local,
-            tick_advantage,
-            confirmed_inputs,
-        })
+        Ok(Advance { confirmed_inputs })
     }
 
     /// Feed one remote input packet, in tick order. Sanitized on the

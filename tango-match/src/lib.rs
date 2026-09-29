@@ -44,7 +44,7 @@ pub mod telemetry;
 pub mod throttler;
 
 pub use audio::{AudioIn, AudioOut};
-pub use engine::{Advance, Match};
+pub use engine::{Advance, Match, TickInput};
 pub use input::HostInput;
 pub use link::{Backend, Link, PeerRom, Screen, ScreenLayout, SessionMode, Side, Snapshot, StartConfig};
 pub use replay::{BootedReplay, Capture, LiveFrames, Playback, Replay, ReplayBoot, ReplayConfig, ReplaySet, StatsPass};
