@@ -7542,6 +7542,7 @@ dependencies = [
  "log",
  "lucide-icons",
  "minidumper",
+ "objc2 0.5.2",
  "open",
  "opener",
  "rand 0.8.5",

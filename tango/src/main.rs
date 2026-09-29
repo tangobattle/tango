@@ -287,7 +287,14 @@ fn run_app() -> iced::Result {
         _ => iced::window::Position::default(),
     };
 
-    iced::application(App::new, App::update, App::view)
+    let boot = || {
+        // winit sets its app delegate when the event loop is built,
+        // which is before iced boots the app.
+        #[cfg(target_os = "macos")]
+        platform::mac_quit::install();
+        App::new()
+    };
+    iced::application(boot, App::update, App::view)
         .settings(settings)
         .title(App::title)
         .theme(App::theme)

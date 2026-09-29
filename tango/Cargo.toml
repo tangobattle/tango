@@ -162,5 +162,10 @@ features = ["reveal"]
 # one re-exported through `windows`, and the Windows build dies with
 # "multiple different versions of crate `windows_core`". Pinning the
 # range here keeps both halves on 0.61.
+# macOS: route the app menu's Quit (⌘Q) through `App::quit` (see
+# `platform::mac_quit`); the objc2 generation winit uses.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.5"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-core = "0.61"
