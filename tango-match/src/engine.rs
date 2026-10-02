@@ -110,12 +110,9 @@ impl getgud::World for World {
     }
 
     fn load(&mut self, state: &SnapshotAt) -> Result<(), crate::Error> {
-        // The engine loads the settled state before every re-simulation;
-        // when nothing speculated past it the pair is already parked
-        // there and — by determinism — holds exactly this state.
-        if self.live_tick == state.tick {
-            return Ok(());
-        }
+        // getgud loads only to move the pair: never the snapshot of the
+        // tick it is parked at, except after an error, when the pair may be
+        // part-way through a tick and has to be restored wherever it is.
         let mut link = self.link.lock().unwrap();
         link.restore(&state.snapshot)?;
         // The restore does not reach the audio the speculation voiced —
@@ -310,12 +307,15 @@ impl Match {
         // presents is drawn.
         self.render_from
             .store(tick.saturating_sub(self.inner.present_delay()), Ordering::Relaxed);
+        let local_player = self.local_player;
+        // The rows borrow the session: take what the host keeps of them
+        // before asking it anything else.
         let getgud::Advance { confirmed, .. } = self.inner.advance(input.input)?;
-        self.last_rollback_depth = self.inner.last_misprediction_depth();
         let confirmed_inputs = confirmed
             .into_iter()
-            .map(|(local, remotes)| player_inputs(self.local_player, local, &remotes))
+            .map(|row| player_inputs(local_player, row.local, &row.remotes))
             .collect();
+        self.last_rollback_depth = self.inner.last_misprediction_depth();
         Ok(Advance { confirmed_inputs })
     }
 

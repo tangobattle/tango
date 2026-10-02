@@ -665,7 +665,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2877,7 +2877,7 @@ dependencies = [
 [[package]]
 name = "getgud"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/getgud#747b51bba50589f83f6e6724fcb01ccf35d73c73"
+source = "git+https://github.com/tangobattle/getgud#aeceaae69f0f62998596649a406422e54cf61e89"
 
 [[package]]
 name = "gethostname"
@@ -4184,7 +4184,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4460,7 +4460,7 @@ dependencies = [
 [[package]]
 name = "melonds-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/melonds-rollback#48ee21db7f953b7993de9df1a6329ac276d91441"
+source = "git+https://github.com/tangobattle/melonds-rollback#e8567dbeb3698a86ad010f77df8591f29b2bbe9c"
 dependencies = [
  "getgud",
  "js-sys",
@@ -4541,7 +4541,7 @@ dependencies = [
 [[package]]
 name = "mgba-rollback"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/mgba-rollback#0e037e9bfacd4bc70ccd9f1935d854d08f0fae6a"
+source = "git+https://github.com/tangobattle/mgba-rollback#ec6c1364ef02ba2738664bc73999ca19f92cdfd8"
 dependencies = [
  "crc32fast",
  "getgud",
@@ -5928,7 +5928,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac6c3320f9abac597dcbc668774ef006702672474aad53c6d596b62e487b40b1"
 dependencies = [
  "heck",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "multimap",
  "once_cell",
@@ -5948,7 +5948,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9120690fafc389a67ba3803df527d0ec9cbbc9cc45e4cc20b332996dfb672425"
 dependencies = [
  "anyhow",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
