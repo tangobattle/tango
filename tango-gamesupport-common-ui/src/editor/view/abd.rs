@@ -83,14 +83,27 @@ pub fn render_auto_battle_data<M: 'static>(lang: &LanguageIdentifier, loaded: &O
     col.into()
 }
 
-/// The chips offered by the auto-battle-data editor's library, as chip ids.
-/// Availability comes exclusively from the game's effective legal-chip
-/// ranges (including a patch override, when present). Filtered by `filter`
-/// (case-insensitive name match) and in `sort` order. Ties fall back to id for
-/// a stable order. Stable sorts (Id / Name) keep a row in place while its count
-/// fields are edited; Used reorders as counts change.
-fn sorted_auto_battle_data_chips(loaded: &OpenSave, sort: AutoBattleDataSort, filter: &str) -> Vec<usize> {
+/// Whether the auto-battle-data editor's library offers a chip of `class`,
+/// given whether the game's effective legal-chip ranges (including a patch
+/// override, when present) hold it. Those ranges list what a pack can hold,
+/// and a program advance is formed in battle rather than held, so none of
+/// them is in there — but the games count a program advance's uses like any
+/// chip's and deal the most-used one into the deck, so every one is offered.
+fn library_offers(class: crate::dataview::rom::ChipClass, legal: bool) -> bool {
     use crate::dataview::rom::ChipClass as CC;
+    match class {
+        CC::ProgramAdvance => true,
+        CC::Standard | CC::Mega | CC::Giga => legal,
+        _ => false,
+    }
+}
+
+/// The chips offered by the auto-battle-data editor's library, as chip ids
+/// (see [`library_offers`] for which). Filtered by `filter` (case-insensitive
+/// name match) and in `sort` order. Ties fall back to id for a stable order.
+/// Stable sorts (Id / Name) keep a row in place while its count fields are
+/// edited; Used reorders as counts change.
+fn sorted_auto_battle_data_chips(loaded: &OpenSave, sort: AutoBattleDataSort, filter: &str) -> Vec<usize> {
     let assets = loaded.assets.as_ref();
     let view = loaded.save.view_auto_battle_data();
     let filter = filter.to_lowercase();
@@ -102,12 +115,7 @@ fn sorted_auto_battle_data_chips(loaded: &OpenSave, sort: AutoBattleDataSort, fi
     let mut rows: Vec<E> = Vec::new();
     for id in 0..assets.num_chips() {
         let Some(info) = assets.chip(id) else { continue };
-        let class = info.class();
-        let is_pa = class == CC::ProgramAdvance;
-        if !is_pa && !matches!(class, CC::Standard | CC::Mega | CC::Giga) {
-            continue;
-        }
-        if !loaded.chip_is_legal(id) {
+        if !library_offers(info.class(), loaded.chip_is_legal(id)) {
             continue;
         }
         let Some(name) = info.name() else { continue };
@@ -351,4 +359,20 @@ pub fn as_text(lang: &LanguageIdentifier, loaded: &OpenSave) -> Option<String> {
         out.push('\n');
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod library_tests {
+    use super::library_offers;
+    use crate::dataview::rom::ChipClass as CC;
+
+    #[test]
+    fn program_advances_are_offered_without_a_legal_chip_entry() {
+        assert!(library_offers(CC::ProgramAdvance, false));
+        assert!(library_offers(CC::Standard, true));
+        assert!(!library_offers(CC::Standard, false));
+        assert!(!library_offers(CC::Mega, false));
+        assert!(!library_offers(CC::Giga, false));
+        assert!(!library_offers(CC::None, true));
+    }
 }
