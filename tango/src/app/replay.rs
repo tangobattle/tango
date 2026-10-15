@@ -340,7 +340,7 @@ impl App {
                 &replay,
             )?)
         })();
-        let mut engine = match prep {
+        let engine = match prep {
             Ok(p) => p,
             Err(e) => return failed(replay_path, ExportError::Prepare(std::sync::Arc::new(e))),
         };
@@ -372,14 +372,11 @@ impl App {
         // The same boot the player uses, through the local seat's own
         // engine door.
         let total_ticks = engine.total_ticks();
-        engine.config.disable_bgm = user_settings.disable_bgm;
         // A whole-replay export is the degenerate clip covering the full
         // stream, cut at the analysis's round marks; the player's clip
         // brings the live session's boundaries and a mask selecting
-        // every round — its gate is the span. A snapshot restore would
-        // erase the priming-time BGM-disable poke, so muted renders
-        // re-sim from boot.
-        let (mut clip, rounds_mask) = match clip {
+        // every round — its gate is the span.
+        let (clip, rounds_mask) = match clip {
             Some(c) => {
                 let all_rounds = vec![true; c.round_marks.len() + 1];
                 (c, all_rounds)
@@ -394,9 +391,6 @@ impl App {
                 rounds_mask,
             ),
         };
-        if user_settings.disable_bgm {
-            clip.snapshot = None;
-        }
         let job = crate::replay_render::Job {
             engine,
             rounds_mask,

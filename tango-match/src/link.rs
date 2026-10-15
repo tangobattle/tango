@@ -420,8 +420,6 @@ pub struct StartConfig<'a> {
     pub local_player: usize,
     /// How many ticks behind the frontier to present. Purely local.
     pub present_delay: u32,
-    /// Silence battle BGM. Purely local presentation.
-    pub disable_bgm: bool,
     /// Where the pair's sound goes — the producing end of a
     /// [`channel`](crate::audio::channel) whose other end the host
     /// plays. The simulation pushes into it every tick and takes back

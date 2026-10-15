@@ -26,7 +26,7 @@ pub mod backend;
 pub mod link;
 pub mod solo;
 
-pub use backend::{mute_sequences, DsBackend, GameSupport};
+pub use backend::{DsBackend, GameSupport};
 pub use link::{unpacked_bgr666_to_rgba8, DsScreen, Link, Screens, SAMPLE_RATE, TPS};
 pub use solo::SoloConsole;
 

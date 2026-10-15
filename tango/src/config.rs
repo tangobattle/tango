@@ -314,11 +314,6 @@ pub struct Config {
     /// the next buffer fill.
     #[serde(default = "default_volume")]
     pub volume: f32,
-    /// When true, PvP sessions install the per-game BGM-skip trap so
-    /// battle music never starts (sound effects still play). Local-only,
-    /// like the volume; sampled at match start.
-    #[serde(default)]
-    pub disable_bgm_in_pvp: bool,
     /// Local frame delay in frames for PvP — how far behind the live
     /// netcode frontier the display core renders. Purely local (not negotiated
     /// with the peer); snapshotted into the match at start.
@@ -379,7 +374,6 @@ impl Default for Config {
             fullscreen: false,
             ui_scale: default_ui_scale(),
             volume: default_volume(),
-            disable_bgm_in_pvp: false,
             frame_delay: default_frame_delay(),
             relay_mode: RelayMode::default(),
             last_blind_setup: false,
@@ -569,7 +563,6 @@ mod tests {
             "fullscreen": true,
             "ui_scale": 1.25,
             "volume": 0.5,
-            "disable_bgm_in_pvp": true,
             "frame_delay": 7,
             "relay_mode": "Never",
             "last_blind_setup": true,

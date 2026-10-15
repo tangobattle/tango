@@ -94,7 +94,6 @@ impl TrainingSession {
             },
             local_player: 0,
             present_delay: 0,
-            disable_bgm: false,
             audio: Some(audio_in),
             // Training builds its session around an already-primed
             // pair, so the walk runs before there is anything to

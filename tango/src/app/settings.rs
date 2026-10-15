@@ -130,7 +130,6 @@ impl App {
                 self.audio_binder.set_volume(v);
             }
             // Sampled by spawn_pvp at match start; nothing live to poke.
-            C::DisableBgmInPvp(b) => self.config.disable_bgm_in_pvp = b,
             // Sampled when the next PvP session is installed
             // (Message::PvpSessionBuilt); nothing live to poke.
             C::ShowOpponentSetup(b) => self.config.show_opponent_setup = b,

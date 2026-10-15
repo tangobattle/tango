@@ -978,12 +978,6 @@ pub struct ReplayConfig {
     /// Collect per-round statistics as the pass runs. A host that only
     /// wants to watch leaves this off and the pass just lays keyframes.
     pub want_stats: bool,
-    /// Silence the games' battle BGM, for a render whose viewer wants
-    /// the sound effects without the music. Purely presentation: the
-    /// sound driver's state never feeds battle logic, so the input
-    /// stream re-simulates identically either way, and an engine with
-    /// no such lever ignores it.
-    pub disable_bgm: bool,
 }
 
 #[cfg(test)]

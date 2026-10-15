@@ -157,7 +157,6 @@ pub async fn spawn_pvp(
         // Presentation delay is purely local — read straight from config
         // (which clamps it on load), not negotiated with the peer.
         frame_delay: config.frame_delay,
-        disable_bgm: config.disable_bgm_in_pvp,
         replays: Some(&super::recording::DirReplayStore(config.replays_path())),
         stats_sink: Some(std::sync::Arc::new(super::recording::StatsCache {
             cache_path: config.cache_path(),

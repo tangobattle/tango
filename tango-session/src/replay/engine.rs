@@ -21,8 +21,8 @@ pub enum ConfigError {
 /// backend — which emulator that is stays the game's business.
 pub struct EngineReplay {
     pub backend: &'static (dyn tango_match::Backend + Send + Sync),
-    /// Collects no statistics and keeps the BGM on; a consumer that
-    /// wants otherwise flips those two fields.
+    /// Collects no statistics; a consumer that wants them flips
+    /// `want_stats`.
     pub config: tango_match::ReplayConfig,
 }
 
@@ -70,10 +70,6 @@ impl EngineReplay {
                     revision: games[1 - local_player].revision,
                 },
                 want_stats: false,
-                // Gameplay-neutral either way (see
-                // `ReplayConfig::disable_bgm`); only a render has a
-                // listener who might want it off.
-                disable_bgm: false,
             },
         })
     }

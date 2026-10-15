@@ -154,24 +154,6 @@ const UNIT_STRIDE: u32 = 0xdc;
 /// moment the scene word returns to the field.
 const BATTLE_SESSION: u32 = 0x0003_0102;
 
-/// The music a link battle plays, as sequence numbers in the cart's
-/// sound archive: `BGM_BATTLE` and `BGM_BOSS`, the archive's own names
-/// for them.
-///
-/// A round starts one of these and holds it to the end. A Triple
-/// Battle starts one per round, and **the deciding round is the boss
-/// theme** — watched in a recorded three-round set, which ran
-/// `BGM_BATTLE` for rounds one and two and `BGM_BOSS` for round three.
-///
-/// The jingles that cart plays between rounds are deliberately left
-/// alone: the same set played `BGM_LOSE` and `BGM_RESULT_2` at its
-/// round boundaries and `BGM_LOSE` again at the match end, and those
-/// are the wind-down a player watches, not the battle's music — the
-/// same line the mgba families draw when they skip only the
-/// battle-start call. The comm screens either side keep their music
-/// for the same reason.
-const BATTLE_THEMES: &[u16] = &[0x15, 0x16];
-
 impl tango_backend_melonds::GameSupport for Pvp {
     /// 1: priming hands off when the battle transition starts (the board
     /// module's departure) instead of when the battle module arrives, a
@@ -251,32 +233,6 @@ impl tango_backend_melonds::GameSupport for Pvp {
         // host state, so savestates and rollback never disturb them,
         // and their firings re-fire on re-simulation like any other.
         self.layout.walk(link, match_type, rng_seed, events, cancel)
-    }
-
-    /// Silent battles: the battle themes' own volumes, turned down to
-    /// nothing where the sound driver reads them (see
-    /// [`BATTLE_THEMES`] and [`priming::Layout::sound_archive`]).
-    ///
-    /// The sequence still loads and still starts — which is the whole
-    /// point, because on this engine that load is a cartridge read
-    /// worth a frame of the game's own clock, and a local setting may
-    /// not spend a frame a peer doesn't (see
-    /// [`GameSupport::silence_bgm`](tango_backend_melonds::GameSupport::silence_bgm)).
-    /// Skipping the start instead was measured doing exactly that: the
-    /// game's frame counter stood one ahead for the rest of the match.
-    fn silence_bgm(&self, nds: &mut Nds) {
-        let Some(archive) = self.layout.sound_archive(nds) else {
-            log::warn!("{}: no sound archive loaded; not muting", self.layout.tag());
-            return;
-        };
-        let muted = tango_backend_melonds::mute_sequences(nds, archive, BATTLE_THEMES);
-        if muted != BATTLE_THEMES.len() {
-            log::warn!(
-                "{}: muted {muted} of {} battle themes",
-                self.layout.tag(),
-                BATTLE_THEMES.len()
-            );
-        }
     }
 
     /// The touch screen rides along for Team Battle and not for the
@@ -723,20 +679,6 @@ pub mod priming {
         /// bring-up's own settings generation draws from them, which
         /// the wireless exchange then agrees on for real.
         rngs: [u32; 3],
-
-        /// Where the sound library keeps its pointer to the loaded
-        /// sound archive — the one word the mute has to be told,
-        /// because everything past it the archive names itself.
-        ///
-        /// The library's own route: this word holds the archive
-        /// context, the context holds the INFO block at `+0x88`, and
-        /// the block's header says where its sequence table lives.
-        /// Taken from the literal pool of the library function that
-        /// starts a sequence, which loads exactly this chain before it
-        /// looks a sequence's record up. Nothing is searched for, so a
-        /// wrong answer here reads as no archive rather than as some
-        /// other bytes that happened to match.
-        sound_archive_ptr: u32,
     }
 
     /// The save-select screen object's chosen row, as a byte offset into
@@ -843,7 +785,6 @@ pub mod priming {
             list_object:              0x021c_6260,
             list_count:               0x021c_688c,
             rngs:                    [0x0216_bb1c, 0x0216_f230, 0x0216_bb20],
-            sound_archive_ptr:        0x0216_2d84,
         },
     };
 
@@ -915,7 +856,6 @@ pub mod priming {
             list_object:              0x021b_efa0,
             list_count:               0x021b_f5cc,
             rngs:                    [0x0216_48bc, 0x0216_7fd0, 0x0216_48c0],
-            sound_archive_ptr:        0x0215_bb24,
         },
     };
 
@@ -1113,26 +1053,6 @@ pub mod priming {
     const BATTLE_BUDGET: u32 = 2400;
 
     impl Layout {
-        /// The loaded sound archive's INFO block, walked the way the
-        /// sound library walks it (see
-        /// [`RAMOffsets::sound_archive_ptr`]), or `None` before anything
-        /// has loaded one.
-        pub(super) fn sound_archive(&self, nds: &mut Nds) -> Option<u32> {
-            /// Where an archive context keeps its INFO block.
-            const CONTEXT_INFO: u32 = 0x88;
-            let context = nds.read32(self.ram.sound_archive_ptr);
-            if context == 0 {
-                return None;
-            }
-            let info = nds.read32(context + CONTEXT_INFO);
-            (nds.read32(info) == u32::from_le_bytes(*b"INFO")).then_some(info)
-        }
-
-        /// Which build this is, for log lines.
-        pub(super) fn tag(&self) -> &'static str {
-            self.tag
-        }
-
         /// One console's priming traps, in lifecycle order: boot, the
         /// Network board, the Net Battle screen, then the choosers.
         ///

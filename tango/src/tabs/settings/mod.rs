@@ -171,9 +171,6 @@ pub enum Message {
     ToggleEnableUpdater(bool),
     ToggleAllowPrereleaseUpgrades(bool),
     VolumeChanged(f32),
-    /// "Mute music in netplay" checkbox toggled. Persisted to
-    /// `config.disable_bgm_in_pvp`; sampled at the next match start.
-    ToggleDisableBgmInPvp(bool),
     /// User clicked "Update Now" on the About panel. App's
     /// settings handler calls `updater.finish_update()` which
     /// hands off to the installer + exits the process.
@@ -235,7 +232,6 @@ pub enum ConfigChange {
     EnableUpdater(bool),
     AllowPrereleaseUpgrades(bool),
     Volume(f32),
-    DisableBgmInPvp(bool),
     Theme(config::ThemeMode),
     Accent(config::AccentColor),
     AddInputBinding(input::MappedKey, input::PhysicalInput),
@@ -318,7 +314,6 @@ impl State {
             Message::ToggleEnableUpdater(b) => Some(ConfigChange::EnableUpdater(b)),
             Message::ToggleAllowPrereleaseUpgrades(b) => Some(ConfigChange::AllowPrereleaseUpgrades(b)),
             Message::VolumeChanged(v) => Some(ConfigChange::Volume(v)),
-            Message::ToggleDisableBgmInPvp(b) => Some(ConfigChange::DisableBgmInPvp(b)),
             Message::ThemeChanged(t) => Some(ConfigChange::Theme(t)),
             Message::AccentChanged(a) => Some(ConfigChange::Accent(a)),
             Message::BindingSlotSelected(k) => {

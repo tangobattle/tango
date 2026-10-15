@@ -36,7 +36,6 @@ impl PvpSession {
             remote,
             pre_match,
             frame_delay,
-            disable_bgm,
             replays,
             stats_sink,
             sample_rate,
@@ -178,7 +177,6 @@ impl PvpSession {
             rtc: rtc_time,
             local_player: local_player_index as usize,
             present_delay: frame_delay.load(Ordering::Relaxed),
-            disable_bgm,
         };
         let drive = DriveContext {
             local_input: local_input.clone(),

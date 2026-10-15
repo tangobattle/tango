@@ -22,7 +22,6 @@ pub(super) struct BootPieces {
     pub(super) rtc: std::time::SystemTime,
     pub(super) local_player: usize,
     pub(super) present_delay: u32,
-    pub(super) disable_bgm: bool,
 }
 
 pub(super) struct DriveContext {
@@ -83,7 +82,6 @@ impl DriveContext {
             peer_rom: pieces.peer_rom,
             local_player: pieces.local_player,
             present_delay: pieces.present_delay.clamp(MIN_FRAME_DELAY, MAX_FRAME_DELAY),
-            disable_bgm: pieces.disable_bgm,
             // The pair pushes the local seat's sound into the ring the
             // host's stream is already bound to, on its way out of every
             // tick.

@@ -70,7 +70,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
 
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
-        let disable_bgm = config.disable_bgm;
         let rng = config.core_rng_seed(player, 0);
         let fade_to_title = rom.start_screen_fade_to_title;
         let title_confirm = rom.title_confirm_continue;
@@ -136,8 +135,8 @@ impl tango_backend_mgba::GameSupport for Pvp {
             // sounding over the session open. Gate the driver's two
             // request thunks (sfx and music, adjacent functions) while
             // this core is unprimed instead, so the walk queues nothing.
-            // Purely local presentation — the sound driver's state never
-            // feeds battle logic, so peers may disagree. Inert once
+            // Every pair gates it identically, unconditionally, so the
+            // walk stays the same game on every peer. Inert once
             // primed (probe-verified: the battle-start BGM request lands
             // AFTER the priming handoff in every family, so it and all
             // in-battle sounds run normally), and rollback re-simulation
@@ -259,20 +258,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 rom.round_start_entry,
                 Box::new(move |core: &mut mgba::core::Core| {
                     core.raw_write_16(ewram.frame_counter, -1, stage_counter);
-                }),
-            ),
-            (
-                // The battle-start routine's BGM call (a 4-byte `bl`):
-                // skipped when the host asked for silent battles. Purely
-                // local presentation — the sound driver's state never
-                // feeds battle logic, so peers may disagree.
-                rom.battle_start_play_music_call,
-                Box::new(move |core: &mut mgba::core::Core| {
-                    if !disable_bgm {
-                        return;
-                    }
-                    let pc = core.gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 }),
             ),
             (
@@ -522,7 +507,7 @@ struct ROMOffsets {
 
     /// The music counterpart of `play_sfx_entry` (its twin thunk, one
     /// function down; r0 = the song id): every music request funnels
-    /// through here, including `battle_start_play_music_call`'s.
+    /// through here, including the battle-start routine's.
     play_music_entry: u32,
 
     /// The logo (state-0) handler's entry in the start screen's jump
@@ -594,11 +579,6 @@ struct ROMOffsets {
     /// sink.
     round_start_ret: u32,
 
-    /// The battle-start routine's BGM call (a 4-byte `bl`). PC-skipped
-    /// by the primer when the host asked for silent battles
-    /// (`PrimeConfig::disable_bgm`).
-    battle_start_play_music_call: u32,
-
     /// Where the battle-result code records a WIN for this core's local
     /// player (trap-era `round_end_set_win`, KO-probe-verified to fire on
     /// the PvP engine's real protocol route). Reported from core 0 as the
@@ -654,7 +634,6 @@ static AREE_00: Offsets = Offsets {
         round_end_set_win:                          0x08006d18,
         round_end_set_loss:                         0x08006d20,
         match_end_ret:                              0x08005cd0,
-        battle_start_play_music_call:               0x080059ec,
     },
 };
 
@@ -678,6 +657,5 @@ static AREJ_00: Offsets = Offsets {
         round_end_set_win:                          0x08006d08,
         round_end_set_loss:                         0x08006d10,
         match_end_ret:                              0x08005cc0,
-        battle_start_play_music_call:               0x080059dc,
     },
 };

@@ -55,7 +55,6 @@ pub enum ExportMessage {
     OpenFile(std::path::PathBuf),
     /// Export settings widgets. `scale = 0` is the raw-output stop.
     SetScale(u8),
-    SetDisableBgm(bool),
     SetTwosided(bool),
     /// Toggle the Nth round in the per-replay round mask.
     ToggleRound(usize, bool),
@@ -223,10 +222,6 @@ impl ReplaysState {
                 self.export_settings.scale = s.clamp(0, 10);
                 None
             }
-            ExportMessage::SetDisableBgm(b) => {
-                self.export_settings.disable_bgm = b;
-                None
-            }
             ExportMessage::SetTwosided(b) => {
                 self.export_settings.twosided = b;
                 None
@@ -346,7 +341,6 @@ pub struct ExportSettings {
     /// `scale`× nearest-neighbor upscale. The form surfaces this as a
     /// single 0..=10 slider with "raw" as the leftmost stop.
     pub scale: u8,
-    pub disable_bgm: bool,
     /// Render both players' screens side-by-side (480x160 frame)
     /// instead of just the local POV. Passed through as the export's
     /// `twosided` flag.
@@ -357,7 +351,6 @@ impl Default for ExportSettings {
     fn default() -> Self {
         Self {
             scale: 5,
-            disable_bgm: false,
             twosided: false,
         }
     }
@@ -574,10 +567,6 @@ pub(super) fn export_popover<'a>(
         |scale| Message::Export(ExportMessage::SetScale(scale)),
         None,
     );
-    let bgm_chk = iced::widget::checkbox(settings.disable_bgm)
-        .label(t!(lang, "replays-export-disable-bgm"))
-        .style(widgets::chunky_checkbox)
-        .on_toggle(|b| Message::Export(ExportMessage::SetDisableBgm(b)));
     let twosided_chk = iced::widget::checkbox(settings.twosided)
         .label(t!(lang, "replays-export-twosided"))
         .style(widgets::chunky_checkbox)
@@ -602,9 +591,7 @@ pub(super) fn export_popover<'a>(
             widgets::flat,
         )
     };
-    let controls_row = row![scale_picker, bgm_chk, twosided_chk,]
-        .spacing(14)
-        .align_y(Alignment::Center);
+    let controls_row = row![scale_picker, twosided_chk,].spacing(14).align_y(Alignment::Center);
     let mut body = column![controls_row].spacing(8);
     if rounds_pending {
         // Where the rounds fall is the match analysis's answer, and it

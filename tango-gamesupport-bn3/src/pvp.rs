@@ -88,7 +88,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
 
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
-        let disable_bgm = config.disable_bgm;
         // The game's battle-kind byte (`submenu_control + 0x1c`, read as a
         // halfword by the settings parse): 0 = lightweight, 1 = midweight,
         // 2 = heavyweight, 3 = tri-battle (a best-of-three set). Tango's
@@ -171,8 +170,8 @@ impl tango_backend_mgba::GameSupport for Pvp {
             // keep sounding over the session open. Gate the driver's two
             // request thunks (sfx and music, adjacent functions) while
             // this core is unprimed instead, so the walk queues nothing.
-            // Purely local presentation — the sound driver's state never
-            // feeds battle logic, so peers may disagree. Inert once
+            // Every pair gates it identically, unconditionally, so the
+            // walk stays the same game on every peer. Inert once
             // primed (probe-verified: the battle-start BGM request lands
             // AFTER the priming handoff in every family, so it and all
             // in-battle sounds run normally), and rollback re-simulation
@@ -328,20 +327,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
                     ];
                     core.raw_write_range(ewram.rx_packet_arr, -1, &IDLE_PACKET);
                     core.raw_write_range(ewram.rx_packet_arr + 0x10, -1, &IDLE_PACKET);
-                }),
-            ),
-            (
-                // The battle-start routine's BGM call (a 4-byte `bl`):
-                // skipped when the host asked for silent battles. Purely
-                // local presentation — the sound driver's state never
-                // feeds battle logic, so peers may disagree.
-                rom.battle_start_play_music_call,
-                Box::new(move |core: &mut mgba::core::Core| {
-                    if !disable_bgm {
-                        return;
-                    }
-                    let pc = core.gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 }),
             ),
             (
@@ -604,7 +589,7 @@ struct ROMOffsets {
 
     /// The music counterpart of `play_sfx_entry` (its twin thunk, one
     /// function down; r0 = the song id): every music request funnels
-    /// through here, including `battle_start_play_music_call`'s.
+    /// through here, including the battle-start routine's.
     play_music_entry: u32,
 
     /// The logo (state-0) handler's entry in the start screen's jump
@@ -695,11 +680,6 @@ struct ROMOffsets {
     /// sink.
     round_start_ret: u32,
 
-    /// The battle-start routine's BGM call (a 4-byte `bl`). PC-skipped
-    /// by the primer when the host asked for silent battles
-    /// (`PrimeConfig::disable_bgm`).
-    battle_start_play_music_call: u32,
-
     /// Where the battle-result code records a WIN for this core's local
     /// player on the KO route (trap-era `round_end_set_win`,
     /// KO-probe-verified to fire on the PvP engine's real protocol
@@ -768,7 +748,6 @@ static A3XE_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:            0x080096c4,
         round_end_damage_judge_set_draw:            0x080096c8,
         match_end_ret:                              0x08006958,
-        battle_start_play_music_call:               0x080076b4,
     },
 };
 
@@ -796,7 +775,6 @@ static A6BE_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:            0x080096c4,
         round_end_damage_judge_set_draw:            0x080096c8,
         match_end_ret:                              0x08006958,
-        battle_start_play_music_call:               0x080076b4,
     },
 };
 
@@ -824,7 +802,6 @@ static A3XJ_01: Offsets = Offsets {
         round_end_damage_judge_set_loss:            0x08009640,
         round_end_damage_judge_set_draw:            0x08009644,
         match_end_ret:                              0x080068ec,
-        battle_start_play_music_call:               0x08007648,
     },
 };
 
@@ -852,6 +829,5 @@ static A6BJ_01: Offsets = Offsets {
         round_end_damage_judge_set_loss:            0x08009640,
         round_end_damage_judge_set_draw:            0x08009644,
         match_end_ret:                              0x080068ec,
-        battle_start_play_music_call:               0x08007648,
     },
 };

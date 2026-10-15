@@ -235,11 +235,6 @@ pub struct PvpSessionArgs<'a> {
     /// engine's present delay). Comes straight from local config; never
     /// negotiated with or sent to the peer.
     pub frame_delay: u32,
-    /// Silence the battle BGM (the primers skip the games' battle-start
-    /// music call). Comes straight from local config; never negotiated
-    /// with or sent to the peer — sound-driver state never feeds battle
-    /// logic.
-    pub disable_bgm: bool,
     /// Where the match is recorded, or `None` not to record it.
     pub replays: Option<&'a dyn ReplayStore>,
     /// Optional host-owned destination for the finished recording's statistics.

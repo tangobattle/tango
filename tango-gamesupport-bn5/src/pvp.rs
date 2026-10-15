@@ -116,7 +116,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
 
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
-        let disable_bgm = config.disable_bgm;
         let match_type = config.match_type.0;
         // RNG: seed both rngs per core once, at save load — exactly the
         // situation the vanilla protocol is built for (two cartridges
@@ -363,20 +362,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 Box::new(move |core: &mut mgba::core::Core| {
                     let target = rom.team_census_passed;
                     core.gba_mut().cpu_mut().set_thumb_pc(target);
-                }),
-            ),
-            (
-                // The battle-start routine's BGM call (a 4-byte `bl`):
-                // skipped when the host asked for silent battles. Purely
-                // local presentation — the sound driver's state never
-                // feeds battle logic, so peers may disagree.
-                rom.battle_start_play_music_call,
-                Box::new(move |core: &mut mgba::core::Core| {
-                    if !disable_bgm {
-                        return;
-                    }
-                    let pc = core.gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 }),
             ),
             (
@@ -710,11 +695,6 @@ struct ROMOffsets {
     /// sink.
     round_start_ret: u32,
 
-    /// The battle-start routine's BGM call (a 4-byte `bl`). PC-skipped
-    /// by the primer when the host asked for silent battles
-    /// (`PrimeConfig::disable_bgm`).
-    battle_start_play_music_call: u32,
-
     /// Where the battle loop stores the round result: the local player
     /// (= player 0 on core 0, whose traps report) won/lost by KO. The
     /// round verdict, reported to the telemetry lifecycle sink.
@@ -788,7 +768,6 @@ static BRBE_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:        0x0800770a,
         round_end_damage_judge_set_draw:        0x08007710,
         comm_menu_end_battle_entry:             0x08134b50,
-        battle_start_play_music_call:               0x08007e1a,
     },
 };
 
@@ -818,7 +797,6 @@ static BRKE_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:        0x0800770a,
         round_end_damage_judge_set_draw:        0x08007710,
         comm_menu_end_battle_entry:             0x08134c38,
-        battle_start_play_music_call:               0x08007e1a,
     },
 };
 
@@ -848,7 +826,6 @@ static BRBJ_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:        0x0800770a,
         round_end_damage_judge_set_draw:        0x08007710,
         comm_menu_end_battle_entry:             0x08134708,
-        battle_start_play_music_call:               0x08007e1a,
     },
 };
 
@@ -878,6 +855,5 @@ static BRKJ_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:        0x0800770a,
         round_end_damage_judge_set_draw:        0x08007710,
         comm_menu_end_battle_entry:             0x081347f0,
-        battle_start_play_music_call:               0x08007e1a,
     },
 };

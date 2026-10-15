@@ -176,7 +176,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
         // runs, and the games report "communication failed".
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
-        let disable_bgm = config.disable_bgm;
         let submenu_control = ewram.submenu_control;
         // First-battle gate for the comm-menu traps below (see each
         // trap): the game's own battle tick counter is 0 from boot up to
@@ -402,20 +401,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
                         sink.match_aborted();
                     })
                 },
-            ),
-            (
-                // The battle-start routine's BGM call (a 4-byte `bl`):
-                // skipped when the host asked for silent battles. Purely
-                // local presentation — the sound driver's state never
-                // feeds battle logic, so peers may disagree.
-                rom.battle_start_play_music_call,
-                Box::new(move |core: &mut mgba::core::Core| {
-                    if !disable_bgm {
-                        return;
-                    }
-                    let pc = core.gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                }),
             ),
             (
                 // The game's own battle start: the priming handoff for
@@ -748,11 +733,6 @@ struct ROMOffsets {
     /// sink.
     round_start_ret: u32,
 
-    /// The battle-start routine's BGM call (a 4-byte `bl`). PC-skipped
-    /// by the primer when the host asked for silent battles
-    /// (`PrimeConfig::disable_bgm`).
-    battle_start_play_music_call: u32,
-
     /// Where the battle loop stores the round result: the local player
     /// (= player 0 on core 0, whose traps report) won/lost by KO. The
     /// round verdict, reported to the telemetry lifecycle sink.
@@ -825,7 +805,6 @@ static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:            0x080083da,
         round_end_damage_judge_set_draw:            0x080083e0,
         comm_menu_end_battle_entry:                 0x0812b708,
-        battle_start_play_music_call:               0x08009236,
     },
 };
 
@@ -853,7 +832,6 @@ static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:            0x080083da,
         round_end_damage_judge_set_draw:            0x080083e0,
         comm_menu_end_battle_entry:                 0x0812d4e4,
-        battle_start_play_music_call:               0x08009236,
     },
 };
 
@@ -881,7 +859,6 @@ static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:            0x0800840a,
         round_end_damage_judge_set_draw:            0x08008410,
         comm_menu_end_battle_entry:                 0x08134108,
-        battle_start_play_music_call:               0x08009406,
     },
 };
 
@@ -909,6 +886,5 @@ static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:            0x0800840a,
         round_end_damage_judge_set_draw:            0x08008410,
         comm_menu_end_battle_entry:                 0x08135ed0,
-        battle_start_play_music_call:               0x08009406,
     },
 };

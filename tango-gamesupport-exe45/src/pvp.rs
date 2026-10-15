@@ -95,7 +95,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
 
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
-        let disable_bgm = config.disable_bgm;
         let match_type = config.match_type.0;
         // Seed the rngs per core once, at save load (see module docs).
         let rng1 = config.core_rng_seed(player, 0);
@@ -237,20 +236,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
                     core.raw_write_8(ewram.submenu_control + 0x10, -1, match_type);
                     core.raw_write_8(ewram.submenu_control + 0x11, -1, 0x01);
                     core.raw_write_8(ewram.submenu_control + 0x14, -1, match_type * 2 + 1);
-                }),
-            ),
-            (
-                // The battle-start routine's BGM call (a 4-byte `bl`):
-                // skipped when the host asked for silent battles. Purely
-                // local presentation — the sound driver's state never
-                // feeds battle logic, so peers may disagree.
-                rom.battle_start_play_music_call,
-                Box::new(move |core: &mut mgba::core::Core| {
-                    if !disable_bgm {
-                        return;
-                    }
-                    let pc = core.gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 }),
             ),
             (
@@ -629,11 +614,6 @@ struct ROMOffsets {
     /// sink.
     round_start_ret: u32,
 
-    /// The battle-start routine's BGM call (a 4-byte `bl`). PC-skipped
-    /// by the primer when the host asked for silent battles
-    /// (`PrimeConfig::disable_bgm`).
-    battle_start_play_music_call: u32,
-
     /// Where the battle loop stores the round result: the local player
     /// (= player 0 on core 0, whose traps report) won/lost by KO. The
     /// round verdict, reported to the telemetry lifecycle sink.
@@ -697,6 +677,5 @@ static BR4J_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:        0x08007896,
         round_end_damage_judge_set_draw:        0x0800789c,
         match_end_ret:                          0x08043fb6,
-        battle_start_play_music_call:               0x0800796c,
     },
 };

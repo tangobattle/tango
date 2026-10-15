@@ -123,7 +123,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
 
         let rom = &self.offsets.rom;
         let ewram = &self.offsets.ewram;
-        let disable_bgm = config.disable_bgm;
         let match_type = config.match_type.0;
         // RNG contract: seed both rngs per core once, at save load —
         // exactly the situation the vanilla protocol is built for (two
@@ -325,20 +324,6 @@ impl tango_backend_mgba::GameSupport for Pvp {
                 rom.vs_prompt_poll,
                 Box::new(move |core: &mut mgba::core::Core| {
                     core.gba_mut().cpu_mut().set_thumb_pc(confirm);
-                }),
-            ),
-            (
-                // The battle-start routine's BGM call (a 4-byte `bl`):
-                // skipped when the host asked for silent battles. Purely
-                // local presentation — the sound driver's state never
-                // feeds battle logic, so peers may disagree.
-                rom.battle_start_play_music_call,
-                Box::new(move |core: &mut mgba::core::Core| {
-                    if !disable_bgm {
-                        return;
-                    }
-                    let pc = core.gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 }),
             ),
             (
@@ -611,11 +596,6 @@ struct ROMOffsets {
     /// Tango initializes its own battle tracking state at this point.
     round_start_ret: u32,
 
-    /// The battle-start routine's BGM call (a 4-byte `bl`). PC-skipped
-    /// by the primer when the host asked for silent battles
-    /// (`PrimeConfig::disable_bgm`).
-    battle_start_play_music_call: u32,
-
     /// Where the battle loop stores the round result: the local player
     /// (= player 0 on core 0, whose traps report) won/lost by KO. The
     /// round verdict, reported to the telemetry lifecycle sink.
@@ -719,7 +699,6 @@ static B4BE_00: Offsets = Offsets {
         comm_menu_settings_entry:               0x08039756,
         vs_prompt_poll:                         0x0803a32e,
         match_end_ret:                          0x08004f68,
-        battle_start_play_music_call:               0x080074bc,
     },
 };
 
@@ -744,7 +723,6 @@ static B4WE_00: Offsets = Offsets {
         comm_menu_settings_entry:               0x0803974e,
         vs_prompt_poll:                         0x0803a326,
         match_end_ret:                          0x08004f68,
-        battle_start_play_music_call:               0x080074bc,
     },
 };
 
@@ -769,7 +747,6 @@ static B4BJ_01: Offsets = Offsets {
         comm_menu_settings_entry:               0x0803966a,
         vs_prompt_poll:                         0x0803a242,
         match_end_ret:                          0x08004f48,
-        battle_start_play_music_call:               0x08007494,
     },
 };
 
@@ -794,6 +771,5 @@ static B4WJ_01: Offsets = Offsets {
         comm_menu_settings_entry:               0x08039662,
         vs_prompt_poll:                         0x0803a23a,
         match_end_ret:                          0x08004f48,
-        battle_start_play_music_call:               0x08007494,
     },
 };

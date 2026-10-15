@@ -431,7 +431,6 @@ async fn build(
         remote,
         pre_match,
         frame_delay: frame_delay(handle),
-        disable_bgm: false,
         // Recorded into storage rather than a file — see
         // `crate::recording`. This host does not persist stats sidecars.
         replays: Some(&crate::recording::BrowserReplayStore(handle.library.clone())),

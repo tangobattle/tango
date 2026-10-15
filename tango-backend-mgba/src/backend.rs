@@ -204,7 +204,6 @@ impl tango_match::Backend for GbaBackend {
             &PrimeConfig {
                 match_type: config.match_type,
                 rng_seed: config.rng_seed,
-                disable_bgm: config.disable_bgm,
             },
             config.rtc,
             true,
@@ -256,7 +255,6 @@ impl tango_match::Backend for GbaBackend {
             prime: PrimeConfig {
                 match_type: config.match_type,
                 rng_seed: config.rng_seed,
-                disable_bgm: config.disable_bgm,
             },
             rtc: config.rtc,
         };
