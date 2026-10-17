@@ -241,6 +241,7 @@ replays-queue-clear = キューを空にする
 replays-queue-remove = キューから削除
 replays-queue-missing = リプレイファイルがありません
 replays-queue-up-next = 次に{ $n }件
+playback-queue-autoplay = キューの次を自動再生
 replays-scanning = リプレイをスキャンしています…
 play-opponent = 相手
 replays-match-type = マッチタイプ:

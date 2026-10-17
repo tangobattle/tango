@@ -22,6 +22,8 @@ pub enum Effect {
     PersistReplayInputs(bool),
     /// Remember whether open custom screens speed replays up.
     PersistCustomScreenSpeedup(bool),
+    /// Remember whether a finished replay hands over to the next queued one.
+    PersistReplayAutoplay(bool),
     /// Set the export quality the replays tab's form shares with the clip
     /// strip.
     SetClipExportScale(u8),

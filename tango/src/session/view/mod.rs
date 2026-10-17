@@ -66,6 +66,9 @@ pub struct Ctx<'a> {
     /// in the replays tab; the transport bar only needs the count, to say so
     /// and to offer the skip. `0` = nothing queued, and the bar shows neither.
     pub queued: usize,
+    /// Whether a finished replay starts the next queued one by itself
+    /// (config). The bar's autoplay chip shows it, beside the skip.
+    pub autoplay_queue: bool,
     pub effect: &'static Effect,
 }
 

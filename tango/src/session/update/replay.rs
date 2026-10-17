@@ -94,6 +94,9 @@ pub enum Message {
     /// up-next chip). The queue lives in the replays tab and only the App
     /// can build a playback session.
     SkipToQueued,
+    /// Toggle whether a finished replay starts the next queued one on its
+    /// own. The flag lives in config.
+    ToggleQueueAutoplay,
 }
 
 /// Map a raw keyboard press to a replay transport command. This stays
@@ -431,6 +434,7 @@ pub(crate) fn update(state: &mut State, msg: Message, config: &config::Config) -
         }
         Message::CancelClipExport => return state.replay_path.clone().map(Effect::CancelClipExport),
         Message::SkipToQueued => return Some(Effect::SkipToQueued),
+        Message::ToggleQueueAutoplay => return Some(Effect::PersistReplayAutoplay(!config.replay_autoplay_queue)),
     }
     None
 }

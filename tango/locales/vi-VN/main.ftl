@@ -300,6 +300,7 @@ replays-queue-clear = Xóa hàng đợi
 replays-queue-remove = Bỏ khỏi hàng đợi
 replays-queue-missing = Không tìm thấy tệp replay
 replays-queue-up-next = { $n } tiếp theo
+playback-queue-autoplay = Tự động phát replay tiếp theo trong hàng đợi
 replays-scanning = Đang quét replay…
 play-opponent = Đối thủ
 replays-match-type = Kiểu trận:

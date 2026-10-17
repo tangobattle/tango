@@ -426,8 +426,8 @@ impl App {
     /// It fires only on the transition into end-of-stream while playback was
     /// actually running: `replay_was_playing` is what separates "ran out" from
     /// "the user dragged the playhead to the last tick", since scrubbing
-    /// pauses before it seeks. With nothing queued the finished replay just
-    /// stays parked on its final frame, as it always has.
+    /// pauses before it seeks. With nothing queued, or with autoplay turned
+    /// off, the finished replay just stays parked on its final frame.
     pub(super) fn advance_replay_queue(&mut self) -> iced::Task<Message> {
         let Some(s) = self.session.active_as::<session::replay::ReplaySession>() else {
             self.replay_controller.reset_playback();
@@ -439,7 +439,7 @@ impl App {
             s.current_tick(),
             s.total_ticks(),
         );
-        if !ran_out || self.replays.queue.is_empty() {
+        if !ran_out || !self.config.replay_autoplay_queue || self.replays.queue.is_empty() {
             return iced::Task::none();
         }
         self.watch_next_replay()

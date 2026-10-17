@@ -253,6 +253,7 @@ replays-queue-clear = Clear queue
 replays-queue-remove = Remove from queue
 replays-queue-missing = Replay file is gone
 replays-queue-up-next = { $n } up next
+playback-queue-autoplay = Autoplay next in queue
 replays-scanning = Scanning replays…
 play-opponent = Opponent
 replays-match-type = Match type:

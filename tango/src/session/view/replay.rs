@@ -73,6 +73,7 @@ pub(crate) fn view<'a>(r: &'a ReplaySession, ctx: Ctx<'a>) -> Element<'a, Sessio
             ctx.clip_export_scale,
             ctx.clip_job,
             ctx.queued,
+            ctx.autoplay_queue,
         ));
         stacked = stacked.push(corner_commands_overlay(lang, state, SessionMessage::Close, false));
     }
@@ -187,6 +188,7 @@ fn replay_controls<'a>(
     clip_export_scale: u8,
     clip_job: Option<ClipJob<'a>>,
     queued: usize,
+    autoplay_queue: bool,
 ) -> Element<'a, SessionMessage> {
     let now = iced::time::Instant::now();
     let hide_progress = state.controls_anim.progress(now);
@@ -199,6 +201,7 @@ fn replay_controls<'a>(
         clip_export_scale,
         clip_job,
         queued,
+        autoplay_queue,
     ))
     .width(Fill)
     .style(hud_chip_plate);
@@ -237,6 +240,7 @@ fn replay_bar<'a>(
     clip_export_scale: u8,
     clip_job: Option<ClipJob<'a>>,
     queued: usize,
+    autoplay_queue: bool,
 ) -> Element<'a, Message> {
     // No ellipsis popover for replays — the speed picker sits
     // directly in the bar, and Settings + Close float top-right
@@ -431,7 +435,7 @@ fn replay_bar<'a>(
     };
 
     let controls = row![].spacing(10).align_y(Alignment::Center);
-    let controls = replay_transport(lang, r, state, controls, queued)
+    let controls = replay_transport(lang, r, state, controls, queued, autoplay_queue)
         .push(clip_toggle)
         .push(speed_menu)
         .push(input_toggle)
@@ -456,6 +460,7 @@ fn replay_transport<'a>(
     state: &State,
     controls: sweeten::widget::Row<'a, Message>,
     queued: usize,
+    autoplay_queue: bool,
 ) -> sweeten::widget::Row<'a, Message> {
     let total = r.total_ticks().max(1);
     let cur = playhead_tick(r, state);
@@ -541,11 +546,32 @@ fn replay_transport<'a>(
         .gap(4)
         .into()
     });
+    // Autoplay toggle, right of the skip and shown with it: lit while a
+    // finished replay hands over to the next queued one on its own.
+    let autoplay_btn: Option<Element<'a, Message>> = (queued > 0).then(|| {
+        iced::widget::tooltip(
+            button(
+                iced::widget::container(Icon::ListVideo.widget().size(16.0))
+                    .width(iced::Length::Fixed(18.0))
+                    .height(iced::Length::Fixed(18.0))
+                    .center(Fill),
+            )
+            .padding(0)
+            .width(iced::Length::Fixed(32.0))
+            .height(iced::Length::Fixed(32.0))
+            .style(lit_plate_button(autoplay_queue))
+            .on_press(Message::ToggleQueueAutoplay),
+            widgets::tooltip_bubble(t!(lang, "playback-queue-autoplay")),
+            iced::widget::tooltip::Position::Top,
+        )
+        .gap(4)
+        .into()
+    });
     let controls = controls.push(play_pause_btn);
-    let controls = match skip_btn {
-        Some(b) => controls.push(b),
-        None => controls,
-    };
+    let controls = skip_btn
+        .into_iter()
+        .chain(autoplay_btn)
+        .fold(controls, |c, b| c.push(b));
     controls
         .push(
             row![

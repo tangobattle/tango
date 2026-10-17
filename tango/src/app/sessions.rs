@@ -41,6 +41,7 @@ impl App {
             E::PersistOpponentView(view) => self.config.opponent_view = view,
             E::PersistReplayInputs(show) => self.config.show_replay_inputs = show,
             E::PersistCustomScreenSpeedup(enabled) => self.config.replay_custom_screen_speedup = enabled,
+            E::PersistReplayAutoplay(enabled) => self.config.replay_autoplay_queue = enabled,
             E::SetClipExportScale(scale) => {
                 return self.update_replays(tabs::replays::Message::Export(tabs::replays::ExportMessage::SetScale(
                     scale,

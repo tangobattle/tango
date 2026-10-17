@@ -345,6 +345,11 @@ pub struct Config {
     /// Replay-viewer preference: temporarily run at least 2× while either
     /// player is in the custom screen.
     pub replay_custom_screen_speedup: bool,
+
+    /// Replay-viewer preference: when a queued replay finishes, start the
+    /// next one automatically. Off leaves the finished replay parked on its
+    /// last frame; the skip button still advances by hand.
+    pub replay_autoplay_queue: bool,
 }
 
 impl Default for Config {
@@ -380,6 +385,7 @@ impl Default for Config {
             show_opponent_setup: false,
             input_mapping: crate::platform::input::Mapping::default(),
             replay_custom_screen_speedup: false,
+            replay_autoplay_queue: true,
         }
     }
 }
@@ -569,6 +575,7 @@ mod tests {
             "show_opponent_setup": true,
             "input_mapping": serde_json::to_value(crate::platform::input::Mapping::default()).unwrap(),
             "replay_custom_screen_speedup": true,
+            "replay_autoplay_queue": false,
         })
     }
 

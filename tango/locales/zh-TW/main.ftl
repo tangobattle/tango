@@ -247,6 +247,7 @@ replays-queue-clear = 清空佇列
 replays-queue-remove = 從佇列移除
 replays-queue-missing = 找不到重播檔案
 replays-queue-up-next = 接下來 { $n } 個
+playback-queue-autoplay = 自動播放佇列中的下一個
 replays-scanning = 正在掃描重播…
 play-opponent = 對手
 replays-match-type = 對戰類型：

@@ -303,6 +303,7 @@ replays-queue-clear = Wachtrij wissen
 replays-queue-remove = Uit wachtrij verwijderen
 replays-queue-missing = Herhalingsbestand ontbreekt
 replays-queue-up-next = { $n } volgt
+playback-queue-autoplay = Volgende in wachtrij automatisch afspelen
 replays-scanning = Herhalingen scannen…
 play-opponent = Tegenstander
 replays-match-type = Matchtype:

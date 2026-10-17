@@ -303,6 +303,7 @@ replays-queue-clear = Vaciar cola
 replays-queue-remove = Quitar de la cola
 replays-queue-missing = Falta el archivo de repetición
 replays-queue-up-next = { $n } a continuación
+playback-queue-autoplay = Reproducir automáticamente la siguiente de la cola
 replays-scanning = Analizando repeticiones…
 play-opponent = Rival
 replays-match-type = Tipo de partida:

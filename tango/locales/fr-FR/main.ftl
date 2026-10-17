@@ -303,6 +303,7 @@ replays-queue-clear = Vider la file
 replays-queue-remove = Retirer de la file
 replays-queue-missing = Fichier de replay introuvable
 replays-queue-up-next = { $n } à suivre
+playback-queue-autoplay = Lecture automatique du suivant dans la file
 replays-scanning = Analyse des replays…
 play-opponent = Adversaire
 replays-match-type = Type de match :

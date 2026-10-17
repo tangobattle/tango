@@ -247,6 +247,7 @@ replays-queue-clear = 清空队列
 replays-queue-remove = 从队列移除
 replays-queue-missing = 找不到录像文件
 replays-queue-up-next = 接下来 { $n } 个
+playback-queue-autoplay = 自动播放队列中的下一个
 replays-scanning = 正在扫描录像…
 play-opponent = 对手
 replays-match-type = 对战类型：

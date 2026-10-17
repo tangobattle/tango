@@ -304,6 +304,7 @@ replays-queue-clear = Очистить очередь
 replays-queue-remove = Убрать из очереди
 replays-queue-missing = Файл повтора отсутствует
 replays-queue-up-next = Далее: { $n }
+playback-queue-autoplay = Автовоспроизведение следующего в очереди
 replays-scanning = Сканирование повторов…
 play-opponent = Соперник
 replays-match-type = Тип матча:

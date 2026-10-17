@@ -303,6 +303,7 @@ replays-queue-clear = Warteschlange leeren
 replays-queue-remove = Aus Warteschlange entfernen
 replays-queue-missing = Wiederholungsdatei fehlt
 replays-queue-up-next = { $n } als Nächstes
+playback-queue-autoplay = Nächste in der Warteschlange automatisch abspielen
 replays-scanning = Wiederholungen werden durchsucht…
 play-opponent = Gegner
 replays-match-type = Match-Typ:

@@ -82,6 +82,7 @@ impl App {
                 clip_export_scale: self.replays.export_settings.scale,
                 clip_job,
                 queued: self.replays.queue.len(),
+                autoplay_queue: self.config.replay_autoplay_queue,
                 effect: crate::platform::video::effects::effect_for(&self.config.video_filter),
             })
             .map(Message::Session);
