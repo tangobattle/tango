@@ -238,10 +238,16 @@ pub struct ChipsView<S> {
 }
 
 const EQUIPPED_FOLDER_OFFSET: usize = 0x2132;
-/// The Regular-chip slot the game uses for the equipped folder in battle.
-/// The three persistent per-folder selections immediately follow it.
+/// The equipped folder's Regular chip (0xff = none), which the folder
+/// screen copies from that folder's own selection as it closes. Battle
+/// startup only checks it against 0xff (0x8007b3e in B4WE): the Regular
+/// chip itself is the folder's first stored slot. The three per-folder
+/// selections immediately follow it; each is a chip index in the order
+/// the folder screen shows (see [`ChipsView::raw_chip_offset`]).
 const ACTIVE_REGULAR_CHIP_OFFSET: usize = 0x214c;
 const REGULAR_CHIP_INDEXES_OFFSET: usize = ACTIVE_REGULAR_CHIP_OFFSET + 1;
+const FOLDERS_OFFSET: usize = 0x262c;
+const FOLDER_SIZE: usize = 30;
 
 #[repr(transparent)]
 #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default, c2rust_bitfields::BitfieldStruct)]
@@ -251,6 +257,26 @@ struct RawChip {
     id_and_code: [u8; 2],
 }
 const _: () = assert!(std::mem::size_of::<RawChip>() == 0x2);
+
+impl<S: std::ops::Deref<Target = Save>> ChipsView<S> {
+    /// The save offset of the chip the folder screen shows at `chip_index`.
+    ///
+    /// BN4 stores a folder's Regular chip in the folder's first slot, with
+    /// the chips shown before it each moved one slot later: the folder
+    /// screen moves every folder's Regular chip back to its index when it
+    /// opens (0x802efe0 in B4WE) and to the front again when it closes
+    /// (0x802ef88), and battle startup deals slot 0 as the Regular chip and
+    /// shuffles only the other 29 (0x8007b34). Chip indexes here, like the
+    /// Regular chip index, are in the folder screen's order.
+    fn raw_chip_offset(&self, folder_index: usize, chip_index: usize) -> usize {
+        let slot = match self.save.buf[REGULAR_CHIP_INDEXES_OFFSET + folder_index] as usize {
+            r if r < FOLDER_SIZE && chip_index < r => chip_index + 1,
+            r if r < FOLDER_SIZE && chip_index == r => 0,
+            _ => chip_index,
+        };
+        FOLDERS_OFFSET + (folder_index * FOLDER_SIZE + slot) * std::mem::size_of::<RawChip>()
+    }
+}
 
 impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save::ChipsView for ChipsView<S> {
     fn num_folders(&self) -> usize {
@@ -270,14 +296,12 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
     }
 
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<tango_gamesupport_common_dataview::save::Chip> {
-        if folder_index >= self.num_folders() || chip_index >= 30 {
+        if folder_index >= self.num_folders() || chip_index >= FOLDER_SIZE {
             return None;
         }
 
         let raw = bytemuck::pod_read_unaligned::<RawChip>(
-            &self.save.buf[0x262c
-                + folder_index * (30 * std::mem::size_of::<RawChip>())
-                + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()],
+            &self.save.buf[self.raw_chip_offset(folder_index, chip_index)..][..std::mem::size_of::<RawChip>()],
         );
 
         Some(tango_gamesupport_common_dataview::save::Chip {
@@ -310,34 +334,30 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
         chip_index: usize,
         chip: tango_gamesupport_common_dataview::save::Chip,
     ) -> bool {
-        if folder_index >= self.num_folders() || chip_index >= 30 {
+        if folder_index >= self.num_folders() || chip_index >= FOLDER_SIZE {
             return false;
         }
 
-        self.save.buf[0x262c
-            + folder_index * (30 * std::mem::size_of::<RawChip>())
-            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
-            .copy_from_slice(bytemuck::bytes_of(&{
-                let mut raw = RawChip::default();
-                raw.set_id(chip.id as u16);
-                raw.set_code(chip.code as u16);
-                raw
-            }));
+        let offset = self.raw_chip_offset(folder_index, chip_index);
+        self.save.buf[offset..][..std::mem::size_of::<RawChip>()].copy_from_slice(bytemuck::bytes_of(&{
+            let mut raw = RawChip::default();
+            raw.set_id(chip.id as u16);
+            raw.set_code(chip.code as u16);
+            raw
+        }));
 
         true
     }
 
     fn clear_chip(&mut self, folder_index: usize, chip_index: usize) -> bool {
-        if folder_index >= self.num_folders() || chip_index >= 30 {
+        if folder_index >= self.num_folders() || chip_index >= FOLDER_SIZE {
             return false;
         }
 
         // 0xff code reads back as an invalid ChipCode, so `chip()`
         // returns None — i.e. an empty slot.
-        self.save.buf[0x262c
-            + folder_index * (30 * std::mem::size_of::<RawChip>())
-            + chip_index * std::mem::size_of::<RawChip>()..][..std::mem::size_of::<RawChip>()]
-            .fill(0xff);
+        let offset = self.raw_chip_offset(folder_index, chip_index);
+        self.save.buf[offset..][..std::mem::size_of::<RawChip>()].fill(0xff);
 
         true
     }
@@ -353,10 +373,25 @@ impl<S: std::ops::DerefMut<Target = Save>> tango_gamesupport_common_dataview::sa
 
         // 0xff (out of the 0..30 range) reads back as "no regular".
         let raw = match chip_index {
-            Some(i) if i < 30 => i as u8,
+            Some(i) if i < FOLDER_SIZE => i as u8,
             None => 0xff,
             Some(_) => return false,
         };
+
+        // The Regular chip is stored in the folder's first slot (see
+        // `raw_chip_offset`): put the old one back at its index, then move
+        // the new one to the front, as the folder screen does when it
+        // opens and closes.
+        let old = self.regular_chip_index(folder_index).flatten();
+        let chip_size = std::mem::size_of::<RawChip>();
+        let folder =
+            &mut self.save.buf[FOLDERS_OFFSET + folder_index * FOLDER_SIZE * chip_size..][..FOLDER_SIZE * chip_size];
+        if let Some(old) = old {
+            folder[..(old + 1) * chip_size].rotate_left(chip_size);
+        }
+        if let Some(new) = chip_index {
+            folder[..(new + 1) * chip_size].rotate_right(chip_size);
+        }
         self.save.buf[REGULAR_CHIP_INDEXES_OFFSET + folder_index] = raw;
         if self.equipped_folder_index() == folder_index {
             self.save.buf[ACTIVE_REGULAR_CHIP_OFFSET] = raw;
@@ -851,5 +886,87 @@ mod tests {
         }
         assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 0xff);
         assert_eq!(save.buf[REGULAR_CHIP_INDEXES_OFFSET + 1], 0xff);
+    }
+
+    fn stored_ids(save: &Save, folder_index: usize, n: usize) -> Vec<u16> {
+        (0..n)
+            .map(|i| {
+                let offset = FOLDERS_OFFSET + (folder_index * FOLDER_SIZE + i) * 2;
+                u16::from_le_bytes([save.buf[offset], save.buf[offset + 1]]) & 0x1ff
+            })
+            .collect()
+    }
+
+    #[test]
+    fn regular_chip_is_read_from_the_first_stored_slot() {
+        // The folder screen shows Cannon A, LifeAura D, FullCust * with
+        // FullCust as the Regular chip (index 2). The game stores FullCust
+        // first and the two chips before it one slot later.
+        let mut save = blank_save();
+        for (i, raw) in [0x0d1u16 | 26 << 9, 0x001, 0x0c9 | 3 << 9].into_iter().enumerate() {
+            save.buf[FOLDERS_OFFSET + i * 2..][..2].copy_from_slice(&raw.to_le_bytes());
+        }
+        save.buf[ACTIVE_REGULAR_CHIP_OFFSET] = 2;
+        save.buf[REGULAR_CHIP_INDEXES_OFFSET] = 2;
+
+        let chips = save.view_chips().unwrap();
+        let chip = |i| chips.chip(0, i).map(|c| (c.id, c.code));
+        assert_eq!(chips.regular_chip_index(0), Some(Some(2)));
+        assert_eq!(
+            [chip(0), chip(1), chip(2)],
+            [
+                Some((0x001, tango_gamesupport_common_dataview::save::ChipCode::A)),
+                Some((0x0c9, tango_gamesupport_common_dataview::save::ChipCode::D)),
+                Some((0x0d1, tango_gamesupport_common_dataview::save::ChipCode::Star)),
+            ]
+        );
+    }
+
+    #[test]
+    fn regular_chip_edits_move_it_to_the_first_stored_slot() {
+        let mut save = blank_save();
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+            for i in 0..6 {
+                assert!(chips.set_chip(
+                    0,
+                    i,
+                    tango_gamesupport_common_dataview::save::Chip {
+                        id: i + 1,
+                        code: tango_gamesupport_common_dataview::save::ChipCode::A,
+                    },
+                ));
+            }
+            assert!(chips.set_regular_chip_index(0, Some(4)));
+        }
+        assert_eq!(stored_ids(&save, 0, 6), [5, 1, 2, 3, 4, 6]);
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 4);
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+            // Reads and writes stay in the folder screen's order.
+            assert_eq!(
+                (0..6).map(|i| chips.chip(0, i).unwrap().id).collect::<Vec<_>>(),
+                [1, 2, 3, 4, 5, 6]
+            );
+            assert!(chips.set_chip(
+                0,
+                4,
+                tango_gamesupport_common_dataview::save::Chip {
+                    id: 9,
+                    code: tango_gamesupport_common_dataview::save::ChipCode::A,
+                },
+            ));
+            // Moving the Regular chip puts the old one back first.
+            assert!(chips.set_regular_chip_index(0, Some(1)));
+        }
+        assert_eq!(stored_ids(&save, 0, 6), [2, 1, 3, 4, 9, 6]);
+
+        {
+            let mut chips = save.view_chips_mut().unwrap();
+            assert!(chips.set_regular_chip_index(0, None));
+        }
+        assert_eq!(stored_ids(&save, 0, 6), [1, 2, 3, 4, 9, 6]);
+        assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 0xff);
     }
 }
