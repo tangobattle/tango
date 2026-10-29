@@ -8216,7 +8216,7 @@ dependencies = [
 [[package]]
 name = "tango-signaling"
 version = "0.1.0"
-source = "git+https://github.com/tangobattle/tango-signaling#f294fa376168be034fcc4cfee560b7f4012fb797"
+source = "git+https://github.com/tangobattle/tango-signaling#9bb6485b120ff9c316e824cec30bf42a02438077"
 dependencies = [
  "datachannel-wrapper",
  "futures",
