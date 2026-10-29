@@ -318,11 +318,107 @@ mod tests {
         assert_eq!(save.buf[ACTIVE_REGULAR_CHIP_OFFSET], 0xff);
         assert_eq!(save.buf[REGULAR_CHIP_INDEXES_OFFSET + 1], 0xff);
     }
+
+    use tango_gamesupport_common_dataview::rom;
+
+    const PART: usize = 132;
+
+    fn bitmap(rows: [&str; 5]) -> rom::NavicustBitmap {
+        ndarray::Array2::from_shape_fn((5, 5), |(y, x)| rows[y].as_bytes()[x] == b'#')
+    }
+
+    /// A part that loses one square when compressed.
+    struct Part;
+    impl rom::NavicustPart for Part {
+        fn name(&self) -> Option<String> {
+            None
+        }
+        fn description(&self) -> Option<String> {
+            None
+        }
+        fn color(&self) -> Option<rom::NavicustPartColor> {
+            Some(rom::NavicustPartColor::White)
+        }
+        fn is_solid(&self) -> bool {
+            true
+        }
+        fn compressed_bitmap(&self) -> Option<rom::NavicustBitmap> {
+            Some(bitmap([".....", ".##..", ".##..", ".....", "....."]))
+        }
+        fn uncompressed_bitmap(&self) -> rom::NavicustBitmap {
+            bitmap([".....", ".##..", ".###.", ".....", "....."])
+        }
+    }
+
+    struct Assets;
+    impl rom::Assets for Assets {
+        fn navicust_part(&self, id: usize) -> Option<Box<dyn rom::NavicustPart + '_>> {
+            (id == PART).then(|| Box::new(Part) as Box<dyn rom::NavicustPart>)
+        }
+    }
+
+    /// A save with `PART` installed in the middle of the grid and the
+    /// grid drawn as the game drew it: compressed or not.
+    fn save_with_part(drawn_compressed: bool) -> Save {
+        let mut save = blank_save(0);
+        save.buf[0x1300..][..std::mem::size_of::<RawNavicustPart>()].copy_from_slice(bytemuck::bytes_of(
+            &RawNavicustPart {
+                id: PART as u8,
+                col: 2,
+                row: 2,
+                ..Default::default()
+            },
+        ));
+        let mut cells = vec![(1, 1), (1, 2), (2, 1), (2, 2)];
+        if !drawn_compressed {
+            cells.push((2, 3));
+        }
+        for (row, col) in cells {
+            save.buf[0x1d90 + row * 5 + col] = 1;
+        }
+        save
+    }
+
+    fn legal(save: &Save) -> bool {
+        tango_gamesupport_common_dataview::build::navicust_violations(save, &Assets).is_empty()
+    }
+
+    #[test]
+    fn compressed_parts_read_the_games_compression_flags() {
+        let mut save = save_with_part(true);
+        assert!(!legal(&save), "drawn compressed without its Compression code");
+
+        // The part's flag is a bit of save byte 0x310 + id / 8. Flag
+        // 0x2e0 + id, which tango used to read, is an unrelated flag.
+        save.set_flag(0x02e0 + PART, true);
+        assert!(!save.view_navicust().unwrap().navicust_part(0).unwrap().compressed);
+        save.set_flag(NAVICUST_COMPRESSED_FLAGS + PART, true);
+        assert_ne!(save.buf[0x310 + PART / 8] & (0x80 >> (PART % 8)), 0);
+        assert!(save.view_navicust().unwrap().navicust_part(0).unwrap().compressed);
+        assert!(legal(&save));
+    }
+
+    #[test]
+    fn an_uncompressed_shape_still_fails_once_the_part_is_compressed() {
+        let mut save = save_with_part(false);
+        assert!(legal(&save));
+        save.set_flag(NAVICUST_COMPRESSED_FLAGS + PART, true);
+        assert!(!legal(&save));
+    }
 }
 
 pub struct NavicustView<S> {
     save: S,
 }
+
+/// The first of the game flags that mark a NaviCust part as compressed:
+/// flag `NAVICUST_COMPRESSED_FLAGS + id` is set when part `id` takes its
+/// compressed shape. The game picks a part's shape by testing that flag
+/// (US Blue 0x0803AEC2; the same routine in White and the Japanese
+/// versions), and a correct Compression code sets it for all four colors
+/// of the part (US Blue 0x0803B7EC). It is a flag number, not a byte
+/// offset: the flags start at save byte 0x30 + 0x1700 / 8 = 0x310.
+const NAVICUST_COMPRESSED_FLAGS: usize = 0x1700;
 
 #[repr(packed, C)]
 #[derive(bytemuck::AnyBitPattern, bytemuck::NoUninit, Clone, Copy, Default)]
@@ -364,7 +460,7 @@ impl<S: std::ops::Deref<Target = Save>> tango_gamesupport_common_dataview::save:
             col: raw.col,
             row: raw.row,
             rot: raw.rot,
-            compressed: self.save.flag(0x02e0 + raw.id as usize),
+            compressed: self.save.flag(NAVICUST_COMPRESSED_FLAGS + raw.id as usize),
         })
     }
 
