@@ -74,7 +74,7 @@ jobs:
         run: cargo check --bin tango --features gamesupport-all --profile release-dist --target x86_64-pc-windows-msvc
 
   check-mac-universal:
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
