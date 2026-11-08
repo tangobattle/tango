@@ -217,12 +217,14 @@ pub enum LibrarySort {
     Mb,
     /// Chip HP — only the games whose chips carry one (BCC) offer it.
     Hp,
+    /// Chip speed — BCC's hidden turn-order stat; only BCC offers it.
+    Speed,
 }
 
 impl LibrarySort {
-    /// The orders a chip folder offers. [`LibrarySort::Hp`] is not
-    /// among them: only BCC's chips carry HP, and its deck editor
-    /// names the orders it offers itself.
+    /// The orders a chip folder offers. [`LibrarySort::Hp`] and
+    /// [`LibrarySort::Speed`] are not among them: only BCC's chips carry
+    /// those, and its deck editor names the orders it offers itself.
     pub const ALL: [LibrarySort; 6] = [
         LibrarySort::Id,
         LibrarySort::Name,

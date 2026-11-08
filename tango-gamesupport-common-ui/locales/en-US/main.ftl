@@ -75,6 +75,7 @@ folder-sort-ap = AP
 folder-sort-element = Element
 folder-sort-mb = MB
 folder-sort-hp = HP
+folder-sort-sp = SP
 navi-base-hp = HP
 navi-buster-attack = Attack
 navi-buster-rapid = Rapid

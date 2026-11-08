@@ -574,6 +574,7 @@ pub fn library_sort_label(sort: LibrarySort, lang: &LanguageIdentifier) -> Strin
         LibrarySort::Element => t!(lang, "folder-sort-element"),
         LibrarySort::Mb => t!(lang, "folder-sort-mb"),
         LibrarySort::Hp => t!(lang, "folder-sort-hp"),
+        LibrarySort::Speed => t!(lang, "folder-sort-sp"),
     }
 }
 
@@ -616,9 +617,9 @@ fn sorted_library_entries(
     }
     // All ties fall back to (id, code) so the order stays stable.
     let cmp: fn(&E, &E) -> Ordering = match sort {
-        // The BN folders have no chip HP to sort on; only BCC offers
-        // the option, and it sorts its own library.
-        LibrarySort::Id | LibrarySort::Hp => |_a, _b| Ordering::Equal,
+        // The BN folders have no chip HP or speed to sort on; only BCC
+        // offers those, and it sorts its own library.
+        LibrarySort::Id | LibrarySort::Hp | LibrarySort::Speed => |_a, _b| Ordering::Equal,
         LibrarySort::Name => |a, b| a.name.cmp(&b.name),
         LibrarySort::Code => |a, b| a.code.cmp(&b.code),
         LibrarySort::Attack => |a, b| a.atk.cmp(&b.atk),

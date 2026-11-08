@@ -61,6 +61,7 @@ folder-sort-ap = AP
 folder-sort-element = 属性
 folder-sort-mb = MB
 folder-sort-hp = HP
+folder-sort-sp = SP
 navicust-edit-grid = ナビカスタマイザー
 navicust-edit-count = { $count } パーツ
 navicust-edit-rotate = 回転

@@ -70,6 +70,7 @@ folder-sort-ap = AP
 folder-sort-element = 属性
 folder-sort-mb = MB
 folder-sort-hp = HP
+folder-sort-sp = SP
 navi-base-hp = HP
 navi-buster-attack = 攻击
 navi-buster-rapid = 连射

@@ -70,6 +70,7 @@ folder-sort-ap = AP
 folder-sort-element = Hệ
 folder-sort-mb = MB
 folder-sort-hp = HP
+folder-sort-sp = SP
 navicust-edit-grid = NaviCust
 navicust-edit-count = { $count } bộ phận
 navicust-edit-rotate = Xoay

@@ -57,8 +57,11 @@ const L_SLOT: usize = 10;
 
 // Board geometry. Every element is fixed-size and placed at a computed
 // position so the widget layer and the wire canvas share one layout.
-// Widths scale with the pane (see `board`); heights and type don't.
-const SLOT_W: f32 = 168.0;
+// Widths scale with the pane (see `Geometry::fit`); heights and type don't.
+/// Wide enough that the longest names — eight full-width kana, like
+/// チャージスパーク, or ノーマルナビV4 — clear the icon and the
+/// remove-button zone at body size without clipping.
+const SLOT_W: f32 = 184.0;
 const SLOT_H: f32 = 44.0;
 /// Vertical gap between stacked cards.
 const COL_VGAP: f32 = 10.0;
@@ -78,12 +81,14 @@ const REMOVE_SIZE: f32 = 20.0;
 const TRIGGER_LABEL_W: f32 = 22.0;
 /// How much of that gutter stays empty between the letter and the card.
 const TRIGGER_LABEL_GAP: f32 = 6.0;
-/// How far the board may shrink to fit a narrow pane before clipping.
+/// How far the gaps, then the cards, may shrink to fit a narrow pane
+/// before the board clips.
 const MIN_FIT_SCALE: f32 = 0.4;
 
 /// Where everything on the board sits, in board-local coordinates.
-/// `s` scales the horizontal dimensions only — cards get narrower to
-/// fit the pane, never shorter.
+/// `card` scales the card width and `gap` the column gaps and side
+/// margins — horizontal dimensions only: cards get narrower to fit the
+/// pane, never shorter.
 struct Geometry {
     size: Size,
     slots: [Rectangle; DECK_SLOTS],
@@ -91,11 +96,27 @@ struct Geometry {
 }
 
 impl Geometry {
-    fn new(s: f32) -> Self {
+    /// The layout for a pane `width` wide. The gaps close up first, so
+    /// the cards keep their full width — and the names their room — as
+    /// long as they can; only once the gaps hit [`MIN_FIT_SCALE`] do
+    /// the cards narrow too.
+    fn fit(width: f32) -> Self {
+        // The board's width is linear in both scales, so three probe
+        // layouts give its fixed part and the cost of each.
+        let measure = |card, gap| Self::new(card, gap).size.width;
+        let fixed = measure(0.0, 0.0);
+        let cards = measure(1.0, 0.0) - fixed;
+        let gaps = measure(0.0, 1.0) - fixed;
+        let gap = ((width - fixed - cards) / gaps).clamp(MIN_FIT_SCALE, 1.0);
+        let card = ((width - fixed - gaps * gap) / cards).clamp(MIN_FIT_SCALE, 1.0);
+        Self::new(card, gap)
+    }
+
+    fn new(card: f32, gap: f32) -> Self {
         // The first column is inset by the trigger gutter so R/L can sit
         // beside their cards rather than inside them.
-        let (slot_w, hgap) = (SLOT_W * s, COL_HGAP * s);
-        let pad_x = PAD * s + TRIGGER_LABEL_W;
+        let (slot_w, hgap) = (SLOT_W * card, COL_HGAP * gap);
+        let pad_x = PAD * gap + TRIGGER_LABEL_W;
         let col_h = |n: usize| n as f32 * SLOT_H + (n - 1) as f32 * COL_VGAP;
         // The exit column is the tallest; it sets the board's height and
         // the R/L slots pin to its top and bottom.
@@ -642,12 +663,11 @@ fn board<'a>(
     selected: Option<usize>,
     issues: std::collections::HashMap<usize, String>,
 ) -> Element<'a, Action> {
-    let natural = Geometry::new(1.0);
-    let height = natural.size.height;
+    let height = Geometry::new(1.0, 1.0).size.height;
 
     let board =
         iced::widget::responsive(move |size: Size| {
-            let geo = Geometry::new((size.width / natural.size.width).clamp(MIN_FIT_SCALE, 1.0));
+            let geo = Geometry::fit(size.width);
             let card_w = geo.slots[0].width;
             let card = |i: usize, chip: &Option<ChipEntry>| -> Element<'a, Action> {
                 let on_press = interactive.then(|| {
@@ -868,6 +888,7 @@ pub fn render_edit<'a>(lang: &'a LanguageIdentifier, loaded: &'a OpenSave, state
             LibrarySort::Element,
             LibrarySort::Attack,
             LibrarySort::Hp,
+            LibrarySort::Speed,
             LibrarySort::Mb,
         ],
         state.library_sort,
@@ -905,6 +926,7 @@ fn sorted_library_entries(loaded: &OpenSave, navi_targeted: bool, sort: LibraryS
         elem: usize,
         hp: u16,
         ap: u16,
+        speed: u16,
         mb: u16,
     }
     let range = if navi_targeted { NAVI_CHIP_IDS } else { PROGRAM_CHIP_IDS };
@@ -917,6 +939,7 @@ fn sorted_library_entries(loaded: &OpenSave, navi_targeted: bool, sort: LibraryS
                 elem: info.element(),
                 hp: info.hp(),
                 ap: info.attack_power(),
+                speed: info.speed(),
                 mb: info.mb(),
             })
         })
@@ -931,14 +954,16 @@ fn sorted_library_entries(loaded: &OpenSave, navi_targeted: bool, sort: LibraryS
         LibrarySort::Element => |a, b| a.elem.cmp(&b.elem),
         LibrarySort::Mb => |a, b| a.mb.cmp(&b.mb),
         LibrarySort::Hp => |a, b| a.hp.cmp(&b.hp),
+        LibrarySort::Speed => |a, b| a.speed.cmp(&b.speed),
     };
     rows.sort_by(|a, b| cmp(a, b).then(a.id.cmp(&b.id)));
     rows.into_iter().map(|e| (e.id, e.name, e.mb)).collect()
 }
 
 /// One library row, built on the concrete chip record: BCC's columns
-/// are the element indicator then AP / HP / MB (the card screen's
-/// stats — the chips carry no code letters). Same composition as the
+/// are the element indicator then AP / HP / SP / MB — the card screen's
+/// stats plus the speed the game keeps hidden (the chips carry no code
+/// letters). Same composition as the
 /// shared folder library row — flush stripe gutter over `list_item`'s
 /// zebra base and a translucent wash for unavailable choices — so the two
 /// editors read identically.
@@ -951,8 +976,8 @@ fn library_row<'a>(
     issue: Option<String>,
 ) -> Element<'a, Action> {
     let info = bcc_assets(loaded).and_then(|a| a.chip_info(id));
-    let (elem, hp, ap, mb) = info
-        .map(|i| (i.element(), i.hp(), i.attack_power(), i.mb()))
+    let (elem, hp, ap, speed, mb) = info
+        .map(|i| (i.element(), i.hp(), i.attack_power(), i.speed(), i.mb()))
         .unwrap_or_default();
     let element_icon: Element<'a, Action> = loaded
         .element_icons
@@ -976,6 +1001,9 @@ fn library_row<'a>(
             .align_x(iced::alignment::Horizontal::Right),
         container(text(format!("{hp}HP")).size(TEXT_CAPTION))
             .width(Length::Fixed(46.0))
+            .align_x(iced::alignment::Horizontal::Right),
+        container(text(format!("{speed}SP")).size(TEXT_CAPTION))
+            .width(Length::Fixed(42.0))
             .align_x(iced::alignment::Horizontal::Right),
         // Always printed, unlike the BN library's cell, which blanks a
         // zero: every BCC program carries an MB price and a free one is

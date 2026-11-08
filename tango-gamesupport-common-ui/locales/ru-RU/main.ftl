@@ -97,6 +97,7 @@ folder-sort-ap = AP
 folder-sort-element = Элемент
 folder-sort-mb = MB
 folder-sort-hp = HP
+folder-sort-sp = SP
 navicust-edit-grid = NaviCust
 navicust-edit-count = { $count ->
     [one] { $count } деталь
